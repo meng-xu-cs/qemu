@@ -3030,6 +3030,10 @@ static void gen_multi0F(DisasContext *s, X86DecodedInsn *decode)
             s->base.is_jmp = DISAS_EOB_NEXT;
             break;
 
+        case 0xcf: /* encls */
+            gen_helper_sgx(tcg_env);
+            break;
+
         CASE_MODRM_MEM_OP(1): /* sidt */
             if (s->flags & HF_UMIP_MASK && !check_cpl0(s)) {
                 break;
