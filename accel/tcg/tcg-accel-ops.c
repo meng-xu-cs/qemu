@@ -220,6 +220,8 @@ static void tcg_accel_ops_init(AccelOpsClass *ops)
     ops->insert_breakpoint = tcg_insert_breakpoint;
     ops->remove_breakpoint = tcg_remove_breakpoint;
     ops->remove_all_breakpoints = tcg_remove_all_breakpoints;
+
+    qce_init();
 }
 
 static void tcg_accel_ops_class_init(ObjectClass *oc, void *data)

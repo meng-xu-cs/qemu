@@ -130,6 +130,7 @@ static inline uint32_t qemu_xxhash7(uint64_t ab, uint64_t cd, uint64_t ef,
     return qemu_xxhash8(ab, cd, ef, g, 0);
 }
 
+#ifndef QCE_SKIP_QEMU_XXH64
 /*
  * Component parts of the XXH64 algorithm from
  * https://github.com/Cyan4973/xxHash/blob/v0.8.0/xxhash.h
@@ -227,5 +228,6 @@ static inline uint64_t qemu_xxhash64_4(uint64_t a, uint64_t b,
 
     return XXH64_avalanche(XXH64_mergerounds(v1, v2, v3, v4));
 }
+#endif
 
 #endif /* QEMU_XXHASH_H */

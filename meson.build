@@ -2259,6 +2259,11 @@ if not get_option('libdw').auto() or \
                        required: get_option('libdw'))
 endif
 
+# z3
+z3 = cc.find_library('z3',
+                     dirs: [meson.current_source_dir() / get_option('z3') / 'lib'],
+                     required: true)
+
 #################
 # config-host.h #
 #################
@@ -3695,7 +3700,7 @@ util_ss = util_ss.apply({})
 libqemuutil = static_library('qemuutil',
                              build_by_default: false,
                              sources: util_ss.sources() + stub_ss.sources() + genh,
-                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc])
+                             dependencies: [util_ss.dependencies(), libm, threads, glib, socket, malloc, z3])
 qemuutil = declare_dependency(link_with: libqemuutil,
                               sources: genh + version_res,
                               dependencies: [event_loop_base])
@@ -4127,6 +4132,7 @@ foreach target : target_dirs
     t = target_system_arch[target_base_arch].apply(config_target, strict: false)
     arch_srcs += t.sources()
     arch_deps += t.dependencies()
+    target_inc += include_directories(get_option('z3') / 'include')
 
     hw_dir = target_name == 'sparc64' ? 'sparc64' : target_base_arch
     if hw_arch.has_key(hw_dir)
