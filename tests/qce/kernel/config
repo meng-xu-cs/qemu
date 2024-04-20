@@ -1,0 +1,20 @@
+# console support
+CONFIG_TTY=y
+CONFIG_SERIO=y
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
+CONFIG_INPUT=y
+CONFIG_PRINTK=y
+
+# init ramdisk
+CONFIG_BLK_DEV_INITRD=y
+
+# file systems
+CONFIG_SYSFS=y
+
+# device drivers
+CONFIG_PCI=y
+
+# binary format
+CONFIG_BINFMT_ELF=y
+CONFIG_BINFMT_SCRIPT=y

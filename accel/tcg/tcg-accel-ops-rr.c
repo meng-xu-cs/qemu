@@ -303,6 +303,8 @@ static void *rr_cpu_thread_fn(void *arg)
     }
 
     g_assert_not_reached();
+    qce_destroy();
+    return NULL;
 }
 
 void rr_start_vcpu_thread(CPUState *cpu)

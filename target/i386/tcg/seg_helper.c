@@ -2251,6 +2251,50 @@ void helper_lret_protected(CPUX86State *env, int shift, int addend)
     helper_ret_protected(env, shift, 0, addend, GETPC());
 }
 
+void helper_sgx(CPUX86State *env)
+{
+  target_ulong nr = env->regs[R_EAX];
+  bool trace_start = false;
+  switch (nr) {
+    case SGX_EDBGWR: {
+      trace_start = true;
+      break;
+    }
+    case SGX_EDBGRD: {
+      trace_start = false;
+      break;
+    }
+    default: {
+      qce_fatal("invalid SGX command number: %ld", nr);
+      goto error;
+    }
+  }
+
+  /* extract information */
+  target_ulong len = env->regs[R_EBX];
+  target_ulong addr = env->regs[R_ECX];
+
+  /* crawl the content of the blob */
+  uint8_t *blob = g_malloc0(len);
+  for (target_ulong i = 0; i < len; i++) {
+    blob[i] = cpu_ldub_data(env, addr + i);
+  }
+
+  /* mark the trace to start or stop */
+  if (trace_start) {
+    qce_trace_start(addr, len, blob);
+  } else {
+    qce_trace_stop(addr, len, blob);
+  }
+
+  /* done with this routine */
+  env->regs[R_EAX] = 0;
+  return;
+
+error:
+  env->regs[R_EAX] = 1;
+}
+
 void helper_sysenter(CPUX86State *env)
 {
     if (env->sysenter_cs == 0) {
