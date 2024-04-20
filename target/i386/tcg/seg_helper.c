@@ -2251,6 +2251,29 @@ void helper_lret_protected(CPUX86State *env, int shift, int addend)
     helper_ret_protected(env, shift, 0, addend, GETPC());
 }
 
+void helper_sgx(CPUX86State *env)
+{
+  target_ulong nr = env->regs[R_EAX];
+  if (nr != SGX_EDBGWR) {
+    qce_fatal("invalid SGX command number: %ld", nr);
+    goto error;
+  }
+
+  /* extract information */
+  target_ulong len = env->regs[R_EBX];
+  target_ulong addr = env->regs[R_ECX];
+
+  /* mark the trace to start */
+  qce_trace_start(addr, len);
+
+  /* done with this routine */
+  env->regs[R_EAX] = 0;
+  return;
+
+error:
+  env->regs[R_EAX] = 1;
+}
+
 void helper_sysenter(CPUX86State *env)
 {
     if (env->sysenter_cs == 0) {
