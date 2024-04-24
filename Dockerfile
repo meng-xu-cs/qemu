@@ -4,10 +4,19 @@ FROM --platform=linux/amd64 ubuntu:22.04
 # setup
 RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3 python3-venv \
-    python3-sphinx python3-sphinx-rtd-theme \
-    git wget curl binutils \
-    build-essential ninja-build \
+    # python base \
+    python3 python3-pip python3-venv \
+    # python deps \
+    python3-argcomplete \
+    # utilities \
+    git wget curl binutils file \
+    # build core \
+    build-essential ninja-build cargo rustc \
+    # qemu required \
     libglib2.0-dev \
-    busybox-static
+    # virtme required \
+    iproute2 systemd udev busybox-static
 
+RUN git clone --recurse-submodules \
+    https://github.com/arighi/virtme-ng.git
+RUN cd virtme-ng && git checkout v1.23 && make
