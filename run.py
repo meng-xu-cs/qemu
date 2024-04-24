@@ -6,11 +6,8 @@ import os
 import shutil
 import subprocess
 import sys
-
 from pathlib import Path
 from typing import List, Optional, Union
-
-from utils import mk_initramfs
 
 # path constants
 PATH_REPO = Path(__file__).parent.resolve()
@@ -30,9 +27,10 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64 = os.path.join(
 PATH_WKS_BUSYBOX = os.path.join(PATH_WKS, "busybox")
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
-PATH_WKS_LINUX_BOOT = os.path.join(PATH_WKS_LINUX, "boot")
-PATH_WKS_LINUX_BOOT_KERNEL = os.path.join(PATH_WKS_LINUX_BOOT, "kernel.img")
-PATH_WKS_LINUX_BOOT_INITRD = os.path.join(PATH_WKS_LINUX_BOOT, "initrd.img")
+PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
+PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
+PATH_WKS_LINUX_BLOB = os.path.join(PATH_WKS_LINUX, "blob.data")
+PATH_WKS_LINUX_SCRIPT = os.path.join(PATH_WKS_LINUX, "script.sh")
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -46,7 +44,7 @@ NUM_CPUS = multiprocessing.cpu_count()
 def _docker_exec(
     tag: str, volumes: List[str], ephemeral: bool, interactive: bool, cmdline: List[str]
 ) -> None:
-    command = ["docker", "run", "--device=/dev/kvm"]
+    command = ["docker", "run", "--device=/dev/kvm", "--tmpfs", "/dev/shm:exec"]
 
     if ephemeral:
         command.append("--rm")
@@ -79,6 +77,7 @@ def cmd_docker_build(force: bool) -> None:
     # TODO: check tag existence
     if force:
         subprocess.check_call(["docker", "image", "rm", DOCKER_TAG])
+        subprocess.check_call(["docker", "image", "prune", "--force"])
 
     subprocess.check_call(["docker", "build", ".", "-t", DOCKER_TAG], cwd=PATH_REPO)
 
@@ -87,8 +86,14 @@ def cmd_docker_shell(volumes: List[str]) -> None:
     _docker_exec(DOCKER_TAG, volumes, True, True, ["bash"])
 
 
-def cmd_docker_run(volumes: List[str], args: List[str]) -> None:
-    _docker_exec(DOCKER_TAG, volumes, True, False, args)
+def _docker_exec_self(volumes: List[str], args: List[str]) -> None:
+    _docker_exec(
+        DOCKER_TAG,
+        volumes,
+        True,
+        False,
+        ["python3", "{}/run.py".format(DOCKER_SRC_DIR), *args],
+    )
 
 
 def _qemu_config(
@@ -107,7 +112,9 @@ def _qemu_config(
         "--disable-user",
         # features
         "--enable-tcg",
+        "--enable-kvm",
         "--enable-slirp",
+        "--disable-multiprocess",
     ]
 
     if release:
@@ -160,61 +167,118 @@ def cmd_build(release: bool) -> None:
     subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
 
 
-def _prepare_linux(repo: str, harness: Optional[str], blob: Optional[str]) -> None:
+def _prepare_linux(kernel: str, harness: Optional[str], blob: Optional[str]) -> None:
     # clear previous states
     if os.path.exists(PATH_WKS_LINUX):
         shutil.rmtree(PATH_WKS_LINUX)
-
     os.mkdir(PATH_WKS_LINUX)
-    os.mkdir(PATH_WKS_LINUX_BOOT)
 
     # search for kernel image
-    img_kernel = os.path.join(repo, "src", "arch", "x86_64", "boot", "bzImage")
-    if not os.path.exists(img_kernel):
-        sys.exit("kernel image does not exist: {}".format(img_kernel))
-    shutil.copy2(img_kernel, PATH_WKS_LINUX_BOOT_KERNEL)
+    if not os.path.exists(kernel):
+        sys.exit("kernel image does not exist: {}".format(kernel))
+    shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
-    # pack initramfs
-    mk_initramfs(PATH_WKS_LINUX_BOOT_INITRD, harness, blob)
+    # prepare for execution script
+    if harness is None:
+        # shell mode
+        if blob is None:
+            sys.exit("cannot specify blob without harness")
+        guest_cmdline = "sh"
+    else:
+        if not os.path.exists(harness):
+            sys.exit("harness source code does not exist at {}".format(harness))
+        subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
+
+        if blob is None:
+            # fuzzing mode
+            sys.exit("not supported")
+        else:
+            # testing mode
+            if not os.path.exists(blob):
+                sys.exit("blob data file does not exist at {}".format(blob))
+
+            shutil.copy2(blob, PATH_WKS_LINUX_BLOB)
+            guest_cmdline = "echo '[harness-test] {}'\n{} {}".format(
+                harness, PATH_WKS_LINUX_HARNESS, PATH_WKS_LINUX_BLOB
+            )
+
+    with open(PATH_WKS_LINUX_SCRIPT, "w") as f:
+        f.write("#!/bin/sh\n{}".format(guest_cmdline))
+    os.chmod(PATH_WKS_LINUX_SCRIPT, 0o755)
 
 
 def cmd_linux(
-    repo: str, kvm: bool, harness: Optional[str], blob: Optional[str]
+    virtme: str,
+    kernel: str,
+    kvm: bool,
+    harness: Optional[str],
+    blob: Optional[str],
+    verbose: bool,
 ) -> None:
-    _prepare_linux(repo, harness, blob)
-
-    command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
+    _prepare_linux(kernel, harness, blob)
 
     # basics
-    command.extend(["-m", "2G"])
-    if kvm:
-        command.extend(["-machine", "accel=kvm:tcg"])
+    command = [virtme]
+    if verbose:
+        command.extend(["--verbose", "--show-boot-console"])
 
-    # no display
-    command.extend(["-vga", "none"])
-    command.extend(["-display", "none"])
-
-    # IO
-    command.extend(["-serial", "stdio"])
-    command.extend(["-parallel", "none"])
-
-    # networking
-    command.extend(["-net", "none"])
-    command.extend(["-device", "virtio-net-pci,netdev=n0"])
-    command.extend(["-netdev", "user,id=n0"])
+    # machine
+    command.extend(["--qemu-bin", PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64])
+    command.extend(["--memory", "2G"])
+    if not kvm:
+        command.extend(["--disable-kvm"])
 
     # kernel
-    command.extend(["-kernel", PATH_WKS_LINUX_BOOT_KERNEL])
-    command.extend(["-initrd", PATH_WKS_LINUX_BOOT_INITRD])
-    command.extend(["-append", "console=ttyS0"])
+    command.extend(["--kimg", PATH_WKS_LINUX_KERNEL])
+    command.extend(["--mods", "auto"])
 
-    # behaviors
-    command.extend(["-no-reboot"])
+    # script
+    command.extend(["--script-sh", PATH_WKS_LINUX_SCRIPT])
 
     # execute
     subprocess.check_call(
         command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
     )
+
+
+def _dev_fresh() -> None:
+    _docker_exec_self([], ["build"])
+
+
+def cmd_dev_sample(volumes: List[str], kvm: bool, solution: bool) -> None:
+    if len(volumes) != 1:
+        sys.exit("Expect one and only one volume to attach")
+
+    passthrough_args = ["linux"]
+    if kvm:
+        passthrough_args.append("--kvm")
+    passthrough_args.append("--verbose")
+    passthrough_args.extend(["--virtme", "/virtme-ng/virtme-run"])
+    passthrough_args.extend(
+        [
+            "--kernel",
+            "/{}0/src/arch/x86_64/boot/bzImage".format(DOCKER_WORKDIR_PREFIX),
+        ]
+    )
+    passthrough_args.extend(
+        [
+            "--harness",
+            "/{}0/src/test_harnesses/linux_test_harness.c".format(
+                DOCKER_WORKDIR_PREFIX
+            ),
+        ]
+    )
+    if solution:
+        passthrough_args.extend(
+            [
+                "--blob",
+                "/{}0/exemplar_only/blobs/sample_solve.bin".format(
+                    DOCKER_WORKDIR_PREFIX
+                ),
+            ]
+        )
+
+    _docker_exec_self(volumes, passthrough_args)
 
 
 def main() -> None:
@@ -235,9 +299,18 @@ def main() -> None:
     parser_docker_shell = sub_docker.add_parser("shell")
     parser_docker_shell.add_argument("-v", "--volume", action="append", default=[])
 
-    parser_docker_run = sub_docker.add_parser("run")
-    parser_docker_run.add_argument("args", nargs="+")
-    parser_docker_run.add_argument("-v", "--volume", action="append", default=[])
+    #
+    # dev group
+    #
+
+    parser_dev = subparsers.add_parser("dev")
+    parser_dev.add_argument("--fresh", action="store_true")
+    parser_dev.add_argument("-v", "--volume", action="append", default=[])
+    sub_dev = parser_dev.add_subparsers(dest="cmd_dev")
+
+    parser_dev_sample = sub_dev.add_parser("sample")
+    parser_dev_sample.add_argument("--kvm", action="store_true")
+    parser_dev_sample.add_argument("--solution", action="store_true")
 
     #
     # other commands
@@ -250,10 +323,12 @@ def main() -> None:
     parser_build.add_argument("--release", action="store_true")
 
     parser_linux = subparsers.add_parser("linux")
-    parser_linux.add_argument("repo")
+    parser_linux.add_argument("--virtme", required=True)
+    parser_linux.add_argument("--kernel", required=True)
     parser_linux.add_argument("--kvm", action="store_true")
     parser_linux.add_argument("--harness")
     parser_linux.add_argument("--blob")
+    parser_linux.add_argument("--verbose", action="store_true")
 
     # actions
     args = parser.parse_args()
@@ -262,16 +337,25 @@ def main() -> None:
             cmd_docker_build(args.force)
         elif args.cmd_docker == "shell":
             cmd_docker_shell(args.volume)
-        elif args.cmd_docker == "run":
-            cmd_docker_run(args.volume, args.args)
         else:
             parser_docker.print_help()
+
+    elif args.command == "dev":
+        if args.fresh:
+            _dev_fresh()
+        if args.cmd_dev == "sample":
+            cmd_dev_sample(args.volume, args.kvm, args.solution)
+        else:
+            parser_dev.print_help()
+
     elif args.command == "init":
         cmd_init(args.force)
     elif args.command == "build":
         cmd_build(args.release)
     elif args.command == "linux":
-        cmd_linux(args.repo, args.kvm, args.harness, args.blob)
+        cmd_linux(
+            args.virtme, args.kernel, args.kvm, args.harness, args.blob, args.verbose
+        )
     else:
         parser.print_help()
 
