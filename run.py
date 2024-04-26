@@ -7,12 +7,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import List, Optional, Union
 
 # path constants
 PATH_REPO = Path(__file__).parent.resolve()
+PATH_AGENT = os.path.join(PATH_REPO, "agent")
 PATH_BUILD = os.path.join(PATH_REPO, "build")
 PATH_WKS = os.path.join(PATH_REPO, "workspace")
+
+PATH_AGENT_HOST_BIN = os.path.join(PATH_REPO, "agent", "host")
+PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest.c")
 
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
@@ -31,6 +36,7 @@ PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_BLOB = os.path.join(PATH_WKS_LINUX, "blob.data")
 PATH_WKS_LINUX_SCRIPT = os.path.join(PATH_WKS_LINUX, "script.sh")
+PATH_WKS_LINUX_AGENT = os.path.join(PATH_WKS_LINUX, "agent")
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -167,7 +173,9 @@ def cmd_build(release: bool) -> None:
     subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
 
 
-def _prepare_linux(kernel: str, harness: Optional[str], blob: Optional[str]) -> None:
+def _prepare_linux(
+    kernel: str, harness: Optional[str], blob: Optional[str]
+) -> Optional[str]:
     # clear previous states
     if os.path.exists(PATH_WKS_LINUX):
         shutil.rmtree(PATH_WKS_LINUX)
@@ -181,42 +189,57 @@ def _prepare_linux(kernel: str, harness: Optional[str], blob: Optional[str]) -> 
     # prepare for execution script
     if harness is None:
         # shell mode
-        if blob is None:
+        if blob is not None:
             sys.exit("cannot specify blob without harness")
-        guest_cmdline = "sh"
+        return None
+
+    if not os.path.exists(harness):
+        sys.exit("harness source code does not exist at {}".format(harness))
+    subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
+
+    if blob is None:
+        # fuzzing mode
+        subprocess.check_call(["make", "host"], cwd=PATH_AGENT)
+        if not os.path.exists(PATH_AGENT_HOST_BIN):
+            sys.exit("agent-host fails to build")
+
+        subprocess.check_call(
+            [
+                "cc",
+                "-static",
+                "-std=c2x",
+                '-DHARNESS="{}"'.format(PATH_WKS_LINUX_HARNESS),
+                PATH_AGENT_GUEST_SRC,
+                "-o",
+                PATH_WKS_LINUX_AGENT,
+            ],
+            cwd=PATH_AGENT,
+        )
+        guest_cmdline = "echo '[harness-fuzz] {}'\n{}".format(
+            harness, PATH_WKS_LINUX_AGENT, PATH_WKS_LINUX_BLOB
+        )
+
     else:
-        if not os.path.exists(harness):
-            sys.exit("harness source code does not exist at {}".format(harness))
-        subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
+        # testing mode
+        if not os.path.exists(blob):
+            sys.exit("blob data file does not exist at {}".format(blob))
 
-        if blob is None:
-            # fuzzing mode
-            sys.exit("not supported")
-        else:
-            # testing mode
-            if not os.path.exists(blob):
-                sys.exit("blob data file does not exist at {}".format(blob))
-
-            shutil.copy2(blob, PATH_WKS_LINUX_BLOB)
-            guest_cmdline = "echo '[harness-test] {}'\n{} {}".format(
-                harness, PATH_WKS_LINUX_HARNESS, PATH_WKS_LINUX_BLOB
-            )
+        shutil.copy2(blob, PATH_WKS_LINUX_BLOB)
+        guest_cmdline = "echo '[harness-test] {}'\n{} {}".format(
+            harness, PATH_WKS_LINUX_HARNESS, PATH_WKS_LINUX_BLOB
+        )
 
     with open(PATH_WKS_LINUX_SCRIPT, "w") as f:
         f.write("#!/bin/sh\n{}".format(guest_cmdline))
     os.chmod(PATH_WKS_LINUX_SCRIPT, 0o755)
 
+    # mark that we have script to execute
+    return PATH_WKS_LINUX_SCRIPT
 
-def cmd_linux(
-    virtme: str,
-    kernel: str,
-    kvm: bool,
-    harness: Optional[str],
-    blob: Optional[str],
-    verbose: bool,
+
+def _execute_linux(
+    virtme: str, script: Optional[str], wks: str, kvm: bool, verbose: bool
 ) -> None:
-    _prepare_linux(kernel, harness, blob)
-
     # basics
     command = [virtme]
     if verbose:
@@ -233,12 +256,36 @@ def cmd_linux(
     command.extend(["--mods", "auto"])
 
     # script
-    command.extend(["--script-sh", PATH_WKS_LINUX_SCRIPT])
+    if script is not None:
+        command.extend(["--script-sh", script])
+
+    # workspace
+    command.append("--rwdir=/tmp/wks={}".format(wks))
 
     # execute
     subprocess.check_call(
         command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
     )
+
+
+def cmd_linux(
+    virtme: str,
+    kernel: str,
+    kvm: bool,
+    harness: Optional[str],
+    blob: Optional[str],
+    verbose: bool,
+) -> None:
+    script = _prepare_linux(kernel, harness, blob)
+    with TemporaryDirectory() as tmp:
+        # place the mark first
+        Path(os.path.join(tmp, "MARK")).touch(exist_ok=False)
+        # start the host
+        host = subprocess.Popen([PATH_AGENT_HOST_BIN, tmp])
+        # start the guest
+        _execute_linux(virtme, script, tmp, kvm, verbose)
+        # wait for host termination
+        host.wait()
 
 
 def _dev_fresh() -> None:
@@ -252,6 +299,7 @@ def cmd_dev_sample(volumes: List[str], kvm: bool, solution: bool) -> None:
     passthrough_args = ["linux"]
     if kvm:
         passthrough_args.append("--kvm")
+
     passthrough_args.append("--verbose")
     passthrough_args.extend(["--virtme", "/virtme-ng/virtme-run"])
     passthrough_args.extend(
