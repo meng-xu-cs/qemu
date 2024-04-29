@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 from typing import List, Optional, Union
 
 # path constants
@@ -199,6 +199,7 @@ def _prepare_linux(
 
     if blob is None:
         # fuzzing mode
+        subprocess.check_call(["make", "clean"], cwd=PATH_AGENT)
         subprocess.check_call(["make", "host"], cwd=PATH_AGENT)
         if not os.path.exists(PATH_AGENT_HOST_BIN):
             sys.exit("agent-host fails to build")
@@ -238,12 +239,12 @@ def _prepare_linux(
 
 
 def _execute_linux(
-    virtme: str, script: Optional[str], wks: str, kvm: bool, verbose: bool
+    virtme: str, script: Optional[str], wks: str, mon: str, kvm: bool, verbose: bool
 ) -> None:
     # basics
     command = [virtme]
     if verbose:
-        command.extend(["--verbose", "--show-boot-console"])
+        command.extend(["--show-command", "--verbose", "--show-boot-console"])
 
     # machine
     command.extend(["--qemu-bin", PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64])
@@ -262,6 +263,17 @@ def _execute_linux(
     # workspace
     command.append("--rwdir=/tmp/wks={}".format(wks))
 
+    # monitor
+    command.extend(
+        [
+            "--qemu-opts",
+            "-chardev",
+            "socket,id=mon1,path={},server=on,wait=off".format(mon),
+            "-mon",
+            "chardev=mon1,mode=control,pretty={}".format("on" if verbose else "off"),
+        ]
+    )
+
     # execute
     subprocess.check_call(
         command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
@@ -278,14 +290,15 @@ def cmd_linux(
 ) -> None:
     script = _prepare_linux(kernel, harness, blob)
     with TemporaryDirectory() as tmp:
-        # place the mark first
+        # place the mark and monitor files first
         Path(os.path.join(tmp, "MARK")).touch(exist_ok=False)
-        # start the host
-        host = subprocess.Popen([PATH_AGENT_HOST_BIN, tmp])
-        # start the guest
-        _execute_linux(virtme, script, tmp, kvm, verbose)
-        # wait for host termination
-        host.wait()
+        with NamedTemporaryFile() as mon:
+            # start the host
+            host = subprocess.Popen([PATH_AGENT_HOST_BIN, tmp, mon.name])
+            # start the guest
+            _execute_linux(virtme, script, tmp, mon.name, kvm, verbose)
+            # wait for host termination
+            host.wait()
 
 
 def _dev_fresh() -> None:
