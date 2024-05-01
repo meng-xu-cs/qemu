@@ -16,8 +16,8 @@ PATH_AGENT = os.path.join(PATH_REPO, "agent")
 PATH_BUILD = os.path.join(PATH_REPO, "build")
 PATH_WKS = os.path.join(PATH_REPO, "workspace")
 
-PATH_AGENT_HOST_BIN = os.path.join(PATH_REPO, "agent", "host")
-PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest.c")
+PATH_AGENT_HOST_SRC = os.path.join(PATH_REPO, "agent", "host")
+PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest", "guest.c")
 
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
@@ -36,7 +36,8 @@ PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_BLOB = os.path.join(PATH_WKS_LINUX, "blob.data")
 PATH_WKS_LINUX_SCRIPT = os.path.join(PATH_WKS_LINUX, "script.sh")
-PATH_WKS_LINUX_AGENT = os.path.join(PATH_WKS_LINUX, "agent")
+PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
+PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -199,11 +200,10 @@ def _prepare_linux(
 
     if blob is None:
         # fuzzing mode
-        subprocess.check_call(["make", "clean"], cwd=PATH_AGENT)
-        subprocess.check_call(["make", "host"], cwd=PATH_AGENT)
-        if not os.path.exists(PATH_AGENT_HOST_BIN):
-            sys.exit("agent-host fails to build")
-
+        subprocess.check_call(
+            ["cargo", "build", "--release", "--target-dir", PATH_WKS_LINUX_AGENT_HOST],
+            cwd=PATH_AGENT_HOST_SRC,
+        )
         subprocess.check_call(
             [
                 "cc",
@@ -212,12 +212,12 @@ def _prepare_linux(
                 '-DHARNESS="{}"'.format(PATH_WKS_LINUX_HARNESS),
                 PATH_AGENT_GUEST_SRC,
                 "-o",
-                PATH_WKS_LINUX_AGENT,
+                PATH_WKS_LINUX_AGENT_GUEST,
             ],
             cwd=PATH_AGENT,
         )
         guest_cmdline = "echo '[harness-fuzz] {}'\n{}".format(
-            harness, PATH_WKS_LINUX_AGENT, PATH_WKS_LINUX_BLOB
+            harness, PATH_WKS_LINUX_AGENT_GUEST, PATH_WKS_LINUX_BLOB
         )
 
     else:
@@ -270,7 +270,7 @@ def _execute_linux(
             "-chardev",
             "socket,id=mon1,path={},server=on,wait=off".format(mon),
             "-mon",
-            "chardev=mon1,mode=control,pretty={}".format("on" if verbose else "off"),
+            "chardev=mon1,mode=control",
         ]
     )
 
@@ -294,7 +294,17 @@ def cmd_linux(
         Path(os.path.join(tmp, "MARK")).touch(exist_ok=False)
         with NamedTemporaryFile() as mon:
             # start the host
-            host = subprocess.Popen([PATH_AGENT_HOST_BIN, tmp, mon.name])
+            host = subprocess.Popen(
+                [
+                    os.path.join(
+                        PATH_WKS_LINUX_AGENT_HOST,
+                        "release",
+                        "qce-agent-host",
+                    ),
+                    tmp,
+                    mon.name,
+                ]
+            )
             # start the guest
             _execute_linux(virtme, script, tmp, mon.name, kvm, verbose)
             # wait for host termination
