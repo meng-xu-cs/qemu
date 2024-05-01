@@ -1,6 +1,3 @@
-#ifndef AGENT_COMMON_H
-#define AGENT_COMMON_H
-
 #define _GNU_SOURCE
 
 #include <errno.h>
@@ -12,13 +9,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/signalfd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 /*
  * Project Constants
  */
+
+// workspace directory in guest
+#define PATH_WKS "/tmp/wks"
 
 // host-guest synchronization mark
 #define FILE_MARK "MARK"
@@ -157,115 +155,43 @@ exception:
 }
 
 /*
- * IO-utilities
+ * Entrypoint
  */
 
-// create a new file at directory
-static inline int touch(const char *dir, const char *file) {
-  int fd;
+int main(int argc, char *argv[]) {
+  // sanity check
+  if (argc != 1) {
+    fprintf(stderr, "expect one and only one argument\n");
+    exit(1);
+  }
 
-  int dir_fd = open(dir, O_DIRECTORY | O_RDONLY);
-  if ((fd = openat(dir_fd, file, O_CREAT | S_IRUSR | S_IWUSR)) < 0) {
-    fprintf(stderr, "unable to touch %s/%s: %s\n", dir, file, strerror(errno));
+  // remove the mark to signal that the guest is ready
+  int dir_fd;
+  if ((dir_fd = open(PATH_WKS, O_DIRECTORY | O_RDONLY)) < 0) {
+    fprintf(stderr, "unable to open directory %s: %s\n", PATH_WKS,
+            strerror(errno));
+    exit(1);
+  }
+
+  if (unlinkat(dir_fd, FILE_MARK, 0) != 0) {
+    fprintf(stderr, "failed to unlink %s in %s: %s\n", FILE_MARK, PATH_WKS,
+            strerror(errno));
     close(dir_fd);
-    return -1;
+    exit(1);
   }
-
-  close(fd);
+  if (syncfs(dir_fd) != 0) {
+    fprintf(stderr, "failed to to fsync directory %s: %s\n", PATH_WKS,
+            strerror(errno));
+    close(dir_fd);
+    exit(1);
+  }
   close(dir_fd);
-  return 0;
+
+  fprintf(stderr, "[harness-fuzz] notified host on VM ready\n");
+
+  // wait for mark to re-appear
+  dnotify_watch(PATH_WKS, FILE_MARK, true);
+
+  // transfer control to harness
+  return execl(HARNESS, HARNESS, argv[1]);
 }
-
-// recv on a socket, expecting recv to happen within timeout
-static inline ssize_t recv_blocking(int socket, char *buf, size_t bufsize,
-                                    int timeout) {
-  int nfds;
-  ssize_t len;
-
-  // poll for events
-  struct pollfd poll_fds[] = {{
-      .fd = socket,
-      .events = POLLIN,
-      .revents = 0,
-  }};
-  if ((nfds = poll(poll_fds, 1, timeout)) < 0) {
-    fprintf(stderr, "unable to poll socket %d: %s\n", socket, strerror(errno));
-    return -1;
-  }
-  if (nfds == 0) {
-    fprintf(stderr, "socket %d is not ready for recv\n", socket);
-    return -1;
-  }
-
-  // initial attempt on getting the data into buffer
-  if ((len = recv(socket, buf, bufsize, 0)) < 0) {
-    fprintf(stderr, "unable to recv on socket %d: %s\n", socket,
-            strerror(errno));
-    return -1;
-  }
-
-  // in case there are more data to receive
-  ssize_t rv;
-  while (true) {
-    char *cur = buf + len;
-    size_t remaining = bufsize - len;
-
-    if (remaining == 0) {
-      fprintf(stderr, "more data to read than expected in fd %d\n", socket);
-      return -1;
-    }
-
-    if ((rv = recv(socket, cur, remaining, MSG_DONTWAIT)) < 0) {
-      // exit when there is no more data to consume
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        break;
-      }
-      // in other cases, there is an error
-      fprintf(stderr, "unable to recv (no-wait) on socket %d: %s\n", socket,
-              strerror(errno));
-      return -1;
-    }
-
-    len += rv;
-  }
-
-  // return number of bytes received
-  return len;
-}
-
-// send the entire string to a socket
-static inline ssize_t send_string(int socket, const char *msg) {
-  ssize_t len;
-
-  size_t msg_len = strlen(msg);
-  fprintf(stderr, "about to send string [%ld] %s\n", msg_len, msg);
-  if ((len = send(socket, msg, msg_len, 0)) < 0) {
-    fprintf(stderr, "unable to send to socket %d: %s\n", socket,
-            strerror(errno));
-    return -1;
-  }
-
-  if (len < msg_len) {
-    fprintf(stderr, "more data to send than expected\n");
-    return -1;
-  }
-
-  // return number of bytes written
-  return len;
-}
-
-/*
- * String utilities
- */
-
-static inline bool str_prefix(const char *msg, const char *prefix) {
-  return strncmp(msg, prefix, strlen(prefix)) == 0;
-}
-
-static inline bool str_suffix(const char *msg, const char *suffix) {
-  size_t len = strlen(msg);
-  size_t suffix_len = strlen(suffix);
-  return strncmp(&msg[len - suffix_len - 1], suffix, suffix_len) == 0;
-}
-
-#endif // AGENT_COMMON_H
