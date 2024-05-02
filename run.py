@@ -199,7 +199,7 @@ def _prepare_linux(
     if blob is None:
         # fuzzing mode
         subprocess.check_call(
-            ["cargo", "build", "--release", "--target-dir", PATH_WKS_LINUX_AGENT_HOST],
+            ["cargo", "build", "--target-dir", PATH_WKS_LINUX_AGENT_HOST],
             cwd=PATH_AGENT_HOST_SRC,
         )
         subprocess.check_call(
@@ -296,7 +296,7 @@ def cmd_linux(
                 [
                     os.path.join(
                         PATH_WKS_LINUX_AGENT_HOST,
-                        "release",
+                        "debug",  # TODO: optimize it to release
                         "qce-agent-host",
                     ),
                     tmp,
