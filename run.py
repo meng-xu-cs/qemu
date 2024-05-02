@@ -173,7 +173,10 @@ def cmd_build(release: bool) -> None:
 
 
 def _prepare_linux(
-    kernel: str, harness: Optional[str], blob: Optional[str]
+    kernel: str,
+    harness: Optional[str],
+    blob: Optional[str],
+    verbose: bool,
 ) -> Optional[str]:
     # clear previous states
     if os.path.exists(PATH_WKS_LINUX):
@@ -198,10 +201,32 @@ def _prepare_linux(
 
     if blob is None:
         # fuzzing mode
-        subprocess.check_call(
-            ["cargo", "build", "--target-dir", PATH_WKS_LINUX_AGENT_HOST],
-            cwd=PATH_AGENT_HOST_SRC,
-        )
+        agent_host_name = "qce-agent-host"
+        if not verbose:
+            # build a fresh agent
+            with TemporaryDirectory() as tmp:
+                subprocess.check_call(
+                    [
+                        "cargo",
+                        "build",
+                        "--release",
+                        "--target-dir",
+                        tmp,
+                    ],
+                    cwd=PATH_AGENT_HOST_SRC,
+                )
+                shutil.copy2(
+                    os.path.join(tmp, "release", agent_host_name),
+                    PATH_WKS_LINUX_AGENT_HOST,
+                )
+        else:
+            # re-use the debug build
+            shutil.copy2(
+                os.path.join(PATH_AGENT_HOST_SRC, "target", "debug", agent_host_name),
+                PATH_WKS_LINUX_AGENT_HOST,
+            )
+
+        # compile the harness
         subprocess.check_call(
             [
                 "cc",
@@ -237,7 +262,12 @@ def _prepare_linux(
 
 
 def _execute_linux(
-    virtme: str, script: Optional[str], wks: str, mon: str, kvm: bool, verbose: bool
+    virtme: str,
+    script: Optional[str],
+    workspace: str,
+    monitor_socket: str,
+    kvm: bool,
+    verbose: bool,
 ) -> None:
     # basics
     command = [virtme]
@@ -259,14 +289,14 @@ def _execute_linux(
         command.extend(["--script-sh", script])
 
     # workspace
-    command.append("--rwdir=/tmp/wks={}".format(wks))
+    command.append("--rwdir=/tmp/wks={}".format(workspace))
 
     # monitor
     command.extend(
         [
             "--qemu-opts",
             "-chardev",
-            "socket,id=mon1,path={},server=on,wait=off".format(mon),
+            "socket,id=mon1,path={},server=on,wait=off".format(monitor_socket),
             "-mon",
             "chardev=mon1,mode=control",
         ]
@@ -286,25 +316,21 @@ def cmd_linux(
     blob: Optional[str],
     verbose: bool,
 ) -> None:
-    script = _prepare_linux(kernel, harness, blob)
+    script = _prepare_linux(kernel, harness, blob, verbose)
     with TemporaryDirectory() as tmp:
         # place the mark and monitor files first
         Path(os.path.join(tmp, "MARK")).touch(exist_ok=False)
-        with NamedTemporaryFile() as mon:
+        with NamedTemporaryFile() as monitor_socket:
             # start the host
             host = subprocess.Popen(
                 [
-                    os.path.join(
-                        PATH_WKS_LINUX_AGENT_HOST,
-                        "debug",  # TODO: optimize it to release
-                        "qce-agent-host",
-                    ),
+                    PATH_WKS_LINUX_AGENT_HOST,
                     tmp,
-                    mon.name,
+                    monitor_socket.name,
                 ]
             )
             # start the guest
-            _execute_linux(virtme, script, tmp, mon.name, kvm, verbose)
+            _execute_linux(virtme, script, tmp, monitor_socket.name, kvm, verbose)
             # wait for host termination
             host.wait()
 
