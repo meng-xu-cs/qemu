@@ -32,7 +32,8 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error waiting for sync-mark deletion: {}", e));
     info!("Guest VM is ready");
 
-    qemu::snapshot_save(&args.path_qemu_monitor)
+    // save a live snapshot
+    qemu::snapshot_save(&args.path_qemu_monitor, 0)
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
 
     // release the guest

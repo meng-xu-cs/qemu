@@ -5,36 +5,34 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use qapi::qmp::{Event, JobStatus};
-use qapi::{qmp, Qmp};
+use qapi::{qmp, Command, Qmp};
 
 const SNAPSHOT_TAG: &str = "qce";
-const SNAPSHOT_JOB: &str = "qce_save";
+const SNAPSHOT_JOB_PREFIX: &str = "qce_job_";
 
-pub fn snapshot_save(socket: &Path) -> io::Result<()> {
+fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result<()> {
     let stream = UnixStream::connect(socket)?;
     let mut qmp = Qmp::from_stream(&stream);
     qmp.handshake()?;
 
-    qmp.execute(&qmp::snapshot_save {
-        tag: SNAPSHOT_TAG.to_string(),
-        job_id: SNAPSHOT_JOB.to_string(),
-        vmstate: "".to_string(),
-        devices: vec![],
-    })?;
+    // send the command
+    qmp.execute(&command)?;
 
-    loop {
+    // wait for result
+    let mut aborted = false;
+    'outer: loop {
         qmp.nop()?;
         for event in qmp.events() {
             if let Event::JOB_STATUS_CHANGE { data, timestamp: _ } = event {
-                if data.id != SNAPSHOT_JOB {
+                if data.id != job_id {
                     continue;
                 }
                 match data.status {
                     JobStatus::created | JobStatus::running => (),
                     JobStatus::aborting => {
-                        return Err(io::Error::new(io::ErrorKind::Other, "job aborted"));
+                        aborted = true;
                     }
-                    JobStatus::concluded => break,
+                    JobStatus::concluded => break 'outer,
                     status => {
                         return Err(io::Error::new(
                             io::ErrorKind::Other,
@@ -46,4 +44,44 @@ pub fn snapshot_save(socket: &Path) -> io::Result<()> {
         }
         sleep(Duration::from_millis(1));
     }
+
+    // early return if job completed successfully
+    if !aborted {
+        return Ok(());
+    }
+
+    // probe for a reason
+    let mut reason = None;
+    for item in qmp.execute(&qmp::query_jobs {})? {
+        if item.id != job_id {
+            continue;
+        }
+        let error = item
+            .error
+            .unwrap_or_else(|| "aborted without an error message".to_string());
+        reason = Some(error);
+        break;
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        format!(
+            "job aborted: {}",
+            reason.unwrap_or_else(|| "unable to probe for a reason".to_string())
+        ),
+    ))
+}
+
+pub fn snapshot_save(socket: &Path, job_index: usize) -> io::Result<()> {
+    let job_id = format!("{}{}", SNAPSHOT_JOB_PREFIX, job_index);
+    exec_async(
+        socket,
+        qmp::snapshot_save {
+            tag: SNAPSHOT_TAG.to_string(),
+            job_id: job_id.clone(),
+            vmstate: "".to_string(),
+            devices: vec![],
+        },
+        &job_id,
+    )
 }
