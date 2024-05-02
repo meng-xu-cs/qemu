@@ -29,8 +29,6 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64 = os.path.join(
     PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-system-x86_64"
 )
 
-PATH_WKS_BUSYBOX = os.path.join(PATH_WKS, "busybox")
-
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")

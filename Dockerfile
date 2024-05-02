@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM --platform=linux/amd64 ubuntu:22.04
+FROM ubuntu:22.04
 
 # setup
 RUN apt-get update
@@ -15,7 +15,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     # qemu required \
     libglib2.0-dev \
     # virtme required \
-    iproute2 systemd udev busybox-static
+    iproute2 systemd udev busybox-static initramfs-tools
 
 RUN git clone --recurse-submodules \
     https://github.com/arighi/virtme-ng.git
