@@ -1,12 +1,16 @@
+import os.path
 import subprocess
 from typing import BinaryIO, Optional, Tuple
+
+
+TEXT_ENCODING = "utf-8"
 
 
 class CpioWriter(object):
     TYPE_DIR = 0o0040000
     TYPE_REG = 0o0100000
     TYPE_SYMLINK = 0o0120000
-    TYPE_CHRDEV = 0o0020000
+    TYPE_CHARDEV = 0o0020000
     TYPE_MASK = 0o0170000
 
     def __init__(self, f: BinaryIO):
@@ -37,12 +41,7 @@ class CpioWriter(object):
             nlink = 2 if (mode & CpioWriter.TYPE_MASK) == CpioWriter.TYPE_DIR else 1
 
         namesize = len(name) + 1
-
-        if isinstance(body, bytes):
-            filesize = len(body)
-        else:
-            filesize = body.seek(0, 2)
-            body.seek(0)
+        filesize = len(body)
 
         if ino is None:
             ino = self.__next_ino
@@ -63,22 +62,13 @@ class CpioWriter(object):
             namesize,
             0,
         ]
-        hdr = ("070701" + "".join("%08X" % f for f in fields)).encode("ascii")
+        hdr = ("070701" + "".join("%08X" % f for f in fields)).encode()
 
         self.__write(hdr)
-        self.__write(name.encode("ascii"))
+        self.__write(name.encode(TEXT_ENCODING))
         self.__write(b"\0")
         self.__write(((2 - namesize) % 4) * b"\0")
-
-        if isinstance(body, bytes):
-            self.__write(body)
-        else:
-            while True:
-                buf = body.read(65536)
-                if len(buf) == 0:
-                    break
-                self.__write(buf)
-
+        self.__write(body)
         self.__write(((-filesize) % 4) * b"\0")
 
     def write_trailer(self) -> None:
@@ -90,7 +80,9 @@ class CpioWriter(object):
 
     def symlink(self, src: str, dst: str) -> None:
         self.write_object(
-            name=dst, mode=CpioWriter.TYPE_SYMLINK | 0o777, body=src.encode("ascii")
+            name=dst,
+            mode=CpioWriter.TYPE_SYMLINK | 0o777,
+            body=src.encode(TEXT_ENCODING),
         )
 
     def write_file(self, name: str, body: bytes, mode: int) -> None:
@@ -100,14 +92,92 @@ class CpioWriter(object):
         major, minor = dev
         self.write_object(
             name=name,
-            mode=CpioWriter.TYPE_CHRDEV | mode,
+            mode=CpioWriter.TYPE_CHARDEV | mode,
             rdevmajor=major,
             rdevminor=minor,
             body=b"",
         )
 
 
+INCLUDED_ROOT_DIRS = [
+    "bin",
+    "etc",
+    "lib",
+    "lib32",
+    "lib64",
+    "libx32",
+    "sbin",
+    "usr",
+]
+
+CREATED_ROOT_DIRS = [
+    "mnt",
+    "var",
+]
+
+MOUNTED_ROOT_DIRS = [
+    "dev",
+    "proc",
+    "run",
+    "sys",
+    "tmp",
+]
+
+
+def __assert_handled(dir_path: str, link: str):
+    if not link.startswith("/"):
+        link = os.path.normpath(os.path.join(dir_path, link))
+    assert link.startswith("/")
+
+    l1 = link.split("/")[1]
+    if l1 in INCLUDED_ROOT_DIRS or l1 in CREATED_ROOT_DIRS or l1 in MOUNTED_ROOT_DIRS:
+        return
+
+    print("link {} is not handled".format(link))
+    assert False
+
+
+def cpio_recursive(cw: CpioWriter, dir_path: str, item: str) -> None:
+    path = os.path.join("/", item)
+    if os.path.islink(path):
+        dst = os.readlink(path)
+        cw.symlink(item, dst)
+        # debugging purpose only
+        __assert_handled(dir_path, dst)
+
+    else:
+        stat = os.stat(path)
+        if os.path.isfile(path):
+            with open(path, "rb") as f:
+                cw.write_file(item, f.read(), stat.st_mode)
+        else:
+            assert os.path.isdir(path)
+            cw.mkdir(item, stat.st_mode)
+            for entry in os.listdir(path):
+                child = format("{}/{}".format(item, entry))
+                cpio_recursive(cw, path, child)
+
+
 def mk_initramfs(
+    out: str, harness: Optional[str], agent: Optional[str], blob: Optional[str]
+) -> None:
+    with open(out, "w+b") as f:
+        # included directories
+        cw = CpioWriter(f)
+        for item in INCLUDED_ROOT_DIRS:
+            cpio_recursive(cw, "/", item)
+
+        # created directories
+        for item in CREATED_ROOT_DIRS:
+            cw.mkdir(item, 0o755)
+        for item in MOUNTED_ROOT_DIRS:
+            cw.mkdir(item, 0o755)
+
+        # done
+        cw.write_trailer()
+
+
+def mk_initramfs2(
     out: str, harness: Optional[str], agent: Optional[str], blob: Optional[str]
 ) -> None:
     with open(out, "w+b") as f:
@@ -163,7 +233,7 @@ def mk_initramfs(
 
         cw.write_file(
             "init",
-            body="#!/bin/sh\n{}".format(init_cmdline).encode("ascii"),
+            body="#!/bin/sh\n{}".format(init_cmdline).encode(TEXT_ENCODING),
             mode=0o755,
         )
 
