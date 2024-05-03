@@ -10,6 +10,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from typing import List, Optional, Union
 
+import utils
+
 # path constants
 PATH_REPO = Path(__file__).parent.resolve()
 PATH_AGENT = os.path.join(PATH_REPO, "agent")
@@ -190,7 +192,8 @@ def _prepare_linux(
     shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
     # prepare an initramfs
-    subprocess.check_call(["mkinitramfs", "-o", PATH_WKS_LINUX_INITRD])
+    # TODO: place it in correct location
+    utils.mk_initramfs(PATH_WKS_LINUX_INITRD, harness, None, blob)
 
     # prepare for execution script
     if harness is None:
