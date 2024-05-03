@@ -31,6 +31,7 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64 = os.path.join(
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
+PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_BLOB = os.path.join(PATH_WKS_LINUX, "blob.data")
 PATH_WKS_LINUX_SCRIPT = os.path.join(PATH_WKS_LINUX, "script.sh")
@@ -188,6 +189,9 @@ def _prepare_linux(
         sys.exit("kernel image does not exist: {}".format(kernel))
     shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
+    # prepare an initramfs
+    subprocess.check_call(["mkinitramfs", "-o", PATH_WKS_LINUX_INITRD])
+
     # prepare for execution script
     if harness is None:
         # shell mode
@@ -203,7 +207,7 @@ def _prepare_linux(
         # fuzzing mode
         agent_host_name = "qce-agent-host"
         if not verbose:
-            # build a fresh agent
+            # build a fresh host agent
             with TemporaryDirectory() as tmp:
                 subprocess.check_call(
                     [
@@ -220,13 +224,13 @@ def _prepare_linux(
                     PATH_WKS_LINUX_AGENT_HOST,
                 )
         else:
-            # re-use the debug build
+            # re-use the debug build of the host agent
             shutil.copy2(
                 os.path.join(PATH_AGENT_HOST_SRC, "target", "debug", agent_host_name),
                 PATH_WKS_LINUX_AGENT_HOST,
             )
 
-        # compile the harness
+        # compile the guest agent
         subprocess.check_call(
             [
                 "cc",
@@ -239,7 +243,7 @@ def _prepare_linux(
             ],
             cwd=PATH_AGENT,
         )
-        guest_cmdline = "echo '[harness-fuzz] {}'\n{}".format(
+        guest_cmdline = "echo '[harness-fuzz] {}'\n{}{}".format(
             harness, PATH_WKS_LINUX_AGENT_GUEST, PATH_WKS_LINUX_BLOB
         )
 
