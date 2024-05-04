@@ -224,6 +224,7 @@ def _prepare_linux(
     kernel: str,
     harness: Optional[str],
     blob: Optional[str],
+    simulate_virtme: bool,
     verbose: bool,
 ) -> None:
     # sanity check
@@ -240,27 +241,18 @@ def _prepare_linux(
         sys.exit("kernel image does not exist: {}".format(kernel))
     shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
-    # compile the guest agent
+    # compile the agents
+    __compile_agent_host(verbose)
     __compile_agent_guest(harness, blob)
 
     # prepare ramdisk
-    if harness is None:
-        # shell mode
-        pass
-
-    else:
+    if harness is not None:
         if not os.path.exists(harness):
             sys.exit("harness source code does not exist at {}".format(harness))
         subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
 
-        if blob is None:
-            # fuzzing mode
-            __compile_agent_host(verbose)
-
-        else:
-            # testing mode
-            if not os.path.exists(blob):
-                sys.exit("blob data file does not exist at {}".format(blob))
+    if blob is not None:
+        sys.exit("blob data file does not exist at {}".format(blob))
 
     # prepare an initramfs ramdisk
     utils.mk_initramfs(
@@ -268,6 +260,7 @@ def _prepare_linux(
         PATH_WKS_LINUX_AGENT_GUEST,
         None if harness is None else PATH_WKS_LINUX_HARNESS,
         blob,
+        simulate_virtme,
     )
 
 
@@ -277,7 +270,7 @@ def _execute_linux(
     verbose: bool,
 ) -> None:
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
-    kernel_args = ["init=/home/agent"]
+    kernel_args = []
 
     # basics
     command.extend(["-m", "4G"])
@@ -327,14 +320,14 @@ def _execute_linux(
 
 
 def cmd_linux(
-    virtme: str,
     kernel: str,
     kvm: bool,
     harness: Optional[str],
     blob: Optional[str],
+    simulate_virtme: bool,
     verbose: bool,
 ) -> None:
-    _prepare_linux(kernel, harness, blob, verbose)
+    _prepare_linux(kernel, harness, blob, verbose, simulate_virtme)
     with NamedTemporaryFile() as monitor_socket:
         # start the host
         host = subprocess.Popen(
@@ -361,8 +354,9 @@ def cmd_dev_sample(volumes: List[str], kvm: bool, solution: bool) -> None:
     if kvm:
         passthrough_args.append("--kvm")
 
+    # TODO: this can be toggled
+    # passthrough_args.extend(["--virtme"])
     passthrough_args.append("--verbose")
-    passthrough_args.extend(["--virtme", "/virtme-ng/virtme-run"])
     passthrough_args.extend(
         [
             "--kernel",
@@ -432,11 +426,11 @@ def main() -> None:
     parser_build.add_argument("--release", action="store_true")
 
     parser_linux = subparsers.add_parser("linux")
-    parser_linux.add_argument("--virtme", required=True)
     parser_linux.add_argument("--kernel", required=True)
     parser_linux.add_argument("--kvm", action="store_true")
     parser_linux.add_argument("--harness")
     parser_linux.add_argument("--blob")
+    parser_linux.add_argument("--virtme", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
 
     # actions
@@ -463,7 +457,7 @@ def main() -> None:
         cmd_build(args.release)
     elif args.command == "linux":
         cmd_linux(
-            args.virtme, args.kernel, args.kvm, args.harness, args.blob, args.verbose
+            args.kernel, args.kvm, args.harness, args.blob, args.virtme, args.verbose
         )
     else:
         parser.print_help()

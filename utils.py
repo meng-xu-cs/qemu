@@ -164,70 +164,66 @@ def cpio_copy_with_mode(cw: CpioWriter, src: str, dst: str) -> None:
         cw.write_file(dst, body=f.read(), mode=stat.st_mode)
 
 
-# TODO: currently not used
-def mk_initramfs_from_host_rootfs(
-    out: str, agent: str, harness: Optional[str], blob: Optional[str]
-) -> None:
-    with open(out, "w+b") as f:
-        # included directories
-        cw = CpioWriter(f)
-        for item in INCLUDED_ROOT_DIRS:
-            cpio_recursive(cw, "/", item)
+def mk_initramfs_from_host_rootfs(cw: CpioWriter) -> None:
+    # included directories
+    for item in INCLUDED_ROOT_DIRS:
+        cpio_recursive(cw, "/", item)
 
-        # created directories
-        for item in CREATED_ROOT_DIRS:
-            cw.mkdir(item)
-        for item in MOUNTED_ROOT_DIRS:
-            cw.mkdir(item)
+    # created directories
+    for item in CREATED_ROOT_DIRS:
+        cw.mkdir(item)
+    for item in MOUNTED_ROOT_DIRS:
+        cw.mkdir(item)
 
-        # home and init
-        cw.mkdir("home", 0o755)
-        cpio_copy_with_mode(cw, agent, "home/agent")
-        if harness is not None:
-            cpio_copy_with_mode(cw, harness, "home/harness")
-        if blob is not None:
-            cpio_copy_with_mode(cw, blob, "home/blob")
 
-        # done
-        cw.write_trailer()
+def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
+    # base layout
+    for name in MOUNTED_ROOT_DIRS:
+        cw.mkdir(name)
+    for name in CREATED_ROOT_DIRS:
+        cw.mkdir(name)
+
+    # prepare for busybox
+    cw.mkdir("bin")
+
+    path_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
+    with open(path_busybox, "rb") as f_busybox:
+        cw.write_file("bin/busybox", body=f_busybox.read(), mode=0o755)
+
+    for tool in [
+        "cat",
+        "cp",
+        "ip",
+        "ln",
+        "mkdir",
+        "mknod",
+        "mount",
+        "mv",
+        "rm",
+        "sh",
+        "sleep",
+        "umount",
+    ]:
+        cw.symlink("busybox", "bin/{}".format(tool))
 
 
 def mk_initramfs(
-    out: str, agent: str, harness: Optional[str], blob: Optional[str]
+    out: str,
+    agent: str,
+    harness: Optional[str],
+    blob: Optional[str],
+    use_host_rootfs: bool,
 ) -> None:
     with open(out, "w+b") as f:
         cw = CpioWriter(f)
 
-        # base layout
-        for name in MOUNTED_ROOT_DIRS:
-            cw.mkdir(name)
-        for name in CREATED_ROOT_DIRS:
-            cw.mkdir(name)
+        # rootfs
+        if use_host_rootfs:
+            mk_initramfs_from_host_rootfs(cw)
+        else:
+            mk_initramfs_from_bare_rootfs(cw)
 
-        # prepare for busybox
-        cw.mkdir("bin")
-
-        path_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
-        with open(path_busybox, "rb") as f_busybox:
-            cw.write_file("bin/busybox", body=f_busybox.read(), mode=0o755)
-
-        for tool in [
-            "cat",
-            "cp",
-            "ip",
-            "ln",
-            "mkdir",
-            "mknod",
-            "mount",
-            "mv",
-            "rm",
-            "sh",
-            "sleep",
-            "umount",
-        ]:
-            cw.symlink("busybox", "bin/{}".format(tool))
-
-        # home and init
+        # specialized
         cw.mkdir("home")
         if harness is not None:
             cpio_copy_with_mode(cw, harness, "home/harness")
