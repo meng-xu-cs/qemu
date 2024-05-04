@@ -75,7 +75,7 @@ class CpioWriter(object):
         self.write_object(name="TRAILER!!!", body=b"", mode=0, ino=0, nlink=1)
         self.__write(((-self.__totalsize) % 512) * b"\0")
 
-    def mkdir(self, name: str, mode: int) -> None:
+    def mkdir(self, name: str, mode: int = 0o755) -> None:
         self.write_object(name=name, mode=CpioWriter.TYPE_DIR | mode, body=b"")
 
     def symlink(self, src: str, dst: str) -> None:
@@ -158,13 +158,14 @@ def cpio_recursive(cw: CpioWriter, dir_path: str, item: str) -> None:
                 cpio_recursive(cw, path, child)
 
 
-def cpio_copy2(cw: CpioWriter, src: str, dst: str) -> None:
+def cpio_copy_with_mode(cw: CpioWriter, src: str, dst: str) -> None:
     stat = os.stat(src)
     with open(src, "rb") as f:
         cw.write_file(dst, body=f.read(), mode=stat.st_mode)
 
 
-def mk_initramfs(
+# TODO: currently not used
+def mk_initramfs_from_host_rootfs(
     out: str, agent: str, harness: Optional[str], blob: Optional[str]
 ) -> None:
     with open(out, "w+b") as f:
@@ -175,81 +176,64 @@ def mk_initramfs(
 
         # created directories
         for item in CREATED_ROOT_DIRS:
-            cw.mkdir(item, 0o755)
+            cw.mkdir(item)
         for item in MOUNTED_ROOT_DIRS:
-            cw.mkdir(item, 0o755)
+            cw.mkdir(item)
 
         # home and init
         cw.mkdir("home", 0o755)
-        cpio_copy2(cw, agent, "home/agent")
+        cpio_copy_with_mode(cw, agent, "home/agent")
         if harness is not None:
-            cpio_copy2(cw, harness, "home/harness")
+            cpio_copy_with_mode(cw, harness, "home/harness")
         if blob is not None:
-            cpio_copy2(cw, blob, "home/blob")
+            cpio_copy_with_mode(cw, blob, "home/blob")
 
         # done
         cw.write_trailer()
 
 
-def mk_initramfs2(
-    out: str, harness: Optional[str], agent: Optional[str], blob: Optional[str]
+def mk_initramfs(
+    out: str, agent: str, harness: Optional[str], blob: Optional[str]
 ) -> None:
     with open(out, "w+b") as f:
         cw = CpioWriter(f)
 
         # base layout
-        for name in ("lib", "bin", "var", "etc", "dev", "proc", "sys", "tmp"):
-            cw.mkdir(name, 0o755)
-
-        cw.symlink("bin", "sbin")
-        cw.symlink("lib", "lib64")
-
-        # dev nodes
-        cw.mkchardev("dev/null", (1, 3), mode=0o666)
-        cw.mkchardev("dev/kmsg", (1, 11), mode=0o666)
-        cw.mkchardev("dev/console", (5, 1), mode=0o660)
+        for name in MOUNTED_ROOT_DIRS:
+            cw.mkdir(name)
+        for name in CREATED_ROOT_DIRS:
+            cw.mkdir(name)
 
         # prepare for busybox
+        cw.mkdir("bin")
+
         path_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
         with open(path_busybox, "rb") as f_busybox:
             cw.write_file("bin/busybox", body=f_busybox.read(), mode=0o755)
 
-        for tool in ("sh", "mount", "umount", "sleep", "mkdir", "mknod", "cp", "cat"):
+        for tool in [
+            "cat",
+            "cp",
+            "ip",
+            "ln",
+            "mkdir",
+            "mknod",
+            "mount",
+            "mv",
+            "rm",
+            "sh",
+            "sleep",
+            "umount",
+        ]:
             cw.symlink("busybox", "bin/{}".format(tool))
 
-        # generate init
-        if harness is None:
-            # shell mode
-            assert blob is None
-            assert agent is None
-            init_cmdline = "sh"
-        else:
-            cw.mkdir("prog", 0o755)
-            with open(harness, "rb") as f_harness:
-                cw.write_file("prog/harness", body=f_harness.read(), mode=0o755)
-
-            if blob is None:
-                # fuzzing mode
-                assert agent is not None
-                with open(agent, "rb") as f_agent:
-                    cw.write_file("prog/agent", body=f_agent.read(), mode=0o755)
-                init_cmdline = "echo '[harness-fuzz] {}'\n/prog/agent /prog/harness /prog/blob".format(
-                    harness
-                )
-            else:
-                # testing mode
-                assert agent is None
-                with open(blob, "rb") as f_blob:
-                    cw.write_file("prog/blob", body=f_blob.read(), mode=0o644)
-                init_cmdline = (
-                    "echo '[harness-test] {}'\n/prog/harness /prog/blob".format(harness)
-                )
-
-        cw.write_file(
-            "init",
-            body="#!/bin/sh\n{}".format(init_cmdline).encode(TEXT_ENCODING),
-            mode=0o755,
-        )
+        # home and init
+        cw.mkdir("home")
+        if harness is not None:
+            cpio_copy_with_mode(cw, harness, "home/harness")
+        if blob is not None:
+            cpio_copy_with_mode(cw, blob, "home/blob")
+        cpio_copy_with_mode(cw, agent, "init")
 
         # done
         cw.write_trailer()
