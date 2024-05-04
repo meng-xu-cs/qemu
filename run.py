@@ -35,8 +35,6 @@ PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
-PATH_WKS_LINUX_BLOB = os.path.join(PATH_WKS_LINUX, "blob.data")
-PATH_WKS_LINUX_SCRIPT = os.path.join(PATH_WKS_LINUX, "script.sh")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 
@@ -175,12 +173,63 @@ def cmd_build(release: bool) -> None:
     subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
 
 
+def __compile_agent_guest(harness: Optional[str], blob: Optional[str]):
+    command = [
+        "cc",
+        "-static",
+        "-std=c2x",
+        PATH_AGENT_GUEST_SRC,
+        "-o",
+        PATH_WKS_LINUX_AGENT_GUEST,
+    ]
+    if harness is not None:
+        command.append('-DHARNESS="{}"'.format(harness))
+    if blob is not None:
+        command.append('-DBLOB="{}"'.format(blob))
+
+    # run the compilation
+    subprocess.check_call(command, cwd=PATH_AGENT)
+
+
+def __compile_agent_host(verbose: bool):
+    agent_host_name = "qce-agent-host"
+
+    # re-use the debug build of the host agent
+    if verbose:
+        shutil.copy2(
+            os.path.join(PATH_AGENT_HOST_SRC, "target", "debug", agent_host_name),
+            PATH_WKS_LINUX_AGENT_HOST,
+        )
+        return
+
+    # build a fresh host agent (in non-verbose mode)
+    with TemporaryDirectory() as tmp:
+        subprocess.check_call(
+            [
+                "cargo",
+                "build",
+                "--release",
+                "--target-dir",
+                tmp,
+            ],
+            cwd=PATH_AGENT_HOST_SRC,
+        )
+        shutil.copy2(
+            os.path.join(tmp, "release", agent_host_name),
+            PATH_WKS_LINUX_AGENT_HOST,
+        )
+
+
 def _prepare_linux(
     kernel: str,
     harness: Optional[str],
     blob: Optional[str],
     verbose: bool,
-) -> Optional[str]:
+) -> None:
+    # sanity check
+    if harness is None and blob is not None:
+        sys.exit("cannot specify blob without harness")
+
     # clear previous states
     if os.path.exists(PATH_WKS_LINUX):
         shutil.rmtree(PATH_WKS_LINUX)
@@ -191,87 +240,38 @@ def _prepare_linux(
         sys.exit("kernel image does not exist: {}".format(kernel))
     shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
-    # prepare an initramfs
-    # TODO: place it in correct location
-    utils.mk_initramfs(PATH_WKS_LINUX_INITRD, harness, None, blob)
+    # compile the guest agent
+    __compile_agent_guest(harness, blob)
 
-    # prepare for execution script
+    # prepare ramdisk
     if harness is None:
         # shell mode
-        if blob is not None:
-            sys.exit("cannot specify blob without harness")
-        return None
-
-    if not os.path.exists(harness):
-        sys.exit("harness source code does not exist at {}".format(harness))
-    subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
-
-    if blob is None:
-        # fuzzing mode
-        agent_host_name = "qce-agent-host"
-        if not verbose:
-            # build a fresh host agent
-            with TemporaryDirectory() as tmp:
-                subprocess.check_call(
-                    [
-                        "cargo",
-                        "build",
-                        "--release",
-                        "--target-dir",
-                        tmp,
-                    ],
-                    cwd=PATH_AGENT_HOST_SRC,
-                )
-                shutil.copy2(
-                    os.path.join(tmp, "release", agent_host_name),
-                    PATH_WKS_LINUX_AGENT_HOST,
-                )
-        else:
-            # re-use the debug build of the host agent
-            shutil.copy2(
-                os.path.join(PATH_AGENT_HOST_SRC, "target", "debug", agent_host_name),
-                PATH_WKS_LINUX_AGENT_HOST,
-            )
-
-        # compile the guest agent
-        subprocess.check_call(
-            [
-                "cc",
-                "-static",
-                "-std=c2x",
-                '-DHARNESS="{}"'.format(PATH_WKS_LINUX_HARNESS),
-                PATH_AGENT_GUEST_SRC,
-                "-o",
-                PATH_WKS_LINUX_AGENT_GUEST,
-            ],
-            cwd=PATH_AGENT,
-        )
-        guest_cmdline = "echo '[harness-fuzz] {}'\n{}{}".format(
-            harness, PATH_WKS_LINUX_AGENT_GUEST, PATH_WKS_LINUX_BLOB
-        )
+        pass
 
     else:
-        # testing mode
-        if not os.path.exists(blob):
-            sys.exit("blob data file does not exist at {}".format(blob))
+        if not os.path.exists(harness):
+            sys.exit("harness source code does not exist at {}".format(harness))
+        subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
 
-        shutil.copy2(blob, PATH_WKS_LINUX_BLOB)
-        guest_cmdline = "echo '[harness-test] {}'\n{} {}".format(
-            harness, PATH_WKS_LINUX_HARNESS, PATH_WKS_LINUX_BLOB
-        )
+        if blob is None:
+            # fuzzing mode
+            __compile_agent_host(verbose)
 
-    with open(PATH_WKS_LINUX_SCRIPT, "w") as f:
-        f.write("#!/bin/sh\n{}".format(guest_cmdline))
-    os.chmod(PATH_WKS_LINUX_SCRIPT, 0o755)
+        else:
+            # testing mode
+            if not os.path.exists(blob):
+                sys.exit("blob data file does not exist at {}".format(blob))
 
-    # mark that we have script to execute
-    return PATH_WKS_LINUX_SCRIPT
+    # prepare an initramfs ramdisk
+    utils.mk_initramfs(
+        PATH_WKS_LINUX_INITRD,
+        PATH_WKS_LINUX_AGENT_GUEST,
+        None if harness is None else PATH_WKS_LINUX_HARNESS,
+        blob,
+    )
 
 
 def _execute_linux(
-    virtme: str,
-    script: Optional[str],
-    workspace: str,
     monitor_socket: str,
     kvm: bool,
     verbose: bool,
@@ -312,6 +312,9 @@ def _execute_linux(
     command.extend(["-append", "console=ttyS0"])
     kernel_args.append("console=ttyS0")
 
+    # init
+    kernel_args.append("init=/home/agent")
+
     # behaviors
     command.extend(["-no-reboot"])
     kernel_args.append("panic=-1")
@@ -319,53 +322,6 @@ def _execute_linux(
     # append kernel arguments
     if len(kernel_args) != 0:
         command.extend(["-append", " ".join(['"{}"'.format(i) for i in kernel_args])])
-
-    # execute
-    subprocess.check_call(
-        command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
-    )
-
-
-def _execute_linux2(
-    virtme: str,
-    script: Optional[str],
-    workspace: str,
-    monitor_socket: str,
-    kvm: bool,
-    verbose: bool,
-) -> None:
-    # basics
-    command = [virtme]
-    if verbose:
-        command.extend(["--show-command", "--verbose", "--show-boot-console"])
-
-    # machine
-    command.extend(["--qemu-bin", PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64])
-    command.extend(["--memory", "2G"])
-    if not kvm:
-        command.extend(["--disable-kvm"])
-
-    # kernel
-    command.extend(["--kimg", PATH_WKS_LINUX_KERNEL])
-    command.extend(["--mods", "auto"])
-
-    # script
-    if script is not None:
-        command.extend(["--script-sh", script])
-
-    # workspace
-    command.append("--rwdir=/tmp/wks={}".format(workspace))
-
-    # monitor
-    command.extend(
-        [
-            "--qemu-opts",
-            "-chardev",
-            "socket,id=mon1,path={},server=on,wait=off".format(monitor_socket),
-            "-mon",
-            "chardev=mon1,mode=control",
-        ]
-    )
 
     # execute
     subprocess.check_call(
@@ -381,23 +337,19 @@ def cmd_linux(
     blob: Optional[str],
     verbose: bool,
 ) -> None:
-    script = _prepare_linux(kernel, harness, blob, verbose)
-    with TemporaryDirectory() as tmp:
-        # place the mark and monitor files first
-        Path(os.path.join(tmp, "MARK")).touch(exist_ok=False)
-        with NamedTemporaryFile() as monitor_socket:
-            # start the host
-            host = subprocess.Popen(
-                [
-                    PATH_WKS_LINUX_AGENT_HOST,
-                    tmp,
-                    monitor_socket.name,
-                ]
-            )
-            # start the guest
-            _execute_linux(virtme, script, tmp, monitor_socket.name, kvm, verbose)
-            # wait for host termination
-            host.wait()
+    _prepare_linux(kernel, harness, blob, verbose)
+    with NamedTemporaryFile() as monitor_socket:
+        # start the host
+        host = subprocess.Popen(
+            [
+                PATH_WKS_LINUX_AGENT_HOST,
+                monitor_socket.name,
+            ]
+        )
+        # start the guest
+        _execute_linux(monitor_socket.name, kvm, verbose)
+        # wait for host termination
+        host.wait()
 
 
 def _dev_fresh() -> None:
