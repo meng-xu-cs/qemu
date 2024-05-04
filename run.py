@@ -277,7 +277,7 @@ def _execute_linux(
     verbose: bool,
 ) -> None:
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
-    kernel_args = []
+    kernel_args = ["init=/home/agent"]
 
     # basics
     command.extend(["-m", "4G"])
@@ -311,9 +311,6 @@ def _execute_linux(
     # console
     command.extend(["-append", "console=ttyS0"])
     kernel_args.append("console=ttyS0")
-
-    # init
-    kernel_args.append("init=/home/agent")
 
     # behaviors
     command.extend(["-no-reboot"])

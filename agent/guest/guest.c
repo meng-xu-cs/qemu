@@ -159,6 +159,8 @@ exception:
  */
 
 int main(int argc, char *argv[]) {
+  fprintf(stderr, "!!!!!!!! [Here in GUEST VM AGENT] !!!!!!!!\n");
+
   // sanity check
   if (argc != 1) {
     fprintf(stderr, "expect one and only one argument\n");
