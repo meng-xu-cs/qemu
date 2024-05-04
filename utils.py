@@ -158,8 +158,14 @@ def cpio_recursive(cw: CpioWriter, dir_path: str, item: str) -> None:
                 cpio_recursive(cw, path, child)
 
 
+def cpio_copy2(cw: CpioWriter, src: str, dst: str) -> None:
+    stat = os.stat(src)
+    with open(src, "rb") as f:
+        cw.write_file(dst, body=f.read(), mode=stat.st_mode)
+
+
 def mk_initramfs(
-    out: str, harness: Optional[str], agent: Optional[str], blob: Optional[str]
+    out: str, agent: str, harness: Optional[str], blob: Optional[str]
 ) -> None:
     with open(out, "w+b") as f:
         # included directories
@@ -172,6 +178,14 @@ def mk_initramfs(
             cw.mkdir(item, 0o755)
         for item in MOUNTED_ROOT_DIRS:
             cw.mkdir(item, 0o755)
+
+        # home and init
+        cw.mkdir("home", 0o755)
+        cpio_copy2(cw, agent, "home/agent")
+        if harness is not None:
+            cpio_copy2(cw, harness, "home/harness")
+        if blob is not None:
+            cpio_copy2(cw, blob, "home/blob")
 
         # done
         cw.write_trailer()
