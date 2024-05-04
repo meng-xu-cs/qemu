@@ -276,6 +276,64 @@ def _execute_linux(
     kvm: bool,
     verbose: bool,
 ) -> None:
+    command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
+    kernel_args = []
+
+    # basics
+    command.extend(["-m", "4G"])
+    if kvm:
+        command.extend(["-machine", "accel=kvm:tcg"])
+
+    # no display
+    command.extend(["-vga", "none"])
+    command.extend(["-display", "none"])
+
+    # IO
+    command.extend(["-serial", "stdio"])
+    command.extend(["-parallel", "none"])
+
+    # networking
+    command.extend(["-net", "none"])
+    command.extend(["-device", "virtio-net-pci,netdev=n0"])
+    command.extend(["-netdev", "user,id=n0"])
+    kernel_args.extend(
+        [
+            # prevent annoying interface renaming
+            "net.ifnames=0",
+            "biosdevname=0",
+        ]
+    )
+
+    # kernel
+    command.extend(["-kernel", PATH_WKS_LINUX_KERNEL])
+    command.extend(["-initrd", PATH_WKS_LINUX_INITRD])
+
+    # console
+    command.extend(["-append", "console=ttyS0"])
+    kernel_args.append("console=ttyS0")
+
+    # behaviors
+    command.extend(["-no-reboot"])
+    kernel_args.append("panic=-1")
+
+    # append kernel arguments
+    if len(kernel_args) != 0:
+        command.extend(["-append", " ".join(['"{}"'.format(i) for i in kernel_args])])
+
+    # execute
+    subprocess.check_call(
+        command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
+    )
+
+
+def _execute_linux2(
+    virtme: str,
+    script: Optional[str],
+    workspace: str,
+    monitor_socket: str,
+    kvm: bool,
+    verbose: bool,
+) -> None:
     # basics
     command = [virtme]
     if verbose:
