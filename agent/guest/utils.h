@@ -3,6 +3,7 @@
 
 #define _GNU_SOURCE
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -13,6 +14,9 @@
 #include <string.h>
 #include <sys/mount.h>
 #include <sys/signalfd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 /*
@@ -43,8 +47,76 @@
 
 static inline void checked_mount(const char *source, const char *target,
                                  const char *type, unsigned long flags) {
-  if (mount(source, target, type, flags, NULL) < 0) {
+  if (mount(source, target, type, flags, NULL) != 0) {
     ABORT_WITH_ERRNO("failed to mount %s", target);
+  }
+}
+
+static inline void checked_mkdir(const char *path) {
+  if (mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IROTH) != 0) {
+    ABORT_WITH_ERRNO("failed to mkdir %s", path);
+  }
+}
+
+static inline void checked_mount_tmpfs(const char *path) {
+  checked_mkdir(path);
+  checked_mount("tmpfs", path, "tmpfs", MS_NOSUID | MS_NODEV);
+}
+
+static inline void checked_exec(const char *bin, char *const argv[]) {
+  pid_t pid = fork();
+  if (pid == 0) {
+    // child process
+    execv(bin, argv);
+    ABORT_WITH_ERRNO("failed to run %s", bin);
+  } else if (pid > 0) {
+    // parent process
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
+      ABORT_WITH_ERRNO("failed to wait for child %s", bin);
+    }
+    if (status != 0) {
+      ABORT_WITH_ERRNO("child execution failed %s", bin);
+    }
+  } else {
+    ABORT_WITH_ERRNO("failed to fork");
+  }
+}
+
+static inline void checked_write(const char *path, const char *buf,
+                                 size_t len) {
+  int fd;
+  if ((fd = open(path, O_CREAT | O_RDWR | O_TRUNC)) < 0) {
+    ABORT_WITH_ERRNO("unable to open file %s", path);
+  }
+
+  ssize_t written = 0;
+  do {
+    ssize_t rv;
+    rv = write(fd, buf + written, len);
+    if (rv < 0) {
+      ABORT_WITH_ERRNO("unable to write to file %s", path);
+    }
+    written += rv;
+    if (written == len) {
+      return;
+    }
+  } while (true);
+}
+
+static inline void list_dir(const char *path) {
+  DIR *dir = opendir(path);
+  if (dir == NULL) {
+    ABORT_WITH_ERRNO("failed to open dir: %s", path);
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    fprintf(stderr, "%s\n", entry->d_name);
+  }
+
+  if (closedir(dir) != 0) {
+    ABORT_WITH_ERRNO("failed to close dir: %s", path);
   }
 }
 
