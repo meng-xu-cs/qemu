@@ -217,6 +217,9 @@ def mk_initramfs(
     with open(out, "w+b") as f:
         cw = CpioWriter(f)
 
+        # init (must appear first)
+        cpio_copy_with_mode(cw, agent, "init")
+
         # rootfs
         if use_host_rootfs:
             mk_initramfs_from_host_rootfs(cw)
@@ -229,7 +232,6 @@ def mk_initramfs(
             cpio_copy_with_mode(cw, harness, "home/harness")
         if blob is not None:
             cpio_copy_with_mode(cw, blob, "home/blob")
-        cpio_copy_with_mode(cw, agent, "init")
 
         # done
         cw.write_trailer()
