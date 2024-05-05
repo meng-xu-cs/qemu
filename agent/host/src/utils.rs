@@ -1,7 +1,38 @@
-use std::io;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::{fs, io};
 
 use inotify::{Inotify, WatchMask};
+
+/// Receive one line from the guest agent
+pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
+    let f = File::open(&path_console_output)?;
+    let mut reader = BufReader::new(f);
+
+    let mut buffer = String::new();
+    let mut message = String::new();
+    loop {
+        let num_bytes = reader.read_line(&mut buffer)?;
+        if num_bytes == 0 {
+            // TODO: might opt for a polling-based solution?
+            continue;
+        }
+        if message.chars().last().unwrap() == '\n' {
+            message.push_str(&buffer[0..num_bytes - 1]);
+            break;
+        }
+        message.push_str(&buffer);
+        buffer.clear();
+    }
+
+    Ok(message)
+}
+
+/// Send one line to the guest agent
+pub fn send_str_into_guest(path_console_input: &Path, message: &str) -> io::Result<()> {
+    fs::write(path_console_input, format!("{}\n", message))
+}
 
 /// block until a specific file is created or deleted in the watched directory
 fn inotify_watch(dir: &Path, name: &str, is_create: bool) -> io::Result<()> {

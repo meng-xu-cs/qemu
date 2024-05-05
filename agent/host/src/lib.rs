@@ -1,45 +1,62 @@
-use std::fs::OpenOptions;
 use std::path::PathBuf;
 
-use log::info;
+use log::{info, LevelFilter};
 use structopt::StructOpt;
+
+use crate::utils::{recv_str_from_guest, send_str_into_guest};
 
 mod config;
 mod qemu;
 mod utils;
 
-/// host-guest synchronization mark
-const FILE_MARK: &str = "MARK";
+const VM_MONITOR_SOCKET: &str = "monitor";
+const VM_CONSOLE_INPUT: &str = "input";
+const VM_CONSOLE_OUTPUT: &str = "output";
+
+const MARK_READY: &str = "ready";
 
 #[derive(StructOpt)]
 struct Options {
-    /// path to workspace directory
-    path_workspace: PathBuf,
+    /// path to the temporary workspace directory
+    path_tmp: PathBuf,
     /// path to QEMU monitor unix domain socket
-    path_qemu_monitor: PathBuf,
+    #[structopt(short, long)]
+    verbose: bool,
 }
 
 pub fn entrypoint() {
+    let args = Options::from_args();
     env_logger::builder()
         .format_timestamp(None)
         .format_target(false)
         .format_module_path(false)
+        .filter_level(if args.verbose {
+            LevelFilter::Debug
+        } else {
+            LevelFilter::Info
+        })
         .init();
-    let args = Options::from_args();
 
     // sync with guest on start-up
-    utils::inotify_watch_for_deletion(&args.path_workspace, FILE_MARK)
-        .unwrap_or_else(|e| panic!("error waiting for sync-mark deletion: {}", e));
-    info!("Guest VM is ready");
+    let path_console_output = args.path_tmp.join(VM_CONSOLE_OUTPUT);
+    let message = recv_str_from_guest(&path_console_output)
+        .unwrap_or_else(|e| panic!("error waiting for guest ready: {}", e));
+    if message != MARK_READY {
+        panic!(
+            "unexpected message from guest: {}, expect {}",
+            message, MARK_READY
+        );
+    }
+    info!("guest agent is ready");
 
     // save a live snapshot
-    qemu::snapshot_save(&args.path_qemu_monitor, 0)
+    let path_monitor_socket = args.path_tmp.join(VM_MONITOR_SOCKET);
+    qemu::snapshot_save(&path_monitor_socket, 0)
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
+    info!("live snapshot is taken");
 
     // release the guest
-    OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(args.path_workspace.join(FILE_MARK))
-        .unwrap_or_else(|e| panic!("error re-creating the sync-mark: {}", e));
+    let path_console_input = args.path_tmp.join(VM_CONSOLE_INPUT);
+    send_str_into_guest(&path_console_input, MARK_READY)
+        .unwrap_or_else(|e| panic!("error resuming guest: {}", e));
 }

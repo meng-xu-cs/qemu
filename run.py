@@ -42,7 +42,6 @@ PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 VM_MONITOR_SOCKET = "monitor"
 VM_CONSOLE_INPUT = "input"
 VM_CONSOLE_OUTPUT = "output"
-VM_CONSOLE_LOGFILE = "logfile"
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -293,15 +292,10 @@ def _execute_linux(
     command.extend(["-display", "none"])
 
     # IO
-    command.extend(
-        [
-            "-chardev",
-            "file,id=vmio,path={},input-path={}".format(path_out, path_in),
-            "-serial",
-            "chardev:vmio",
-        ]
-    )
     command.extend(["-parallel", "none"])
+    command.extend(["-serial", "stdio"])
+    if verbose:
+        kernel_args.append("console=ttyS0")
 
     # networking
     command.extend(["-net", "none"])
@@ -319,10 +313,6 @@ def _execute_linux(
     command.extend(["-kernel", PATH_WKS_LINUX_KERNEL])
     command.extend(["-initrd", PATH_WKS_LINUX_INITRD])
 
-    # console
-    command.extend(["-append", "console=ttyS0"])
-    kernel_args.append("console=ttyS0")
-
     # behaviors
     command.extend(["-no-reboot"])
     kernel_args.append("panic=-1")
@@ -336,6 +326,16 @@ def _execute_linux(
             ),
             "-mon",
             "chardev=qmp,mode=control",
+        ]
+    )
+
+    # interaction
+    command.extend(
+        [
+            "-chardev",
+            "file,id=vmio,path={},input-path={}".format(path_out, path_in),
+            "-serial",
+            "chardev:vmio",
         ]
     )
 
