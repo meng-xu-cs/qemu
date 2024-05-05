@@ -11,8 +11,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/signalfd.h>
 #include <unistd.h>
+
+/*
+ * Logging Utility
+ */
+
+#define LOG_INFO(M, ...)                                                       \
+  do {                                                                         \
+    fprintf(stderr, "[harness-fuzz] |info| " M "\n", ##__VA_ARGS__);           \
+  } while (0)
+
+#define ABORT_WITH(M, ...)                                                     \
+  do {                                                                         \
+    fprintf(stderr, "[harness-fuzz] |critical| " M "\n", ##__VA_ARGS__);       \
+    exit(1);                                                                   \
+  } while (0)
+
+#define ABORT_WITH_ERRNO(M, ...)                                               \
+  do {                                                                         \
+    fprintf(stderr, "[harness-fuzz] |critical| " M ": %s\n", ##__VA_ARGS__,    \
+            strerror(errno));                                                  \
+    exit(1);                                                                   \
+  } while (0)
+
+/*
+ * Filesystem Utility
+ */
+
+static inline void checked_mount(const char *source, const char *target,
+                                 const char *type, unsigned long flags) {
+  if (mount(source, target, type, flags, NULL) < 0) {
+    ABORT_WITH_ERRNO("failed to mount %s", target);
+  }
+}
 
 /*
  * inotify-based Synchronization Utility
