@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory, NamedTemporaryFile
+from tempfile import TemporaryDirectory
 from typing import List, Optional, Union
 
 import utils
@@ -37,6 +37,12 @@ PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
+
+# qemu constants
+VM_MONITOR_SOCKET = "monitor"
+VM_CONSOLE_INPUT = "input"
+VM_CONSOLE_OUTPUT = "output"
+VM_CONSOLE_LOGFILE = "logfile"
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -265,10 +271,15 @@ def _prepare_linux(
 
 
 def _execute_linux(
-    monitor_socket: str,
+    tmp: str,
     kvm: bool,
     verbose: bool,
 ) -> None:
+    path_in = os.path.join(tmp, VM_CONSOLE_INPUT)
+    Path(path_in).touch()
+    path_out = os.path.join(tmp, VM_CONSOLE_OUTPUT)
+
+    # command holder
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
     kernel_args = []
 
@@ -282,7 +293,14 @@ def _execute_linux(
     command.extend(["-display", "none"])
 
     # IO
-    command.extend(["-serial", "stdio"])
+    command.extend(
+        [
+            "-chardev",
+            "file,id=vmio,path={},input-path={}".format(path_out, path_in),
+            "-serial",
+            "chardev:vmio",
+        ]
+    )
     command.extend(["-parallel", "none"])
 
     # networking
@@ -309,6 +327,18 @@ def _execute_linux(
     command.extend(["-no-reboot"])
     kernel_args.append("panic=-1")
 
+    # monitor
+    command.extend(
+        [
+            "-chardev",
+            "socket,id=qmp,path={},server=on,wait=off".format(
+                os.path.join(tmp, VM_MONITOR_SOCKET)
+            ),
+            "-mon",
+            "chardev=qmp,mode=control",
+        ]
+    )
+
     # append kernel arguments
     if len(kernel_args) != 0:
         command.extend(["-append", " ".join(kernel_args)])
@@ -317,6 +347,11 @@ def _execute_linux(
     subprocess.check_call(
         command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
     )
+
+    # dump output if in verbose mode
+    if verbose:
+        with open(path_out, "r") as f:
+            print(f.read())
 
 
 def cmd_linux(
@@ -328,16 +363,11 @@ def cmd_linux(
     verbose: bool,
 ) -> None:
     _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
-    with NamedTemporaryFile() as monitor_socket:
+    with TemporaryDirectory() as tmp:
         # start the host
-        host = subprocess.Popen(
-            [
-                PATH_WKS_LINUX_AGENT_HOST,
-                monitor_socket.name,
-            ]
-        )
+        host = subprocess.Popen([PATH_WKS_LINUX_AGENT_HOST, tmp])
         # start the guest
-        _execute_linux(monitor_socket.name, kvm, verbose)
+        _execute_linux(tmp, kvm, verbose)
         # wait for host termination
         host.wait()
 
