@@ -15,6 +15,7 @@
 #endif
 
 #ifdef VIRTME
+#define BIN_UDEV "/lib/systemd/systemd-udevd"
 #else
 #define BIN_MDEV "/bin/mdev"
 #endif
@@ -49,16 +50,24 @@ int main(int argc, char *argv[]) {
   checked_mount_tmpfs("/var/cache");
   checked_mount_tmpfs("/var/log");
   checked_mount_tmpfs("/var/tmp");
+  LOG_INFO("filesystems mounted");
 
-#ifndef VIRTME
+  // setup devices
+#ifdef VIRTME
+  // setup udev
+  checked_exec(BIN_UDEV, "--daemon", "--resolve-names=never");
+  checked_exec("/bin/udevadm", "trigger", "--type=subsystems", "--action=add");
+  checked_exec("/bin/udevadm", "trigger", "--type=devices", "--action=add");
+  checked_exec("/bin/udevadm", "settle");
+#else
   // setup mdev (an alternative to udev)
   const char *sys_hotplug = "/proc/sys/kernel/hotplug";
   if (access(sys_hotplug, F_OK) == 0) {
-    checked_write(sys_hotplug, BIN_MDEV, strlen(sys_hotplug));
-    char *mdev_args[] = {BIN_MDEV, "-s", NULL};
-    checked_exec(BIN_MDEV, mdev_args);
+    checked_write(sys_hotplug, BIN_MDEV, strlen(BIN_MDEV));
+    checked_exec(BIN_MDEV, "-s");
   }
 #endif
+  LOG_INFO("devices ready");
 
   // connect to a dedicated serial device
   list_dir("/dev");
