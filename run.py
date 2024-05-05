@@ -260,7 +260,7 @@ def _prepare_linux(
         PATH_WKS_LINUX_AGENT_GUEST,
         None if harness is None else PATH_WKS_LINUX_HARNESS,
         blob,
-        simulate_virtme,
+        use_host_rootfs=simulate_virtme,
     )
 
 
@@ -311,7 +311,7 @@ def _execute_linux(
 
     # append kernel arguments
     if len(kernel_args) != 0:
-        command.extend(["-append", " ".join(['"{}"'.format(i) for i in kernel_args])])
+        command.extend(["-append", " ".join(kernel_args)])
 
     # execute
     subprocess.check_call(
@@ -327,7 +327,7 @@ def cmd_linux(
     simulate_virtme: bool,
     verbose: bool,
 ) -> None:
-    _prepare_linux(kernel, harness, blob, verbose, simulate_virtme)
+    _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
     with NamedTemporaryFile() as monitor_socket:
         # start the host
         host = subprocess.Popen(
@@ -346,16 +346,16 @@ def _dev_fresh() -> None:
     _docker_exec_self([], ["build"])
 
 
-def cmd_dev_sample(volumes: List[str], kvm: bool, solution: bool) -> None:
+def cmd_dev_sample(volumes: List[str], kvm: bool, virtme: bool, solution: bool) -> None:
     if len(volumes) != 1:
         sys.exit("Expect one and only one volume to attach")
 
     passthrough_args = ["linux"]
     if kvm:
         passthrough_args.append("--kvm")
+    if virtme:
+        passthrough_args.append("--virtme")
 
-    # TODO: this can be toggled
-    # passthrough_args.extend(["--virtme"])
     passthrough_args.append("--verbose")
     passthrough_args.extend(
         [
@@ -413,6 +413,7 @@ def main() -> None:
 
     parser_dev_sample = sub_dev.add_parser("sample")
     parser_dev_sample.add_argument("--kvm", action="store_true")
+    parser_dev_sample.add_argument("--virtme", action="store_true")
     parser_dev_sample.add_argument("--solution", action="store_true")
 
     #
@@ -447,7 +448,7 @@ def main() -> None:
         if args.fresh:
             _dev_fresh()
         if args.cmd_dev == "sample":
-            cmd_dev_sample(args.volume, args.kvm, args.solution)
+            cmd_dev_sample(args.volume, args.kvm, args.virtme, args.solution)
         else:
             parser_dev.print_help()
 
