@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use log::{info, LevelFilter};
 use structopt::StructOpt;
 
-use crate::utils::{recv_str_from_guest, send_str_into_guest};
+use crate::utils::{inotify_watch_for_addition, recv_str_from_guest, send_str_into_guest};
 
 mod config;
 mod qemu;
@@ -36,6 +36,10 @@ pub fn entrypoint() {
             LevelFilter::Info
         })
         .init();
+
+    // wait for QEMU to launch first
+    inotify_watch_for_addition(&args.path_tmp, VM_CONSOLE_OUTPUT)
+        .unwrap_or_else(|e| panic!("error waiting for guest console to be ready: {}", e));
 
     // sync with guest on start-up
     let path_console_output = args.path_tmp.join(VM_CONSOLE_OUTPUT);

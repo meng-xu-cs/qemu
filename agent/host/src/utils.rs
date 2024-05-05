@@ -7,7 +7,7 @@ use inotify::{Inotify, WatchMask};
 
 /// Receive one line from the guest agent
 pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
-    let f = File::open(&path_console_output)?;
+    let f = File::open(path_console_output)?;
     let mut reader = BufReader::new(f);
 
     let mut buffer = String::new();
@@ -18,7 +18,7 @@ pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
             // TODO: might opt for a polling-based solution?
             continue;
         }
-        if message.chars().last().unwrap() == '\n' {
+        if message.ends_with('\n') {
             message.push_str(&buffer[0..num_bytes - 1]);
             break;
         }
@@ -73,4 +73,9 @@ fn inotify_watch(dir: &Path, name: &str, is_create: bool) -> io::Result<()> {
 /// block until a specific file is deleted in the watched directory
 pub fn inotify_watch_for_deletion(dir: &Path, name: &str) -> io::Result<()> {
     inotify_watch(dir, name, false)
+}
+
+/// block until a specific file is deleted in the watched directory
+pub fn inotify_watch_for_addition(dir: &Path, name: &str) -> io::Result<()> {
+    inotify_watch(dir, name, true)
 }
