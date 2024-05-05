@@ -178,7 +178,9 @@ def cmd_build(release: bool) -> None:
     subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
 
 
-def __compile_agent_guest(harness: Optional[str], blob: Optional[str]):
+def __compile_agent_guest(
+    harness: Optional[str], blob: Optional[str], simulate_virtme: bool
+):
     command = [
         "cc",
         "-static",
@@ -191,6 +193,8 @@ def __compile_agent_guest(harness: Optional[str], blob: Optional[str]):
         command.append('-DHARNESS="{}"'.format(harness))
     if blob is not None:
         command.append('-DBLOB="{}"'.format(blob))
+    if simulate_virtme:
+        command.append("-DVIRTME")
 
     # run the compilation
     subprocess.check_call(command, cwd=PATH_AGENT)
@@ -248,7 +252,7 @@ def _prepare_linux(
 
     # compile the agents
     __compile_agent_host(verbose)
-    __compile_agent_guest(harness, blob)
+    __compile_agent_guest(harness, blob, simulate_virtme)
 
     # prepare ramdisk
     if harness is not None:

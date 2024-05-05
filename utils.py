@@ -199,6 +199,7 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
         "cp",
         "ip",
         "ln",
+        "mdev",
         "mkdir",
         "mknod",
         "mount",
