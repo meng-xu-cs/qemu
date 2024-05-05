@@ -40,7 +40,11 @@ class CpioWriter(object):
         if nlink is None:
             nlink = 2 if (mode & CpioWriter.TYPE_MASK) == CpioWriter.TYPE_DIR else 1
 
-        namesize = len(name) + 1
+        namebytes = name.encode(TEXT_ENCODING)
+        if b"\0" in namebytes:
+            raise ValueError("Filename cannot contain a NUL")
+
+        namesize = len(namebytes) + 1
         filesize = len(body)
 
         if ino is None:
@@ -65,7 +69,7 @@ class CpioWriter(object):
         hdr = ("070701" + "".join("%08X" % f for f in fields)).encode()
 
         self.__write(hdr)
-        self.__write(name.encode(TEXT_ENCODING))
+        self.__write(namebytes)
         self.__write(b"\0")
         self.__write(((2 - namesize) % 4) * b"\0")
         self.__write(body)
@@ -217,9 +221,6 @@ def mk_initramfs(
     with open(out, "w+b") as f:
         cw = CpioWriter(f)
 
-        # init (must appear first)
-        cpio_copy_with_mode(cw, agent, "init")
-
         # rootfs
         if use_host_rootfs:
             mk_initramfs_from_host_rootfs(cw)
@@ -232,6 +233,9 @@ def mk_initramfs(
             cpio_copy_with_mode(cw, harness, "home/harness")
         if blob is not None:
             cpio_copy_with_mode(cw, blob, "home/blob")
+
+        # mark the agent as init
+        cpio_copy_with_mode(cw, agent, "init")
 
         # done
         cw.write_trailer()
