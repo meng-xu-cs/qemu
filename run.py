@@ -39,7 +39,7 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD = os.path.join(
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
-PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.qcow2")
+PATH_WKS_LINUX_DISK = os.path.join(PATH_WKS_LINUX, "disk.qcow2")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
@@ -282,10 +282,10 @@ def _prepare_linux(
         sys.exit("blob data file does not exist at {}".format(blob))
 
     # prepare the rootfs image
-    utils.mk_initramfs(
+    utils.mk_rootfs(
         PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
         PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD,
-        PATH_WKS_LINUX_INITRD,
+        PATH_WKS_LINUX_DISK,
         "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
         PATH_WKS_LINUX_AGENT_GUEST,
         None if harness is None else PATH_WKS_LINUX_HARNESS,
@@ -331,7 +331,7 @@ def _execute_linux(
             "-drive",
             ",".join(
                 [
-                    "file={}".format(PATH_WKS_LINUX_INITRD),
+                    "file={}".format(PATH_WKS_LINUX_DISK),
                     "node-name=disk0",
                     "if=virtio",
                     "media=disk",
@@ -341,7 +341,7 @@ def _execute_linux(
             ),
         ]
     )
-    kernel_args.extend(["root=/dev/vda", "rw"])
+    kernel_args.extend(["root=/dev/vda", "rw"])  # /dev/vda maps to virtio-disk index 0
     kernel_args.append("init=/root/agent")
 
     # networking
