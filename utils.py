@@ -1,7 +1,6 @@
 import os.path
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional
@@ -134,7 +133,7 @@ def mk_initramfs(
 ) -> None:
     # constants
     block_size = 512
-    image_size = 2 * 1024 * 1024 * 1024 if use_host_rootfs else 256 * 1024 * 1024
+    image_size = 1 * 1024 * 1024 * 1024 if use_host_rootfs else 256 * 1024 * 1024
 
     with TemporaryDirectory() as tmp:
         # create an empty image
@@ -165,14 +164,12 @@ def mk_initramfs(
             mk_initramfs_from_bare_rootfs(cw)
 
         # specialized
-        cw.mkdir("home")
+        cw.mkdir("root")
+        cw.copy_file("root/agent", Path(agent))
         if harness is not None:
-            cw.copy_file("home/harness", Path(harness))
+            cw.copy_file("root/harness", Path(harness))
         if blob is not None:
-            cw.copy_file("home/blob", Path(blob))
-
-        # mark the agent as init
-        cw.copy_file("init", Path(agent))
+            cw.copy_file("root/blob", Path(blob))
 
         # umount the filesystem
         subprocess.check_call(["umount", fs_mnt])

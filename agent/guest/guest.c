@@ -5,10 +5,10 @@
  */
 
 #ifdef HARNESS
-#define PATH_HARNESS "/home/harness"
+#define PATH_HARNESS "/root/harness"
 
 #ifdef BLOB
-#define PATH_BLOB "/home/blob"
+#define PATH_BLOB "/root/blob"
 #else
 #define PATH_SHELL "/bin/sh"
 #endif
@@ -41,7 +41,8 @@ int main(int argc, char *argv[]) {
   checked_mount("sys", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
   checked_mount("tmp", "/tmp", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
   checked_mount("run", "/run", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
-  checked_mount("dev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC);
+  // NOTE: (device already populated)
+  // checked_mount("dev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC);
 
   checked_mkdir("dev/pts");
   checked_mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC);
