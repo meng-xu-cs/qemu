@@ -76,6 +76,10 @@ int main(int argc, char *argv[]) {
 #endif
   LOG_INFO("devices ready");
 
+  // setup network
+  checked_exec("ip", "link", "set", "dev", "lo", "up", NULL);
+  LOG_INFO("network ready");
+
   // connect to a dedicated serial device
   // TODO
 
