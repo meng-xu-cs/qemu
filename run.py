@@ -50,8 +50,8 @@ VM_MONITOR_SOCKET = "monitor"
 VM_CONSOLE_INPUT = "input"
 VM_CONSOLE_OUTPUT = "output"
 
-VM_MEM_SIZE = 4 * 1024 * 1024 * 1024
-VM_DISK_SIZE = 4 * 1024 * 1024 * 1024
+VM_MEM_SIZE = 2 * 1024 * 1024 * 1024
+VM_DISK_SIZE = 2 * 1024 * 1024 * 1024
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -322,6 +322,28 @@ def _execute_linux(
     if verbose:
         kernel_args.append("console=ttyS0")
 
+    # kernel
+    command.extend(["-kernel", PATH_WKS_LINUX_KERNEL])
+
+    # disk
+    command.extend(
+        [
+            "-drive",
+            ",".join(
+                [
+                    "file={}".format(PATH_WKS_LINUX_INITRD),
+                    "node-name=disk0",
+                    "if=virtio",
+                    "media=disk",
+                    "index=0",
+                    "snapshot=on",
+                ]
+            ),
+        ]
+    )
+    kernel_args.extend(["root=/dev/vda", "rw"])
+    kernel_args.append("init=/root/agent")
+
     # networking
     command.extend(["-net", "none"])
     command.extend(["-device", "virtio-net-pci,netdev=n0"])
@@ -333,10 +355,6 @@ def _execute_linux(
             "biosdevname=0",
         ]
     )
-
-    # kernel
-    command.extend(["-kernel", PATH_WKS_LINUX_KERNEL])
-    command.extend(["-initrd", PATH_WKS_LINUX_INITRD])
 
     # behaviors
     command.extend(["-no-reboot"])
