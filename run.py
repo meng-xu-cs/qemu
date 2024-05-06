@@ -30,10 +30,16 @@ PATH_WKS_ARTIFACT_INSTALL_LIB = os.path.join(
 PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64 = os.path.join(
     PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-system-x86_64"
 )
+PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG = os.path.join(
+    PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-img"
+)
+PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD = os.path.join(
+    PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-nbd"
+)
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
-PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
+PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.qcow2")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
@@ -45,6 +51,7 @@ VM_CONSOLE_INPUT = "input"
 VM_CONSOLE_OUTPUT = "output"
 
 VM_MEM_SIZE = 4 * 1024 * 1024 * 1024
+VM_DISK_SIZE = 4 * 1024 * 1024 * 1024
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -276,7 +283,10 @@ def _prepare_linux(
 
     # prepare the rootfs image
     utils.mk_initramfs(
+        PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
+        PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD,
         PATH_WKS_LINUX_INITRD,
+        "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
         PATH_WKS_LINUX_AGENT_GUEST,
         None if harness is None else PATH_WKS_LINUX_HARNESS,
         blob,

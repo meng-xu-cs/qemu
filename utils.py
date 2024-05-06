@@ -1,35 +1,25 @@
 import os.path
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional, List
+from typing import Optional
 
 
 class CpioWriter(object):
     def __init__(self, tmp: Path):
         self._tmp = tmp
-        self._entries: List[str] = []
 
     def mkdir(self, name: str, mode: int = 0o755) -> None:
         self._tmp.joinpath(name).mkdir(mode)
-        self._entries.append(name)
 
     def symlink(self, name: str, target: str) -> None:
         self._tmp.joinpath(name).symlink_to(target)
-        self._entries.append(name)
 
     def copy_file(self, name: str, original: Path) -> None:
         shutil.copyfile(original, self._tmp.joinpath(name))
         shutil.copymode(original, self._tmp.joinpath(name))
-        self._entries.append(name)
-
-    def output(self, output: str) -> None:
-        command = ["cpio", "-o", "-O", output, "-H", "newc"]
-        name_list = "\n".join(self._entries) + "\n"
-        subprocess.run(
-            command, input=name_list.encode("utf-8"), cwd=self._tmp, check=True
-        )
 
 
 INCLUDED_ROOT_DIRS = [
@@ -133,7 +123,10 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
 
 
 def mk_initramfs(
-    out: str,
+    qemu_img: str,
+    qemu_nbd: str,
+    qcow_disk: str,
+    qcow_size: str,
     agent: str,
     harness: Optional[str],
     blob: Optional[str],
@@ -157,7 +150,7 @@ def mk_initramfs(
         )
         subprocess.check_call(["mkfs.ext4", fs_img])
 
-        # mount the
+        # mount the filesystem
         fs_mnt = os.path.join(tmp, "mnt")
         os.mkdir(fs_mnt)
         subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
@@ -181,8 +174,29 @@ def mk_initramfs(
         # mark the agent as init
         cw.copy_file("init", Path(agent))
 
-        # output as qcow2
-        cw.output(out)
-
-        # clean-up
+        # umount the filesystem
         subprocess.check_call(["umount", fs_mnt])
+
+        # output as qcow2
+        subprocess.check_call(
+            [
+                qemu_img,
+                "create",
+                "-f",
+                "qcow2",
+                qcow_disk,
+                qcow_size,
+            ]
+        )
+
+        dev_node = "/dev/nbd0"
+        subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
+        subprocess.check_call(
+            [
+                qemu_img,
+                "dd",
+                "if={}".format(fs_img),
+                "of={}".format(dev_node),
+            ]
+        )
+        subprocess.check_call([qemu_nbd, "-d", dev_node])
