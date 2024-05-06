@@ -3,22 +3,7 @@ import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Optional
-
-
-class RootfsWriter(object):
-    def __init__(self, tmp: Path):
-        self._tmp = tmp
-
-    def mkdir(self, name: str, mode: int = 0o755) -> None:
-        self._tmp.joinpath(name).mkdir(mode)
-
-    def symlink(self, name: str, target: str) -> None:
-        self._tmp.joinpath(name).symlink_to(target)
-
-    def copy_file(self, name: str, original: Path) -> None:
-        shutil.copyfile(original, self._tmp.joinpath(name))
-        shutil.copymode(original, self._tmp.joinpath(name))
+from typing import Optional, List
 
 
 INCLUDED_ROOT_DIRS = [
@@ -44,6 +29,21 @@ MOUNTED_ROOT_DIRS = [
     "sys",
     "tmp",
 ]
+
+
+class RootfsWriter(object):
+    def __init__(self, tmp: Path):
+        self._tmp = tmp
+
+    def mkdir(self, name: str, mode: int = 0o755) -> None:
+        self._tmp.joinpath(name).mkdir(mode)
+
+    def symlink(self, name: str, target: str) -> None:
+        self._tmp.joinpath(name).symlink_to(target)
+
+    def copy_file(self, name: str, original: Path) -> None:
+        shutil.copyfile(original, self._tmp.joinpath(name))
+        shutil.copymode(original, self._tmp.joinpath(name))
 
 
 def __assert_handled(dir_path: Path, link: str):
@@ -196,3 +196,73 @@ def mk_rootfs(
             ]
         )
         subprocess.check_call([qemu_nbd, "-d", dev_node])
+
+
+class CpioWriter(object):
+    def __init__(self, tmp: Path):
+        self._tmp = tmp
+        self._entries: List[str] = []
+
+    def mkdir(self, name: str, mode: int = 0o755) -> None:
+        self._tmp.joinpath(name).mkdir(mode)
+        self._entries.append(name)
+
+    def symlink(self, name: str, target: str) -> None:
+        self._tmp.joinpath(name).symlink_to(target)
+        self._entries.append(name)
+
+    def copy_file(self, name: str, original: Path) -> None:
+        shutil.copyfile(original, self._tmp.joinpath(name))
+        shutil.copymode(original, self._tmp.joinpath(name))
+        self._entries.append(name)
+
+    def write_file(self, name: str, body: bytes, mode: int) -> None:
+        path = self._tmp.joinpath(name)
+        path.write_bytes(body)
+        path.chmod(mode)
+        self._entries.append(name)
+
+    def output(self, output: str) -> None:
+        command = ["cpio", "-o", "-O", output, "-H", "newc"]
+        name_list = "\n".join(self._entries) + "\n"
+        subprocess.run(
+            command, input=name_list.encode("utf-8"), cwd=self._tmp, check=True
+        )
+
+
+INIT_SCRIPT = r"""#!/bin/sh
+if ! /bin/mount -n -t devtmpfs -o mode=0755,nosuid,noexec devtmpfs /dev/; then
+    echo "failed to mount /dev, we are stuck..."
+    exit 1
+fi
+
+if ! /bin/mount -n -t ext4 /dev/vda /new_root/; then
+    echo "failed to mount real root, we are stuck..."
+    exit 1
+fi
+
+exec /bin/switch_root /new_root /root/agent
+"""
+
+
+def mk_initramfs(out: str) -> None:
+    with TemporaryDirectory() as tmp:
+        cw = CpioWriter(Path(tmp))
+
+        # base layout
+        cw.mkdir("bin")
+        cw.mkdir("dev")
+        cw.mkdir("new_root")
+
+        # prepare for busybox
+        bin_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
+        cw.copy_file("bin/busybox", Path(bin_busybox))
+
+        for tool in ["sh", "mount", "umount", "switch_root"]:
+            cw.symlink("bin/{}".format(tool), "busybox")
+
+        # write the init script
+        cw.write_file("init", INIT_SCRIPT.encode("utf-8"), 0o777)
+
+        # done
+        cw.output(out)
