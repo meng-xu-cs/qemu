@@ -1,105 +1,34 @@
 import os.path
+import shutil
 import subprocess
-from typing import BinaryIO, Optional, Tuple
-
-
-TEXT_ENCODING = "utf-8"
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Optional, List
 
 
 class CpioWriter(object):
-    TYPE_DIR = 0o0040000
-    TYPE_REG = 0o0100000
-    TYPE_SYMLINK = 0o0120000
-    TYPE_CHARDEV = 0o0020000
-    TYPE_MASK = 0o0170000
-
-    def __init__(self, f: BinaryIO):
-        self.__f = f
-        self.__totalsize = 0
-        self.__next_ino = 0
-
-    def __write(self, data: bytes) -> None:
-        self.__f.write(data)
-        self.__totalsize += len(data)
-
-    def write_object(
-        self,
-        name: str,
-        body: bytes,
-        mode: int,
-        ino: Optional[int] = None,
-        nlink: Optional[int] = None,
-        uid: int = 0,
-        gid: int = 0,
-        mtime: int = 0,
-        devmajor: int = 0,
-        devminor: int = 0,
-        rdevmajor: int = 0,
-        rdevminor: int = 0,
-    ) -> None:
-        if nlink is None:
-            nlink = 2 if (mode & CpioWriter.TYPE_MASK) == CpioWriter.TYPE_DIR else 1
-
-        namebytes = name.encode(TEXT_ENCODING)
-        if b"\0" in namebytes:
-            raise ValueError("Filename cannot contain a NUL")
-
-        namesize = len(namebytes) + 1
-        filesize = len(body)
-
-        if ino is None:
-            ino = self.__next_ino
-            self.__next_ino += 1
-
-        fields = [
-            ino,
-            mode,
-            uid,
-            gid,
-            nlink,
-            mtime,
-            filesize,
-            devmajor,
-            devminor,
-            rdevmajor,
-            rdevminor,
-            namesize,
-            0,
-        ]
-        hdr = ("070701" + "".join("%08X" % f for f in fields)).encode()
-
-        self.__write(hdr)
-        self.__write(namebytes)
-        self.__write(b"\0")
-        self.__write(((2 - namesize) % 4) * b"\0")
-        self.__write(body)
-        self.__write(((-filesize) % 4) * b"\0")
-
-    def write_trailer(self) -> None:
-        self.write_object(name="TRAILER!!!", body=b"", mode=0, ino=0, nlink=1)
-        self.__write(((-self.__totalsize) % 512) * b"\0")
+    def __init__(self, tmp: Path):
+        self._tmp = tmp
+        self._entries: List[str] = []
 
     def mkdir(self, name: str, mode: int = 0o755) -> None:
-        self.write_object(name=name, mode=CpioWriter.TYPE_DIR | mode, body=b"")
+        self._tmp.joinpath(name).mkdir(mode)
+        self._entries.append(name)
 
-    def symlink(self, src: str, dst: str) -> None:
-        self.write_object(
-            name=dst,
-            mode=CpioWriter.TYPE_SYMLINK | 0o777,
-            body=src.encode(TEXT_ENCODING),
-        )
+    def symlink(self, name: str, target: str) -> None:
+        self._tmp.joinpath(name).symlink_to(target)
+        self._entries.append(name)
 
-    def write_file(self, name: str, body: bytes, mode: int) -> None:
-        self.write_object(name=name, body=body, mode=CpioWriter.TYPE_REG | mode)
+    def copy_file(self, name: str, original: Path) -> None:
+        shutil.copyfile(original, self._tmp.joinpath(name))
+        shutil.copymode(original, self._tmp.joinpath(name))
+        self._entries.append(name)
 
-    def mkchardev(self, name: str, dev: Tuple[int, int], mode: int) -> None:
-        major, minor = dev
-        self.write_object(
-            name=name,
-            mode=CpioWriter.TYPE_CHARDEV | mode,
-            rdevmajor=major,
-            rdevminor=minor,
-            body=b"",
+    def output(self, output: str) -> None:
+        command = ["cpio", "-o", "-O", output, "-H", "newc"]
+        name_list = "\n".join(self._entries) + "\n"
+        subprocess.run(
+            command, input=name_list.encode("utf-8"), cwd=self._tmp, check=True
         )
 
 
@@ -128,9 +57,9 @@ MOUNTED_ROOT_DIRS = [
 ]
 
 
-def __assert_handled(dir_path: str, link: str):
+def __assert_handled(dir_path: Path, link: str):
     if not link.startswith("/"):
-        link = os.path.normpath(os.path.join(dir_path, link))
+        link = os.path.normpath(dir_path.joinpath(link))
     assert link.startswith("/")
 
     l1 = link.split("/")[1]
@@ -141,37 +70,29 @@ def __assert_handled(dir_path: str, link: str):
     assert False
 
 
-def cpio_recursive(cw: CpioWriter, dir_path: str, item: str) -> None:
-    path = os.path.join("/", item)
-    if os.path.islink(path):
+def cpio_recursive(cw: CpioWriter, dir_path: Path, item: str) -> None:
+    path = Path("/").joinpath(item)
+    if path.is_symlink():
         dst = os.readlink(path)
         cw.symlink(item, dst)
         # debugging purpose only
         __assert_handled(dir_path, dst)
 
+    elif path.is_file():
+        cw.copy_file(item, path)
+
     else:
-        stat = os.stat(path)
-        if os.path.isfile(path):
-            with open(path, "rb") as f:
-                cw.write_file(item, f.read(), stat.st_mode)
-        else:
-            assert os.path.isdir(path)
-            cw.mkdir(item, stat.st_mode)
-            for entry in os.listdir(path):
-                child = format("{}/{}".format(item, entry))
-                cpio_recursive(cw, path, child)
-
-
-def cpio_copy_with_mode(cw: CpioWriter, src: str, dst: str) -> None:
-    stat = os.stat(src)
-    with open(src, "rb") as f:
-        cw.write_file(dst, body=f.read(), mode=stat.st_mode)
+        assert path.is_dir()
+        cw.mkdir(item, mode=path.stat().st_mode)
+        for entry in os.listdir(path):
+            child = format("{}/{}".format(item, entry))
+            cpio_recursive(cw, path, child)
 
 
 def mk_initramfs_from_host_rootfs(cw: CpioWriter) -> None:
     # included directories
     for item in INCLUDED_ROOT_DIRS:
-        cpio_recursive(cw, "/", item)
+        cpio_recursive(cw, Path("/"), item)
 
     # created directories
     for item in CREATED_ROOT_DIRS:
@@ -190,9 +111,8 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
     # prepare for busybox
     cw.mkdir("bin")
 
-    path_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
-    with open(path_busybox, "rb") as f_busybox:
-        cw.write_file("bin/busybox", body=f_busybox.read(), mode=0o755)
+    bin_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
+    cw.copy_file("bin/busybox", Path(bin_busybox))
 
     for tool in [
         "cat",
@@ -209,7 +129,7 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
         "sleep",
         "umount",
     ]:
-        cw.symlink("busybox", "bin/{}".format(tool))
+        cw.symlink("bin/{}".format(tool), "busybox")
 
 
 def mk_initramfs(
@@ -219,8 +139,8 @@ def mk_initramfs(
     blob: Optional[str],
     use_host_rootfs: bool,
 ) -> None:
-    with open(out, "w+b") as f:
-        cw = CpioWriter(f)
+    with TemporaryDirectory() as tmp:
+        cw = CpioWriter(Path(tmp))
 
         # rootfs
         if use_host_rootfs:
@@ -231,12 +151,12 @@ def mk_initramfs(
         # specialized
         cw.mkdir("home")
         if harness is not None:
-            cpio_copy_with_mode(cw, harness, "home/harness")
+            cw.copy_file("home/harness", Path(harness))
         if blob is not None:
-            cpio_copy_with_mode(cw, blob, "home/blob")
+            cw.copy_file("home/blob", Path(blob))
 
         # mark the agent as init
-        cpio_copy_with_mode(cw, agent, "init")
+        cw.copy_file("init", Path(agent))
 
         # done
-        cw.write_trailer()
+        cw.output(out)
