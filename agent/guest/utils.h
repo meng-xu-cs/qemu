@@ -20,7 +20,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define MAX_EXEC_ARGS 128
+#define MAX_EXEC_ARGS 16
 
 /*
  * Logging Utility
@@ -110,6 +110,13 @@ static inline void list_dir(const char *path) {
   struct dirent *entry;
   while ((entry = readdir(dir)) != NULL) {
     fprintf(stderr, "%s\n", entry->d_name);
+
+    struct stat stats;
+    if (fstatat(dirfd(dir), entry->d_name, &stats, AT_NO_AUTOMOUNT) != 0) {
+      ABORT_WITH_ERRNO("failed to stat dir entry: %s/%s", path, entry->d_name);
+    }
+    fprintf(stderr, "mode: %o, user: %d:%d\n", stats.st_mode, stats.st_uid,
+            stats.st_gid);
   }
 
   if (closedir(dir) != 0) {
@@ -122,26 +129,29 @@ static inline void list_dir(const char *path) {
  */
 
 static inline void checked_exec(const char *bin, ...) {
-  const char *argv[MAX_EXEC_ARGS] = {NULL};
+  // prepare for arguments
+  char const *argv[MAX_EXEC_ARGS] = {NULL};
+  argv[0] = bin;
+
+  va_list vlist;
+  va_start(vlist, bin);
+
+  int i = 1;
+  const char *arg;
+  while ((arg = va_arg(vlist, const char *)) != NULL) {
+    argv[i++] = arg;
+    if (i == MAX_EXEC_ARGS) {
+      ABORT_WITH("exec has more than %d arguments", MAX_EXEC_ARGS);
+    }
+  }
+
+  va_end(vlist);
+  argv[i] = NULL;
 
   // fork, exec, and wait
   pid_t pid = fork();
   if (pid == 0) {
     // child process
-
-    // prepare for arguments
-    argv[0] = bin;
-
-    va_list vlist;
-    int i = 1;
-    const char *arg;
-    va_start(vlist, bin);
-    while ((arg = va_arg(vlist, const char *)) != NULL) {
-      argv[i++] = arg;
-    }
-    va_end(vlist);
-
-    argv[i] = NULL;
     execvp(bin, (char *const *)argv);
     ABORT_WITH_ERRNO("failed to run %s", bin);
   } else if (pid > 0) {

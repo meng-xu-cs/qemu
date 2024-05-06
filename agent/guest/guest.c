@@ -41,8 +41,7 @@ int main(int argc, char *argv[]) {
   checked_mount("sys", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
   checked_mount("tmp", "/tmp", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
   checked_mount("run", "/run", "tmpfs", MS_NOSUID | MS_NOEXEC | MS_NODEV);
-  // NOTE: (device already populated)
-  // checked_mount("dev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC);
+  checked_mount("dev", "/dev", "devtmpfs", MS_NOSUID | MS_NOEXEC);
 
   checked_mkdir("dev/pts");
   checked_mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC);
@@ -52,6 +51,8 @@ int main(int argc, char *argv[]) {
   checked_mount_tmpfs("/var/log");
   checked_mount_tmpfs("/var/tmp");
   checked_mkdir("/run/dbus");
+
+  sync();
   LOG_INFO("filesystems mounted");
 
   // setup devices
@@ -61,24 +62,22 @@ int main(int argc, char *argv[]) {
   if (checked_exists(sys_helper)) {
     checked_trunc(sys_helper);
   }
-  checked_exec(BIN_UDEV, "--daemon", "--resolve-names=never");
-  checked_exec("udevadm", "trigger", "--type=subsystems", "--action=add");
-  checked_exec("udevadm", "trigger", "--type=devices", "--action=add");
-  checked_exec("udevadm", "settle");
+  checked_exec(BIN_UDEV, "--daemon", "--resolve-names=never", NULL);
+  checked_exec("udevadm", "trigger", "--type=subsystems", "--action=add", NULL);
+  checked_exec("udevadm", "trigger", "--type=devices", "--action=add", NULL);
+  checked_exec("udevadm", "settle", NULL);
 #else
   // setup mdev (an alternative to udev)
   const char *sys_hotplug = "/proc/sys/kernel/hotplug";
   if (checked_exists(sys_hotplug)) {
     checked_write(sys_hotplug, BIN_MDEV, strlen(BIN_MDEV));
-    checked_exec(BIN_MDEV, "-s");
   }
+  checked_exec(BIN_MDEV, "-s", NULL);
 #endif
   LOG_INFO("devices ready");
 
   // connect to a dedicated serial device
-  list_dir("/dev");
-  fprintf(stderr, "--------\n");
-  list_dir("/dev/pts");
+  // TODO
 
   // mark milestone
   LOG_INFO("notified host on ready");
@@ -91,7 +90,7 @@ int main(int argc, char *argv[]) {
 #else
   // fuzzing mode (TODO)
   LOG_INFO("entered fuzzing mode");
-  checked_exec(PATH_HARNESS);
+  checked_exec(PATH_HARNESS, NULL);
 #endif
 #else
   // shell mode

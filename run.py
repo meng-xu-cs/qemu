@@ -346,8 +346,6 @@ def _execute_linux(
             ),
         ]
     )
-    # kernel_args.extend(["root=/dev/vda", "rw"])  # /dev/vda maps to virtio-disk index 0
-    # kernel_args.append("init=/root/agent")
 
     # networking
     command.extend(["-net", "none"])
