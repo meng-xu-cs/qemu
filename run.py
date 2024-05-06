@@ -37,11 +37,14 @@ PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
+PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
 
 # qemu constants
 VM_MONITOR_SOCKET = "monitor"
 VM_CONSOLE_INPUT = "input"
 VM_CONSOLE_OUTPUT = "output"
+
+VM_MEM_SIZE = 4 * 1024 * 1024 * 1024
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -50,12 +53,20 @@ DOCKER_WORKDIR_PREFIX = "/work"
 
 # system constants
 NUM_CPUS = multiprocessing.cpu_count()
+GB_IN_BYTES = 1024 * 1024 * 1024
 
 
 def _docker_exec(
     tag: str, volumes: List[str], ephemeral: bool, interactive: bool, cmdline: List[str]
 ) -> None:
-    command = ["docker", "run", "--device=/dev/kvm", "--tmpfs", "/dev/shm:exec"]
+    command = [
+        "docker",
+        "run",
+        "--device=/dev/kvm",
+        "--tmpfs",
+        "/dev/shm:exec",
+        "--privileged=true",
+    ]
 
     if ephemeral:
         command.append("--rm")
@@ -254,7 +265,7 @@ def _prepare_linux(
     __compile_agent_host(verbose)
     __compile_agent_guest(harness, blob, simulate_virtme)
 
-    # prepare ramdisk
+    # prepare harness
     if harness is not None:
         if not os.path.exists(harness):
             sys.exit("harness source code does not exist at {}".format(harness))
@@ -263,7 +274,7 @@ def _prepare_linux(
     if blob is not None:
         sys.exit("blob data file does not exist at {}".format(blob))
 
-    # prepare an initramfs ramdisk
+    # prepare the rootfs image
     utils.mk_initramfs(
         PATH_WKS_LINUX_INITRD,
         PATH_WKS_LINUX_AGENT_GUEST,
@@ -287,7 +298,7 @@ def _execute_linux(
     kernel_args = []
 
     # basics
-    command.extend(["-m", "4G"])
+    command.extend(["-m", "{}G".format(VM_MEM_SIZE // VM_MEM_SIZE)])
     if kvm:
         command.extend(["-machine", "accel=kvm:tcg"])
 

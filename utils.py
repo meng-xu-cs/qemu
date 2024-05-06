@@ -139,10 +139,33 @@ def mk_initramfs(
     blob: Optional[str],
     use_host_rootfs: bool,
 ) -> None:
-    with TemporaryDirectory() as tmp:
-        cw = CpioWriter(Path(tmp))
+    # constants
+    block_size = 512
+    image_size = 2 * 1024 * 1024 * 1024 if use_host_rootfs else 256 * 1024 * 1024
 
-        # rootfs
+    with TemporaryDirectory() as tmp:
+        # create an empty image
+        fs_img = os.path.join(tmp, "ext4.img")
+        subprocess.check_call(
+            [
+                "dd",
+                "if=/dev/zero",
+                "of={}".format(fs_img),
+                "bs={}".format(block_size),
+                "count={}".format(image_size // block_size),
+            ]
+        )
+        subprocess.check_call(["mkfs.ext4", fs_img])
+
+        # mount the
+        fs_mnt = os.path.join(tmp, "mnt")
+        os.mkdir(fs_mnt)
+        subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
+
+        # fill content in the image
+        cw = CpioWriter(Path(fs_mnt))
+
+        # basic layout
         if use_host_rootfs:
             mk_initramfs_from_host_rootfs(cw)
         else:
@@ -158,5 +181,8 @@ def mk_initramfs(
         # mark the agent as init
         cw.copy_file("init", Path(agent))
 
-        # done
+        # output as qcow2
         cw.output(out)
+
+        # clean-up
+        subprocess.check_call(["umount", fs_mnt])
