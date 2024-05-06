@@ -280,7 +280,8 @@ def _prepare_linux(
         subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
 
     if blob is not None:
-        sys.exit("blob data file does not exist at {}".format(blob))
+        if not os.path.exists(blob):
+            sys.exit("blob data file does not exist at {}".format(blob))
 
     # prepare the rootfs image
     utils.mk_rootfs(

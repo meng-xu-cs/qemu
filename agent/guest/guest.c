@@ -86,7 +86,7 @@ int main(int argc, char *argv[]) {
 #ifdef BLOB
   // testing mode
   LOG_INFO("entered testing mode");
-  checked_exec(PATH_HARNESS, PATH_BLOB);
+  checked_exec(PATH_HARNESS, PATH_BLOB, NULL);
 #else
   // fuzzing mode (TODO)
   LOG_INFO("entered fuzzing mode");
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
 #else
   // shell mode
   LOG_INFO("entered shell mode");
-  checked_exec(PATH_SHELL)
+  checked_exec(PATH_SHELL, NULL)
 #endif
   return 1;
 }
