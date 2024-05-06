@@ -161,7 +161,7 @@ static inline void checked_exec(const char *bin, ...) {
       ABORT_WITH_ERRNO("failed to wait for child %s", bin);
     }
     if (status != 0) {
-      ABORT_WITH_ERRNO("child execution failed %s", bin);
+      ABORT_WITH("child execution failed %s with status %d", bin, status);
     }
   } else {
     ABORT_WITH_ERRNO("failed to fork");
