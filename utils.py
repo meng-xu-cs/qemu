@@ -45,6 +45,11 @@ class RootfsWriter(object):
         shutil.copyfile(original, self._tmp.joinpath(name))
         shutil.copymode(original, self._tmp.joinpath(name))
 
+    def write_file(self, name: str, body: bytes, mode: int) -> None:
+        path = self._tmp.joinpath(name)
+        path.write_bytes(body)
+        path.chmod(mode)
+
 
 def __assert_handled(dir_path: Path, link: str):
     if not link.startswith("/"):
@@ -185,6 +190,7 @@ def mk_rootfs(
             ]
         )
 
+        # TODO: probe for an available /dev/nbdX device
         dev_node = "/dev/nbd0"
         subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
         subprocess.check_call(
@@ -236,12 +242,17 @@ class CpioWriter(object):
 
 INIT_SCRIPT = r"""#!/bin/sh
 if ! /bin/mount -n -t devtmpfs -o mode=0755,nosuid,noexec devtmpfs /dev/; then
-    echo "failed to mount /dev, we are stuck..."
+    echo "failed to mount /dev"
     exit 1
 fi
 
-if ! /bin/mount -n -t ext4 /dev/vda /new_root/; then
-    echo "failed to mount real root, we are stuck..."
+if ! /bin/mount -n -t ext4 -o rw,suid,dev,exec,sync /dev/vda /new_root/; then
+    echo "failed to mount real root"
+    exit 1
+fi
+
+if ! umount /dev; then
+    echo "failed to umount /dev"
     exit 1
 fi
 
@@ -258,11 +269,6 @@ def mk_initramfs(out: str) -> None:
         cw.mkdir("dev")
         cw.mkdir("new_root")
 
-        # device nodes
-        cw.mknod("dev/null", 1, 3, 0o666)
-        cw.mknod("dev/kmsg", 1, 11, 0o666)
-        cw.mknod("dev/console", 5, 1, 0o660)
-
         # prepare for busybox
         bin_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
         cw.copy_file("bin/busybox", Path(bin_busybox))
@@ -271,7 +277,7 @@ def mk_initramfs(out: str) -> None:
             cw.symlink("bin/{}".format(tool), "busybox")
 
         # write the init script
-        cw.write_file("init", INIT_SCRIPT.encode("utf-8"), 0o777)
+        cw.write_file("init", INIT_SCRIPT.encode("utf-8"), 0o755)
 
         # done
         cw.output(out)
