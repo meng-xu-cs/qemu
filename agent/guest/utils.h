@@ -66,43 +66,6 @@ static inline void checked_mount_tmpfs(const char *path) {
   checked_mount("tmpfs", path, "tmpfs", MS_NOSUID | MS_NODEV);
 }
 
-static inline void checked_exec(const char *bin, ...) {
-  const char *argv[MAX_EXEC_ARGS] = {NULL};
-
-  // fork, exec, and wait
-  pid_t pid = fork();
-  if (pid == 0) {
-    // child process
-
-    // prepare for arguments
-    argv[0] = bin;
-
-    va_list vlist;
-    int i = 1;
-    const char *arg;
-    va_start(vlist, bin);
-    while ((arg = va_arg(vlist, const char *)) != NULL) {
-      argv[i++] = arg;
-    }
-    va_end(vlist);
-
-    argv[i] = NULL;
-    execvp(bin, (char *const *)argv);
-    ABORT_WITH_ERRNO("failed to run %s", bin);
-  } else if (pid > 0) {
-    // parent process
-    int status;
-    if (waitpid(pid, &status, 0) < 0) {
-      ABORT_WITH_ERRNO("failed to wait for child %s", bin);
-    }
-    if (status != 0) {
-      ABORT_WITH_ERRNO("child execution failed %s", bin);
-    }
-  } else {
-    ABORT_WITH_ERRNO("failed to fork");
-  }
-}
-
 static inline bool checked_exists(const char *path) {
   return access(path, F_OK) == 0;
 }
@@ -151,6 +114,47 @@ static inline void list_dir(const char *path) {
 
   if (closedir(dir) != 0) {
     ABORT_WITH_ERRNO("failed to close dir: %s", path);
+  }
+}
+
+/*
+ * Subprocess Utility
+ */
+
+static inline void checked_exec(const char *bin, ...) {
+  const char *argv[MAX_EXEC_ARGS] = {NULL};
+
+  // fork, exec, and wait
+  pid_t pid = fork();
+  if (pid == 0) {
+    // child process
+
+    // prepare for arguments
+    argv[0] = bin;
+
+    va_list vlist;
+    int i = 1;
+    const char *arg;
+    va_start(vlist, bin);
+    while ((arg = va_arg(vlist, const char *)) != NULL) {
+      argv[i++] = arg;
+    }
+    va_end(vlist);
+
+    argv[i] = NULL;
+    execvp(bin, (char *const *)argv);
+    ABORT_WITH_ERRNO("failed to run %s", bin);
+  } else if (pid > 0) {
+    // parent process
+    int status;
+    if (waitpid(pid, &status, 0) < 0) {
+      ABORT_WITH_ERRNO("failed to wait for child %s", bin);
+    }
+    if (status != 0) {
+      ABORT_WITH_ERRNO("child execution failed %s", bin);
+    }
+  } else {
+    ABORT_WITH_ERRNO("failed to fork");
   }
 }
 
