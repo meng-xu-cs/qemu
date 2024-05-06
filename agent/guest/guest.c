@@ -20,6 +20,9 @@
 #define BIN_MDEV "/bin/mdev"
 #endif
 
+#define AGENT_TTY "/dev/ttyS1"
+#define AGENT_MARK_READY "ready\n"
+
 /*
  * Entrypoint
  */
@@ -81,6 +84,7 @@ int main(int argc, char *argv[]) {
   LOG_INFO("network ready");
 
   // connect to a dedicated serial device
+  checked_write(AGENT_TTY, AGENT_MARK_READY, strlen(AGENT_MARK_READY));
   // TODO
 
   // mark milestone

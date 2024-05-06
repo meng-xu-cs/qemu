@@ -10,28 +10,20 @@ pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
     let f = File::open(path_console_output)?;
     let mut reader = BufReader::new(f);
 
-    let mut buffer = String::new();
+    // TODO: make it a polling / blocking based solution
     let mut message = String::new();
     loop {
-        let num_bytes = reader.read_line(&mut buffer)?;
-        if num_bytes == 0 {
-            // TODO: might opt for a polling-based solution?
-            continue;
-        }
-        if message.ends_with('\n') {
-            message.push_str(&buffer[0..num_bytes - 1]);
+        reader.read_line(&mut message)?;
+        if message.ends_with('\n') || message.ends_with("\n\0") {
             break;
         }
-        message.push_str(&buffer);
-        buffer.clear();
     }
-
     Ok(message)
 }
 
 /// Send one line to the guest agent
 pub fn send_str_into_guest(path_console_input: &Path, message: &str) -> io::Result<()> {
-    fs::write(path_console_input, format!("{}\n", message))
+    fs::write(path_console_input, message)
 }
 
 /// block until a specific file is created or deleted in the watched directory

@@ -13,7 +13,7 @@ const VM_MONITOR_SOCKET: &str = "monitor";
 const VM_CONSOLE_INPUT: &str = "input";
 const VM_CONSOLE_OUTPUT: &str = "output";
 
-const MARK_READY: &str = "ready";
+const MARK_READY: &str = "ready\n";
 
 #[derive(StructOpt)]
 struct Options {
