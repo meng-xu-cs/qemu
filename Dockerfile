@@ -15,7 +15,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     # qemu required \
     libglib2.0-dev \
     # virtme required \
-    iproute2 systemd udev busybox-static
+    cpio busybox-static systemd udev iproute2
 
 RUN git clone --recurse-submodules \
     https://github.com/arighi/virtme-ng.git

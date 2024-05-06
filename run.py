@@ -39,6 +39,7 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD = os.path.join(
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
+PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_DISK = os.path.join(PATH_WKS_LINUX, "disk.qcow2")
 PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
@@ -293,6 +294,9 @@ def _prepare_linux(
         use_host_rootfs=simulate_virtme,
     )
 
+    # prepare the init ramdisk image
+    utils.mk_initramfs(PATH_WKS_LINUX_INITRD)
+
 
 def _execute_linux(
     tmp: str,
@@ -324,6 +328,7 @@ def _execute_linux(
 
     # kernel
     command.extend(["-kernel", PATH_WKS_LINUX_KERNEL])
+    command.extend(["-initrd", PATH_WKS_LINUX_INITRD])
 
     # disk
     command.extend(
@@ -341,8 +346,8 @@ def _execute_linux(
             ),
         ]
     )
-    kernel_args.extend(["root=/dev/vda", "rw"])  # /dev/vda maps to virtio-disk index 0
-    kernel_args.append("init=/root/agent")
+    # kernel_args.extend(["root=/dev/vda", "rw"])  # /dev/vda maps to virtio-disk index 0
+    # kernel_args.append("init=/root/agent")
 
     # networking
     command.extend(["-net", "none"])
