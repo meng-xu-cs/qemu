@@ -207,6 +207,10 @@ class CpioWriter(object):
         self._tmp.joinpath(name).mkdir(mode)
         self._entries.append(name)
 
+    def mknod(self, name: str, major: int, minor: int, mode: int) -> None:
+        os.mknod(self._tmp.joinpath(name), mode, os.makedev(major, minor))
+        self._entries.append(name)
+
     def symlink(self, name: str, target: str) -> None:
         self._tmp.joinpath(name).symlink_to(target)
         self._entries.append(name)
@@ -253,6 +257,11 @@ def mk_initramfs(out: str) -> None:
         cw.mkdir("bin")
         cw.mkdir("dev")
         cw.mkdir("new_root")
+
+        # device nodes
+        cw.mknod("dev/null", 1, 3, 0o666)
+        cw.mknod("dev/kmsg", 1, 11, 0o666)
+        cw.mknod("dev/console", 5, 1, 0o660)
 
         # prepare for busybox
         bin_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
