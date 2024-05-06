@@ -50,19 +50,24 @@ int main(int argc, char *argv[]) {
   checked_mount_tmpfs("/var/cache");
   checked_mount_tmpfs("/var/log");
   checked_mount_tmpfs("/var/tmp");
+  checked_mkdir("/run/dbus");
   LOG_INFO("filesystems mounted");
 
   // setup devices
 #ifdef VIRTME
   // setup udev
+  const char *sys_helper = "/sys/kernel/uevent_helper";
+  if (checked_exists(sys_helper)) {
+    checked_trunc(sys_helper);
+  }
   checked_exec(BIN_UDEV, "--daemon", "--resolve-names=never");
-  checked_exec("/bin/udevadm", "trigger", "--type=subsystems", "--action=add");
-  checked_exec("/bin/udevadm", "trigger", "--type=devices", "--action=add");
-  checked_exec("/bin/udevadm", "settle");
+  checked_exec("udevadm", "trigger", "--type=subsystems", "--action=add");
+  checked_exec("udevadm", "trigger", "--type=devices", "--action=add");
+  checked_exec("udevadm", "settle");
 #else
   // setup mdev (an alternative to udev)
   const char *sys_hotplug = "/proc/sys/kernel/hotplug";
-  if (access(sys_hotplug, F_OK) == 0) {
+  if (checked_exists(sys_hotplug)) {
     checked_write(sys_hotplug, BIN_MDEV, strlen(BIN_MDEV));
     checked_exec(BIN_MDEV, "-s");
   }
@@ -75,18 +80,22 @@ int main(int argc, char *argv[]) {
   list_dir("/dev/pts");
 
   // mark milestone
-  LOG_INFO("[harness-fuzz] notified host on ready");
+  LOG_INFO("notified host on ready");
 
 #ifdef HARNESS
 #ifdef BLOB
   // testing mode
-  return execl(PATH_HARNESS, PATH_HARNESS, PATH_BLOB);
+  LOG_INFO("entered testing mode");
+  checked_exec(PATH_HARNESS, PATH_BLOB);
 #else
   // fuzzing mode (TODO)
-  return execl(PATH_HARNESS, PATH_HARNESS);
+  LOG_INFO("entered fuzzing mode");
+  checked_exec(PATH_HARNESS);
 #endif
 #else
   // shell mode
-  return execl(PATH_SHELL, PATH_SHELL)
+  LOG_INFO("entered shell mode");
+  checked_exec(PATH_SHELL)
 #endif
+  return 1;
 }

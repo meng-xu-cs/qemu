@@ -87,7 +87,7 @@ static inline void checked_exec(const char *bin, ...) {
     va_end(vlist);
 
     argv[i] = NULL;
-    execvp(bin, argv);
+    execvp(bin, (char *const *)argv);
     ABORT_WITH_ERRNO("failed to run %s", bin);
   } else if (pid > 0) {
     // parent process
@@ -101,6 +101,18 @@ static inline void checked_exec(const char *bin, ...) {
   } else {
     ABORT_WITH_ERRNO("failed to fork");
   }
+}
+
+static inline bool checked_exists(const char *path) {
+  return access(path, F_OK) == 0;
+}
+
+static inline void checked_trunc(const char *path) {
+  int fd;
+  if ((fd = open(path, O_CREAT | O_RDWR | O_TRUNC)) < 0) {
+    ABORT_WITH_ERRNO("unable to open file %s", path);
+  }
+  close(fd);
 }
 
 static inline void checked_write(const char *path, const char *buf,
@@ -122,6 +134,8 @@ static inline void checked_write(const char *path, const char *buf,
       return;
     }
   } while (true);
+
+  close(fd);
 }
 
 static inline void list_dir(const char *path) {
