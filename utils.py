@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 from typing import Optional
 
 
-class CpioWriter(object):
+class RootfsWriter(object):
     def __init__(self, tmp: Path):
         self._tmp = tmp
 
@@ -59,7 +59,7 @@ def __assert_handled(dir_path: Path, link: str):
     assert False
 
 
-def cpio_recursive(cw: CpioWriter, dir_path: Path, item: str) -> None:
+def cp_rootfs_recursive(cw: RootfsWriter, dir_path: Path, item: str) -> None:
     path = Path("/").joinpath(item)
     if path.is_symlink():
         dst = os.readlink(path)
@@ -75,13 +75,13 @@ def cpio_recursive(cw: CpioWriter, dir_path: Path, item: str) -> None:
         cw.mkdir(item, mode=path.stat().st_mode)
         for entry in os.listdir(path):
             child = format("{}/{}".format(item, entry))
-            cpio_recursive(cw, path, child)
+            cp_rootfs_recursive(cw, path, child)
 
 
-def mk_initramfs_from_host_rootfs(cw: CpioWriter) -> None:
+def mk_rootfs_from_host_rootfs(cw: RootfsWriter) -> None:
     # included directories
     for item in INCLUDED_ROOT_DIRS:
-        cpio_recursive(cw, Path("/"), item)
+        cp_rootfs_recursive(cw, Path("/"), item)
 
     # created directories
     for item in CREATED_ROOT_DIRS:
@@ -90,7 +90,7 @@ def mk_initramfs_from_host_rootfs(cw: CpioWriter) -> None:
         cw.mkdir(item)
 
 
-def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
+def mk_rootfs_from_bare_rootfs(cw: RootfsWriter) -> None:
     # base layout
     for name in MOUNTED_ROOT_DIRS:
         cw.mkdir(name)
@@ -99,7 +99,6 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
 
     # prepare for busybox
     cw.mkdir("bin")
-
     bin_busybox = subprocess.check_output(["which", "busybox"], text=True).strip()
     cw.copy_file("bin/busybox", Path(bin_busybox))
 
@@ -121,7 +120,7 @@ def mk_initramfs_from_bare_rootfs(cw: CpioWriter) -> None:
         cw.symlink("bin/{}".format(tool), "busybox")
 
 
-def mk_initramfs(
+def mk_rootfs(
     qemu_img: str,
     qemu_nbd: str,
     qcow_disk: str,
@@ -155,13 +154,13 @@ def mk_initramfs(
         subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
 
         # fill content in the image
-        cw = CpioWriter(Path(fs_mnt))
+        cw = RootfsWriter(Path(fs_mnt))
 
         # basic layout
         if use_host_rootfs:
-            mk_initramfs_from_host_rootfs(cw)
+            mk_rootfs_from_host_rootfs(cw)
         else:
-            mk_initramfs_from_bare_rootfs(cw)
+            mk_rootfs_from_bare_rootfs(cw)
 
         # specialized
         cw.mkdir("root")
