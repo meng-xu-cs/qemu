@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
 #include <sys/mount.h>
 #include <sys/signalfd.h>
 #include <sys/stat.h>
@@ -21,6 +22,7 @@
 #include <unistd.h>
 
 #define MAX_EXEC_ARGS 16
+#define MAX_LEN_OF_MESSAGE 8
 
 /*
  * Logging Utility
@@ -82,7 +84,7 @@ static inline void checked_write(const char *path, const char *buf,
                                  size_t len) {
   int fd;
   if ((fd = open(path, O_CREAT | O_RDWR | O_TRUNC)) < 0) {
-    ABORT_WITH_ERRNO("unable to open file %s", path);
+    ABORT_WITH_ERRNO("unable to open file %s for write", path);
   }
 
   ssize_t written = 0;
@@ -98,6 +100,58 @@ static inline void checked_write(const char *path, const char *buf,
     }
   } while (true);
 
+  close(fd);
+}
+
+static inline void checked_blocking_read_line(const char *path, char *buf,
+                                              size_t size) {
+  int fd;
+  if ((fd = open(path, O_RDONLY)) < 0) {
+    ABORT_WITH_ERRNO("unable to open file %s for read", path);
+  }
+
+  int epoll_fd;
+  if ((epoll_fd = epoll_create1(0)) < 0) {
+    ABORT_WITH_ERRNO("unable epoll");
+  }
+
+  struct epoll_event event = {.events = EPOLLIN, .data.fd = fd};
+  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) != 0) {
+    ABORT_WITH_ERRNO("epoll add failed");
+  }
+
+  size_t len = 0;
+  struct epoll_event events[MAX_LEN_OF_MESSAGE];
+  do {
+    int count;
+    if ((count = epoll_wait(epoll_fd, events, MAX_LEN_OF_MESSAGE, 0)) < 0) {
+      ABORT_WITH_ERRNO("epoll wait failed");
+    }
+
+    for (int i = 0; i < count; i++) {
+      if (events[i].data.fd != fd) {
+        continue;
+      }
+
+      ssize_t rv;
+      if ((rv = read(fd, buf + len, size - len)) < 0) {
+        ABORT_WITH_ERRNO("failed to read %s", path);
+      }
+      len += rv;
+      if (len == size) {
+        ABORT_WITH("buffer size too small");
+      }
+
+      if (len >= 1 && buf[len - 1] == '\n') {
+        buf[len] = '\0';
+        break;
+      } else if (len >= 2 && buf[len - 1] == '\0' && buf[len - 2] == '\n') {
+        break;
+      }
+    }
+  } while (true);
+
+  close(epoll_fd);
   close(fd);
 }
 

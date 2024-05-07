@@ -85,10 +85,18 @@ int main(int argc, char *argv[]) {
 
   // connect to a dedicated serial device
   checked_write(AGENT_TTY, AGENT_MARK_READY, strlen(AGENT_MARK_READY));
-  // TODO
 
   // mark milestone
   LOG_INFO("notified host on ready");
+
+  // wait for host to release us
+  char message[MAX_LEN_OF_MESSAGE];
+  checked_blocking_read_line(AGENT_TTY, message, MAX_LEN_OF_MESSAGE);
+  if (strcmp(message, AGENT_MARK_READY) != 0) {
+    ABORT_WITH("unexpected response: %s, expecting %s", message,
+               AGENT_MARK_READY);
+  }
+  LOG_INFO("operation resumed by host");
 
 #ifdef HARNESS
 #ifdef BLOB
