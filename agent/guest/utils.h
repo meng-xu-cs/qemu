@@ -100,6 +100,7 @@ static inline void checked_write(const char *path, const char *buf,
     }
   } while (true);
 
+  fsync(fd);
   close(fd);
 }
 
