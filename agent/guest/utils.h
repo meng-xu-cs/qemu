@@ -108,7 +108,7 @@ static inline void checked_write_or_create(const char *path, const char *buf,
 static inline void checked_tty_read_line(const char *path, char *buf,
                                          size_t size) {
   int fd;
-  if ((fd = open(path, O_RDONLY | O_NONBLOCK)) < 0) {
+  if ((fd = open(path, O_RDONLY | O_SYNC)) < 0) {
     ABORT_WITH_ERRNO("unable to open file %s for read", path);
   }
 
@@ -164,7 +164,7 @@ static inline void checked_tty_read_line(const char *path, char *buf,
 
 static inline void check_config_tty(const char *path) {
   int fd;
-  if ((fd = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)) < 0) {
+  if ((fd = open(path, O_RDWR | O_NOCTTY | O_SYNC)) < 0) {
     ABORT_WITH_ERRNO("unable to open tty at %s", path);
   }
   if (!isatty(fd)) {
@@ -189,7 +189,7 @@ static inline void check_config_tty(const char *path) {
                      | PARMRK        // don't mark parity errors or breaks
                      | INPCK         // no input parity check
                      | ISTRIP        // don't strip high bit off
-                     | IXON          // no XON/XOFF software flow control
+                     | IXON | IXOFF | IXANY // shut off xon/xoff ctrl
   );
   // turn off output processing
   attrs.c_oflag &= ~(OCRNL    // no CR to NL translation
@@ -208,9 +208,9 @@ static inline void check_config_tty(const char *path) {
                      | ISIG   // signal chars off
   );
   // turn off character processing
-  attrs.c_cflag &= ~(CSIZE | // clear current char size mask
-                     PARENB  // no parity checking
-  );
+  attrs.c_cflag &= ~(CSIZE             // clear current char size mask
+                     | PARENB | PARODD // no parity checking
+                     | CSTOPB | CRTSCTS);
   attrs.c_cflag |= CREAD | CS8 | CLOCAL; // force 8 bit input
 
   // other configs
@@ -235,7 +235,7 @@ static inline void check_config_tty(const char *path) {
 static inline void checked_tty_write(const char *path, const char *buf,
                                      size_t len) {
   int fd;
-  if ((fd = open(path, O_RDWR)) < 0) {
+  if ((fd = open(path, O_RDWR | O_SYNC)) < 0) {
     ABORT_WITH_ERRNO("unable to open tty %s for write", path);
   }
 
@@ -254,8 +254,8 @@ static inline void checked_tty_write(const char *path, const char *buf,
   } while (true);
 
   // dran the message
+  fsync(fd);
   tcdrain(fd);
-  tcflush(fd, TCIFLUSH);
   close(fd);
 }
 
