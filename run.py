@@ -224,6 +224,7 @@ def __compile_agent_host(verbose: bool):
 
     # re-use the debug build of the host agent
     if verbose:
+        subprocess.check_call(["cargo", "build"], cwd=PATH_AGENT_HOST_SRC)
         shutil.copy2(
             os.path.join(PATH_AGENT_HOST_SRC, "target", "debug", agent_host_name),
             PATH_WKS_LINUX_AGENT_HOST,

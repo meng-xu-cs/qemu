@@ -1,23 +1,47 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::os::fd::{AsFd, AsRawFd};
 use std::path::Path;
 use std::{fs, io};
 
 use inotify::{Inotify, WatchMask};
+use polling::{Event, Events, Poller};
+
+const VMIO_POLLING_KEY: usize = 42;
 
 /// Receive one line from the guest agent
 pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
     let f = File::open(path_console_output)?;
-    let mut reader = BufReader::new(f);
+    let fd = f.as_raw_fd();
 
-    // TODO: make it a polling / blocking based solution
     let mut message = String::new();
-    loop {
-        reader.read_line(&mut message)?;
-        if message.ends_with('\n') || message.ends_with("\n\0") {
-            break;
-        }
+
+    let poller = Poller::new()?;
+    unsafe {
+        poller.add(fd, Event::readable(VMIO_POLLING_KEY))?;
     }
+
+    // event loop
+    let mut reader = BufReader::new(f);
+    let mut events = Events::new();
+    'event: loop {
+        poller.wait(&mut events, None)?;
+        for ev in events.iter() {
+            if ev.key != VMIO_POLLING_KEY {
+                continue;
+            }
+            // ready to read
+            reader.read_line(&mut message)?;
+            if message.ends_with('\n') || message.ends_with("\n\0") {
+                break 'event;
+            }
+            // next round of polling
+            poller.modify(reader.get_ref().as_fd(), Event::readable(VMIO_POLLING_KEY))?;
+        }
+        events.clear();
+    }
+
+    // done
     Ok(message)
 }
 
