@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <unistd.h>
 
 #define MAX_EXEC_ARGS 16
@@ -80,8 +81,8 @@ static inline void checked_trunc(const char *path) {
   close(fd);
 }
 
-static inline void checked_write(const char *path, const char *buf,
-                                 size_t len) {
+static inline void checked_write_or_create(const char *path, const char *buf,
+                                           size_t len) {
   int fd;
   if ((fd = open(path, O_CREAT | O_RDWR | O_TRUNC)) < 0) {
     ABORT_WITH_ERRNO("unable to open file %s for write", path);
@@ -107,7 +108,7 @@ static inline void checked_write(const char *path, const char *buf,
 static inline void checked_blocking_read_line(const char *path, char *buf,
                                               size_t size) {
   int fd;
-  if ((fd = open(path, O_RDONLY)) < 0) {
+  if ((fd = open(path, O_RDONLY | O_NONBLOCK)) < 0) {
     ABORT_WITH_ERRNO("unable to open file %s for read", path);
   }
 
@@ -157,6 +158,101 @@ static inline void checked_blocking_read_line(const char *path, char *buf,
   } while (true);
 
   close(epoll_fd);
+  close(fd);
+}
+
+static inline void check_config_tty(const char *path) {
+  int fd;
+  if ((fd = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK)) < 0) {
+    ABORT_WITH_ERRNO("unable to open tty at %s", path);
+  }
+  if (!isatty(fd)) {
+    ABORT_WITH_ERRNO("tty opened at %s is not a tty", path);
+  }
+
+  // mark exclusive access
+  if (ioctl(fd, TIOCEXCL, NULL) < 0) {
+    ABORT_WITH_ERRNO("failed to set exclusive access with the tty at %s", path);
+  }
+
+  // configure the tty
+  struct termios attrs;
+  if (tcgetattr(fd, &attrs) < 0) {
+    ABORT_WITH_ERRNO("unable to get attributes of the tty at %s", path);
+  }
+
+  // turn off input processing
+  attrs.c_iflag &= ~(IGNBRK | BRKINT // convert break to null byte
+                     | ICRNL         // no CR to NL translation
+                     | INLCR         // no NL to CR translation
+                     | PARMRK        // don't mark parity errors or breaks
+                     | INPCK         // no input parity check
+                     | ISTRIP        // don't strip high bit off
+                     | IXON          // no XON/XOFF software flow control
+  );
+  // turn off output processing
+  attrs.c_oflag &= ~(OCRNL    // no CR to NL translation
+                     | ONLCR  // no NL to CR-NL translation
+                     | ONLRET // no NL to CR translation
+                     | ONOCR  // no column 0 CR suppression
+                     | OFILL  // no fill characters
+                     | OLCUC  // no case mapping
+                     | OPOST  // no local output processing
+  );
+  // turn off line processing
+  attrs.c_lflag &= ~(ICANON   // canonical mode off
+                     | ECHO   // echo off
+                     | ECHONL // echo newline off
+                     | IEXTEN // extended input processing off
+                     | ISIG   // signal chars off
+  );
+  // turn off character processing
+  attrs.c_cflag &= ~(CSIZE | // clear current char size mask
+                     PARENB  // no parity checking
+  );
+  attrs.c_cflag |= CS8; // force 8 bit input
+
+  // other configs
+  // - one input byte is enough to return from read()
+  // - inter-character timer off
+  attrs.c_cc[VMIN] = 1;
+  attrs.c_cc[VTIME] = 0;
+
+  // baud rates
+  cfsetospeed(&attrs, B115200);
+  cfsetispeed(&attrs, B115200);
+
+  // apply the configuration
+  if (tcsetattr(fd, TCSANOW, &attrs) < 0) {
+    ABORT_WITH_ERRNO("unable to configure the tty at %s", path);
+  }
+
+  // done
+  close(fd);
+}
+
+static inline void checked_tty_write(const char *path, const char *buf,
+                                     size_t len) {
+  int fd;
+  if ((fd = open(path, O_RDWR)) < 0) {
+    ABORT_WITH_ERRNO("unable to open tty %s for write", path);
+  }
+
+  ssize_t written = 0;
+  do {
+    ssize_t rv;
+    rv = write(fd, buf + written, len);
+    if (rv < 0) {
+      ABORT_WITH_ERRNO("unable to write to tty %s", path);
+    }
+    written += rv;
+    if (written == len) {
+      return;
+    }
+  } while (true);
+
+  fsync(fd);
+  tcdrain(fd);
   close(fd);
 }
 
