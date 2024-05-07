@@ -395,11 +395,6 @@ def _execute_linux(
         command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
     )
 
-    # dump output if in verbose mode
-    if verbose:
-        with open(path_out, "r") as f:
-            print(f.read())
-
 
 def cmd_linux(
     kernel: str,
@@ -412,9 +407,14 @@ def cmd_linux(
     _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
     with TemporaryDirectory() as tmp:
         # start the host
-        host = subprocess.Popen([PATH_WKS_LINUX_AGENT_HOST, tmp])
+        command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
+        if verbose:
+            command.append("--verbose")
+        host = subprocess.Popen(command)
+
         # start the guest
         _execute_linux(tmp, kvm, verbose)
+
         # wait for host termination
         host.wait()
 
