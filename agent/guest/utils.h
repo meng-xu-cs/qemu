@@ -22,7 +22,7 @@
 #include <unistd.h>
 
 #define MAX_EXEC_ARGS 16
-#define MAX_LEN_OF_MESSAGE 8
+#define MAX_LEN_OF_MESSAGE 16
 
 /*
  * Logging Utility
@@ -121,33 +121,37 @@ static inline void checked_blocking_read_line(const char *path, char *buf,
   }
 
   size_t len = 0;
-  struct epoll_event events[MAX_LEN_OF_MESSAGE];
+  struct epoll_event event_received;
   do {
     int count;
-    if ((count = epoll_wait(epoll_fd, events, MAX_LEN_OF_MESSAGE, 0)) < 0) {
+    if ((count = epoll_wait(epoll_fd, &event_received, 1, -1)) < 0) {
       ABORT_WITH_ERRNO("epoll wait failed");
     }
+    if (count == 0) {
+      // TODO: handle timeout
+      ABORT_WITH("epoll timed out");
+    }
+    if (count != 1) {
+      ABORT_WITH("expecting one and only one event");
+    }
+    if (event_received.data.fd != fd) {
+      ABORT_WITH("expecting an event related to the monitored fd");
+    }
 
-    for (int i = 0; i < count; i++) {
-      if (events[i].data.fd != fd) {
-        continue;
-      }
+    ssize_t rv;
+    if ((rv = read(fd, buf + len, size - len)) < 0) {
+      ABORT_WITH_ERRNO("failed to read %s", path);
+    }
+    len += rv;
+    if (len == size) {
+      ABORT_WITH("buffer size too small");
+    }
 
-      ssize_t rv;
-      if ((rv = read(fd, buf + len, size - len)) < 0) {
-        ABORT_WITH_ERRNO("failed to read %s", path);
-      }
-      len += rv;
-      if (len == size) {
-        ABORT_WITH("buffer size too small");
-      }
-
-      if (len >= 1 && buf[len - 1] == '\n') {
-        buf[len] = '\0';
-        break;
-      } else if (len >= 2 && buf[len - 1] == '\0' && buf[len - 2] == '\n') {
-        break;
-      }
+    if (len >= 1 && buf[len - 1] == '\n') {
+      buf[len] = '\0';
+      break;
+    } else if (len >= 2 && buf[len - 1] == '\0' && buf[len - 2] == '\n') {
+      break;
     }
   } while (true);
 
