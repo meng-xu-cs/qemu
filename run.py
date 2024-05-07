@@ -48,8 +48,7 @@ PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
 
 # qemu constants
 VM_MONITOR_SOCKET = "monitor"
-VM_CONSOLE_INPUT = "input"
-VM_CONSOLE_OUTPUT = "output"
+VM_CONSOLE_PIPE = "vmio"
 
 VM_MEM_SIZE = 2 * 1024 * 1024 * 1024
 VM_DISK_SIZE = 2 * 1024 * 1024 * 1024
@@ -305,9 +304,9 @@ def _execute_linux(
     kvm: bool,
     verbose: bool,
 ) -> None:
-    path_in = os.path.join(tmp, VM_CONSOLE_INPUT)
-    Path(path_in).touch()
-    path_out = os.path.join(tmp, VM_CONSOLE_OUTPUT)
+    # prepare the pipe
+    path_pipe = Path(tmp).joinpath(VM_CONSOLE_PIPE)
+    os.mkfifo(path_pipe)
 
     # command holder
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
@@ -381,7 +380,7 @@ def _execute_linux(
     command.extend(
         [
             "-chardev",
-            "file,id=vmio,path={},input-path={}".format(path_out, path_in),
+            "pipe,id=vmio,path={}".format(path_pipe),
             "-serial",
             "chardev:vmio",
         ]

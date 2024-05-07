@@ -10,8 +10,8 @@ mod qemu;
 mod utils;
 
 const VM_MONITOR_SOCKET: &str = "monitor";
-const VM_CONSOLE_INPUT: &str = "input";
-const VM_CONSOLE_OUTPUT: &str = "output";
+const VM_CONSOLE_INPUT: &str = "vmio.in";
+const VM_CONSOLE_OUTPUT: &str = "vmio.out";
 
 const MARK_READY: &str = "ready\n";
 
