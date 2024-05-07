@@ -94,7 +94,7 @@ int main(int argc, char *argv[]) {
 
   // wait for host to release us
   char message[MAX_LEN_OF_MESSAGE];
-  checked_blocking_read_line(AGENT_TTY, message, MAX_LEN_OF_MESSAGE);
+  checked_tty_read_line(AGENT_TTY, message, MAX_LEN_OF_MESSAGE);
   if (strcmp(message, AGENT_MARK_READY) != 0) {
     ABORT_WITH("unexpected response: %s, expecting %s", message,
                AGENT_MARK_READY);
