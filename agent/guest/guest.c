@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
   // setup mdev (an alternative to udev)
   const char *sys_hotplug = "/proc/sys/kernel/hotplug";
   if (checked_exists(sys_hotplug)) {
-    checked_write(sys_hotplug, BIN_MDEV, strlen(BIN_MDEV));
+    checked_write_or_create(sys_hotplug, BIN_MDEV, strlen(BIN_MDEV));
   }
   checked_exec(BIN_MDEV, "-s", NULL);
 #endif
@@ -83,8 +83,11 @@ int main(int argc, char *argv[]) {
   checked_exec("ip", "link", "set", "dev", "lo", "up", NULL);
   LOG_INFO("network ready");
 
-  // connect to a dedicated serial device
-  checked_write(AGENT_TTY, AGENT_MARK_READY, strlen(AGENT_MARK_READY));
+  // connect to a dedicated serial (tty)
+  check_config_tty(AGENT_TTY);
+
+  // signal readiness
+  checked_tty_write(AGENT_TTY, AGENT_MARK_READY, strlen(AGENT_MARK_READY));
 
   // mark milestone
   LOG_INFO("notified host on ready");
