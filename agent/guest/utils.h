@@ -111,20 +111,6 @@ static inline void checked_tty_read_line(const char *path, char *buf,
   if ((fd = open(path, O_RDONLY | O_NONBLOCK)) < 0) {
     ABORT_WITH_ERRNO("unable to open file %s for read", path);
   }
-  if (fcntl(fd, F_SETFL, 0) < 0) {
-    ABORT_WITH_ERRNO("failed to fcntl on the tty at %s", path);
-  }
-
-  int flags;
-  if (ioctl(fd, TIOCMGET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to ioctl(TIOCMGET) on the tty at %s", path);
-  }
-
-  // set dtr
-  flags |= TIOCM_DTR;
-  if (ioctl(fd, TIOCMSET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to set DTR on the tty at %s", path);
-  }
 
   // wait
   int epoll_fd;
@@ -171,13 +157,8 @@ static inline void checked_tty_read_line(const char *path, char *buf,
       break;
     }
   } while (true);
-  close(epoll_fd);
 
-  // clear dtr
-  flags &= ~TIOCM_DTR;
-  if (ioctl(fd, TIOCMSET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to clear RTS on the tty at %s", path);
-  }
+  close(epoll_fd);
   close(fd);
 }
 
@@ -257,20 +238,6 @@ static inline void checked_tty_write(const char *path, const char *buf,
   if ((fd = open(path, O_RDWR)) < 0) {
     ABORT_WITH_ERRNO("unable to open tty %s for write", path);
   }
-  if (fcntl(fd, F_SETFL, 0) < 0) {
-    ABORT_WITH_ERRNO("failed to fcntl on the tty at %s", path);
-  }
-
-  int flags;
-  if (ioctl(fd, TIOCMGET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to ioctl(TIOCMGET) on the tty at %s", path);
-  }
-
-  // set rts
-  flags |= TIOCM_RTS;
-  if (ioctl(fd, TIOCMSET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to set RTS on the tty at %s", path);
-  }
 
   // transmit
   ssize_t written = 0;
@@ -285,13 +252,10 @@ static inline void checked_tty_write(const char *path, const char *buf,
       return;
     }
   } while (true);
-  tcdrain(fd);
 
-  // clear rts
-  flags &= ~TIOCM_RTS;
-  if (ioctl(fd, TIOCMSET, &flags) < 0) {
-    ABORT_WITH_ERRNO("failed to clear RTS on the tty at %s", path);
-  }
+  // dran the message
+  tcdrain(fd);
+  tcflush(fd, TCIFLUSH);
   close(fd);
 }
 
