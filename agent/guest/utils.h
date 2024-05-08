@@ -182,46 +182,34 @@ static inline void check_config_tty(const char *path) {
     ABORT_WITH_ERRNO("unable to get attributes of the tty at %s", path);
   }
 
-  // turn off input processing
-  attrs.c_iflag &= ~(IGNBRK | BRKINT // convert break to null byte
-                     | ICRNL         // no CR to NL translation
-                     | INLCR         // no NL to CR translation
-                     | PARMRK        // don't mark parity errors or breaks
-                     | INPCK         // no input parity check
-                     | ISTRIP        // don't strip high bit off
-                     | IXON | IXOFF | IXANY // shut off xon/xoff ctrl
-  );
-  // turn off output processing
-  attrs.c_oflag &= ~(OCRNL    // no CR to NL translation
-                     | ONLCR  // no NL to CR-NL translation
-                     | ONLRET // no NL to CR translation
-                     | ONOCR  // no column 0 CR suppression
-                     | OFILL  // no fill characters
-                     | OLCUC  // no case mapping
-                     | OPOST  // no local output processing
-  );
-  // turn off line processing
-  attrs.c_lflag &= ~(ICANON   // canonical mode off
-                     | ECHO   // echo off
-                     | ECHONL // echo newline off
-                     | IEXTEN // extended input processing off
-                     | ISIG   // signal chars off
-  );
-  // turn off character processing
-  attrs.c_cflag &= ~(CSIZE             // clear current char size mask
-                     | PARENB | PARODD // no parity checking
-                     | CSTOPB | CRTSCTS);
-  attrs.c_cflag |= CREAD | CS8 | CLOCAL; // force 8 bit input
+  // baud rates
+  cfsetospeed(&attrs, B9600);
+  cfsetispeed(&attrs, B9600);
 
-  // other configs
-  // - one input byte is enough to return from read()
-  // - inter-character timer off
+  attrs.c_cflag &= ~(PARENB | PARODD); // disable parity bit
+  attrs.c_cflag |= (CLOCAL | CREAD);   // ignore modem controls
+  attrs.c_cflag &= ~CSIZE;             // 8-bit characters: step 1
+  attrs.c_cflag |= CS8;                // 8-bit characters: step 2
+  attrs.c_cflag &= ~CSTOPB;            // only need 1 stop bit
+  attrs.c_cflag &= ~CRTSCTS;           // disable hardware flow control
+
+  // setup for non-canonical mode
+  attrs.c_lflag &= ~ICANON;
+  attrs.c_lflag &= ~(ECHO | ECHONL | ECHOE);
+  attrs.c_lflag &= ~ISIG;
+  attrs.c_lflag &= ~IEXTEN;
+
+  attrs.c_iflag &= ~(IXON | IXOFF | IXANY); // turn off s/w flow ctrl
+  attrs.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
+                     ICRNL); // disable any special handling of received bytes
+
+  attrs.c_oflag &= ~OPOST; // disable special interpretation of output bytes
+  attrs.c_oflag &= ~(ONLCR | OCRNL); // disable conversion between NL and CR
+  attrs.c_oflag &= ~OFILL;           // do not use fill characters for delay
+
+  // fetch bytes as they become available
   attrs.c_cc[VMIN] = 1;
   attrs.c_cc[VTIME] = 0;
-
-  // baud rates
-  cfsetospeed(&attrs, B115200);
-  cfsetispeed(&attrs, B115200);
 
   // apply the configuration
   if (tcsetattr(fd, TCSANOW, &attrs) < 0) {
@@ -235,7 +223,7 @@ static inline void check_config_tty(const char *path) {
 static inline void checked_tty_write(const char *path, const char *buf,
                                      size_t len) {
   int fd;
-  if ((fd = open(path, O_RDWR | O_SYNC)) < 0) {
+  if ((fd = open(path, O_RDWR | O_NOCTTY | O_SYNC)) < 0) {
     ABORT_WITH_ERRNO("unable to open tty %s for write", path);
   }
 
@@ -253,8 +241,7 @@ static inline void checked_tty_write(const char *path, const char *buf,
     }
   } while (true);
 
-  // dran the message
-  fsync(fd);
+  // drain the message before closing the fd
   tcdrain(fd);
   close(fd);
 }
