@@ -291,7 +291,7 @@ static inline void probe_ivshmem(struct ivshmem *pack, size_t size) {
 
     // map the memory
     mem = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, dev_bar2_fd, 0);
-    if (mem == NULL) {
+    if (mem == MAP_FAILED) {
       ABORT_WITH_ERRNO("unable to mmap ivshmem");
     }
 
