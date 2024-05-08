@@ -77,6 +77,8 @@ def _docker_exec(
         "--device=/dev/kvm",
         "--tmpfs",
         "/dev/shm:exec",
+        "--tmpfs",
+        "/tmp",
         "--privileged=true",
     ]
 
@@ -310,7 +312,7 @@ def _execute_linux(
     verbose: bool,
 ) -> None:
     # prepare the pipe
-    path_vmio = Path(tmp).joinpath(VM_IVSHMEM_FILE)
+    path_ivshmem = Path(tmp).joinpath(VM_IVSHMEM_FILE)
 
     # command holder
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
@@ -384,8 +386,8 @@ def _execute_linux(
     command.extend(
         [
             "-object",
-            "memory-backend-file,size={}M,share=on,mem-path={},id=vmio".format(
-                VM_IVSHMEM_SIZE / MB_IN_BYTES, path_vmio
+            "memory-backend-file,size={}M,share=on,mem-path={},prealloc=on,id=vmio".format(
+                VM_IVSHMEM_SIZE / MB_IN_BYTES, path_ivshmem
             ),
             "-device",
             "ivshmem-plain,memdev=vmio,master=on",

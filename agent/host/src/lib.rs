@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use log::{info, LevelFilter};
 use structopt::StructOpt;
 
-use crate::utils::{inotify_watch_for_addition, recv_str_from_guest, send_str_into_guest};
+use crate::utils::{inotify_watch_for_addition, Ivshmem};
 
 mod config;
 mod qemu;
@@ -11,8 +11,7 @@ mod utils;
 
 const VM_MONITOR_SOCKET: &str = "monitor";
 const VM_IVSHMEM_FILE: &str = "ivshmem";
-
-const MARK_READY: &str = "ready\n";
+const VM_IVSHMEM_SIZE: usize = 16 * 1024 * 1024;
 
 #[derive(StructOpt)]
 struct Options {
@@ -41,16 +40,17 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error waiting for creation of ivshmem: {}", e));
     info!("QEMU is up and running");
 
+    let path_ivshmem = args.path_tmp.join(VM_IVSHMEM_FILE);
+    let mut ivshmem = Ivshmem::new(&path_ivshmem, VM_IVSHMEM_SIZE)
+        .unwrap_or_else(|e| panic!("error mapping ivshmem: {}", e));
+
+    let vmio = ivshmem.vmio();
+    vmio.init()
+        .unwrap_or_else(|e| panic!("error initializing vmio: {}", e));
+
     // sync with guest on start-up
-    let path_console = args.path_tmp.join(VM_IVSHMEM_FILE);
-    let message = recv_str_from_guest(&path_console)
-        .unwrap_or_else(|e| panic!("error waiting for guest to be ready: {}", e));
-    if message != MARK_READY {
-        panic!(
-            "unexpected message from guest: {}, expect {}",
-            message, MARK_READY
-        );
-    }
+    vmio.wait_on_host()
+        .unwrap_or_else(|e| panic!("error waiting for guest agent to be ready: {}", e));
     info!("guest agent is ready");
 
     // save a live snapshot
@@ -60,7 +60,10 @@ pub fn entrypoint() {
     info!("live snapshot is taken");
 
     // release the guest
-    send_str_into_guest(&path_console, MARK_READY)
-        .unwrap_or_else(|e| panic!("error resuming guest: {}", e));
+    vmio.post_to_guest()
+        .unwrap_or_else(|e| panic!("error posting for guest agent to resume: {}", e));
     info!("notified guest agent to continue");
+
+    // drop the ivshmem at the end
+    drop(ivshmem);
 }
