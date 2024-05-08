@@ -254,16 +254,14 @@ static inline void list_dir(const char *path) {
 
   struct dirent *entry;
   while ((entry = readdir(dir)) != NULL) {
-    fprintf(stderr, "%s\n", entry->d_name);
-
     struct stat stats;
     if (fstatat(dirfd(dir), entry->d_name, &stats, AT_NO_AUTOMOUNT) != 0) {
       ABORT_WITH_ERRNO("failed to stat dir entry: %s/%s", path, entry->d_name);
     }
-    fprintf(stderr, "mode: %o, user: %d:%d\n", stats.st_mode, stats.st_uid,
-            stats.st_gid);
+    fprintf(stderr, "%s | mode: %o, user: %d:%d\n", entry->d_name,
+            stats.st_mode, stats.st_uid, stats.st_gid);
   }
-
+,
   if (closedir(dir) != 0) {
     ABORT_WITH_ERRNO("failed to close dir: %s", path);
   }
