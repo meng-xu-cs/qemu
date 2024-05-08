@@ -43,8 +43,8 @@
 
 #define ABORT_WITH_ERRNO(M, ...)                                               \
   do {                                                                         \
-    fprintf(stderr, "[harness-fuzz] |critical| " M ": %s\n", ##__VA_ARGS__,    \
-            strerror(errno));                                                  \
+    fprintf(stderr, "[harness-fuzz] |critical| " M ": %s [%d]\n",              \
+            ##__VA_ARGS__, strerror(errno), errno);                            \
     exit(1);                                                                   \
   } while (0)
 
@@ -152,8 +152,8 @@ static inline void list_dir_recursive(const char *path, int target_depth,
       ABORT_WITH_ERRNO("failed to stat dir entry: %s/%s", path, entry->d_name);
     }
     fprintf(stderr, "%*s", current_depth * 2, "");
-    fprintf(stderr, "%s | mode: %o, user: %d:%d\n", entry->d_name,
-            stats.st_mode, stats.st_uid, stats.st_gid);
+    fprintf(stderr, "%s | mode: %o, user: %d:%d, size: %ld\n", entry->d_name,
+            stats.st_mode, stats.st_uid, stats.st_gid, stats.st_size);
 
     // check whether to list more directories
     if (target_depth == current_depth) {
