@@ -10,8 +10,8 @@ use polling::{Event, Events, Poller};
 const VMIO_POLLING_KEY: usize = 42;
 
 /// Receive one line from the guest agent
-pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
-    let f = File::open(path_console_output)?;
+pub fn recv_str_from_guest(path_console: &Path) -> io::Result<String> {
+    let f = File::open(path_console)?;
     let fd = f.as_raw_fd();
 
     let mut message = String::new();
@@ -46,8 +46,8 @@ pub fn recv_str_from_guest(path_console_output: &Path) -> io::Result<String> {
 }
 
 /// Send one line to the guest agent
-pub fn send_str_into_guest(path_console_input: &Path, message: &str) -> io::Result<()> {
-    fs::write(path_console_input, message)
+pub fn send_str_into_guest(path_console: &Path, message: &str) -> io::Result<()> {
+    fs::write(path_console, message)
 }
 
 /// block until a specific file is created or deleted in the watched directory
@@ -87,11 +87,13 @@ fn inotify_watch(dir: &Path, name: &str, is_create: bool) -> io::Result<()> {
 }
 
 /// block until a specific file is deleted in the watched directory
+#[allow(dead_code)]
 pub fn inotify_watch_for_deletion(dir: &Path, name: &str) -> io::Result<()> {
     inotify_watch(dir, name, false)
 }
 
 /// block until a specific file is deleted in the watched directory
+#[allow(dead_code)]
 pub fn inotify_watch_for_addition(dir: &Path, name: &str) -> io::Result<()> {
     inotify_watch(dir, name, true)
 }
