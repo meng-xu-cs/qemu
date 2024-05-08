@@ -47,6 +47,7 @@ pub fn entrypoint() {
     let vmio = ivshmem.vmio();
     vmio.init()
         .unwrap_or_else(|e| panic!("error initializing vmio: {}", e));
+    info!("vmio initialized");
 
     // sync with guest on start-up
     vmio.wait_on_host()
