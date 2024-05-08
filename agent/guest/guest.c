@@ -83,6 +83,10 @@ int main(int argc, char *argv[]) {
   checked_exec("ip", "link", "set", "dev", "lo", "up", NULL);
   LOG_INFO("network ready");
 
+  // connect to the ivshmem device
+  void *ivshmem = probe_for_ivshmem();
+  LOG_INFO("ivshmem ready");
+
   // connect to a dedicated serial (tty)
   check_config_tty(AGENT_TTY);
 
@@ -100,6 +104,9 @@ int main(int argc, char *argv[]) {
                AGENT_MARK_READY);
   }
   LOG_INFO("operation resumed by host");
+
+  // unmap the memory before proceeding with any actions
+  munmap(ivshmem, IVSHMEM_SIZE);
 
 #ifdef HARNESS
 #ifdef BLOB

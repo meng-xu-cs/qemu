@@ -3,14 +3,14 @@ use std::path::PathBuf;
 use log::{info, LevelFilter};
 use structopt::StructOpt;
 
-use crate::utils::{recv_str_from_guest, send_str_into_guest};
+use crate::utils::{inotify_watch_for_addition, recv_str_from_guest, send_str_into_guest};
 
 mod config;
 mod qemu;
 mod utils;
 
 const VM_MONITOR_SOCKET: &str = "monitor";
-const VM_CONSOLE: &str = "vmio";
+const VM_IVSHMEM_FILE: &str = "ivshmem";
 
 const MARK_READY: &str = "ready\n";
 
@@ -36,10 +36,15 @@ pub fn entrypoint() {
         })
         .init();
 
+    // wait for ivshmem to be created
+    inotify_watch_for_addition(&args.path_tmp, VM_IVSHMEM_FILE)
+        .unwrap_or_else(|e| panic!("error waiting for creation of ivshmem: {}", e));
+    info!("QEMU is up and running");
+
     // sync with guest on start-up
-    let path_console = args.path_tmp.join(VM_CONSOLE);
+    let path_console = args.path_tmp.join(VM_IVSHMEM_FILE);
     let message = recv_str_from_guest(&path_console)
-        .unwrap_or_else(|e| panic!("error waiting for guest ready: {}", e));
+        .unwrap_or_else(|e| panic!("error waiting for guest to be ready: {}", e));
     if message != MARK_READY {
         panic!(
             "unexpected message from guest: {}, expect {}",
