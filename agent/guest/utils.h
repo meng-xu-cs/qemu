@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -20,7 +21,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <termios.h>
 #include <unistd.h>
 
 #define MAX_EXEC_ARGS 16
@@ -52,16 +52,16 @@
  * Filesystem Utility
  */
 
+static inline void checked_mkdir(const char *path) {
+  if (mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) != 0) {
+    ABORT_WITH_ERRNO("failed to mkdir %s", path);
+  }
+}
+
 static inline void checked_mount(const char *source, const char *target,
                                  const char *type, unsigned long flags) {
   if (mount(source, target, type, flags, NULL) != 0) {
     ABORT_WITH_ERRNO("failed to mount %s", target);
-  }
-}
-
-static inline void checked_mkdir(const char *path) {
-  if (mkdir(path, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IROTH) != 0) {
-    ABORT_WITH_ERRNO("failed to mkdir %s", path);
   }
 }
 
@@ -131,147 +131,6 @@ static inline void checked_write_or_create(const char *path, const char *buf,
   close(fd);
 }
 
-static inline void checked_tty_read_line(const char *path, char *buf,
-                                         size_t size) {
-  int fd;
-  if ((fd = open(path, O_RDONLY | O_SYNC)) < 0) {
-    ABORT_WITH_ERRNO("unable to open file %s for read", path);
-  }
-
-  // wait
-  int epoll_fd;
-  if ((epoll_fd = epoll_create1(0)) < 0) {
-    ABORT_WITH_ERRNO("unable epoll");
-  }
-
-  struct epoll_event event = {.events = EPOLLIN, .data.fd = fd};
-  if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event) != 0) {
-    ABORT_WITH_ERRNO("epoll add failed");
-  }
-
-  size_t len = 0;
-  struct epoll_event event_received;
-  do {
-    int count;
-    if ((count = epoll_wait(epoll_fd, &event_received, 1, -1)) < 0) {
-      ABORT_WITH_ERRNO("epoll wait failed");
-    }
-    if (count == 0) {
-      // TODO: handle timeout
-      ABORT_WITH("epoll timed out");
-    }
-    if (count != 1) {
-      ABORT_WITH("expecting one and only one event");
-    }
-    if (event_received.data.fd != fd) {
-      ABORT_WITH("expecting an event related to the monitored fd");
-    }
-
-    ssize_t rv;
-    if ((rv = read(fd, buf + len, size - len)) < 0) {
-      ABORT_WITH_ERRNO("failed to read %s", path);
-    }
-    len += rv;
-    if (len == size) {
-      ABORT_WITH("buffer size too small");
-    }
-
-    if (len >= 1 && buf[len - 1] == '\n') {
-      buf[len] = '\0';
-      break;
-    } else if (len >= 2 && buf[len - 1] == '\0' && buf[len - 2] == '\n') {
-      break;
-    }
-  } while (true);
-
-  close(epoll_fd);
-  close(fd);
-}
-
-static inline void check_config_tty(const char *path) {
-  int fd;
-  if ((fd = open(path, O_RDWR | O_NOCTTY | O_SYNC)) < 0) {
-    ABORT_WITH_ERRNO("unable to open tty at %s", path);
-  }
-  if (!isatty(fd)) {
-    ABORT_WITH_ERRNO("tty opened at %s is not a tty", path);
-  }
-
-  // mark exclusive access
-  if (ioctl(fd, TIOCEXCL, NULL) < 0) {
-    ABORT_WITH_ERRNO("failed to set exclusive access with the tty at %s", path);
-  }
-
-  // configure the tty
-  struct termios attrs;
-  if (tcgetattr(fd, &attrs) < 0) {
-    ABORT_WITH_ERRNO("unable to get attributes of the tty at %s", path);
-  }
-
-  // baud rates
-  cfsetospeed(&attrs, B9600);
-  cfsetispeed(&attrs, B9600);
-
-  attrs.c_cflag &= ~(PARENB | PARODD); // disable parity bit
-  attrs.c_cflag |= (CLOCAL | CREAD);   // ignore modem controls
-  attrs.c_cflag &= ~CSIZE;             // 8-bit characters: step 1
-  attrs.c_cflag |= CS8;                // 8-bit characters: step 2
-  attrs.c_cflag &= ~CSTOPB;            // only need 1 stop bit
-  attrs.c_cflag &= ~CRTSCTS;           // disable hardware flow control
-
-  // setup for non-canonical mode
-  attrs.c_lflag &= ~ICANON;
-  attrs.c_lflag &= ~(ECHO | ECHONL | ECHOE);
-  attrs.c_lflag &= ~ISIG;
-  attrs.c_lflag &= ~IEXTEN;
-
-  attrs.c_iflag &= ~(IXON | IXOFF | IXANY); // turn off s/w flow ctrl
-  attrs.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR |
-                     ICRNL); // disable any special handling of received bytes
-
-  attrs.c_oflag &= ~OPOST; // disable special interpretation of output bytes
-  attrs.c_oflag &= ~(ONLCR | OCRNL); // disable conversion between NL and CR
-  attrs.c_oflag &= ~OFILL;           // do not use fill characters for delay
-
-  // fetch bytes as they become available
-  attrs.c_cc[VMIN] = 1;
-  attrs.c_cc[VTIME] = 0;
-
-  // apply the configuration
-  if (tcsetattr(fd, TCSANOW, &attrs) < 0) {
-    ABORT_WITH_ERRNO("unable to configure the tty at %s", path);
-  }
-
-  // done
-  close(fd);
-}
-
-static inline void checked_tty_write(const char *path, const char *buf,
-                                     size_t len) {
-  int fd;
-  if ((fd = open(path, O_RDWR | O_NOCTTY | O_SYNC)) < 0) {
-    ABORT_WITH_ERRNO("unable to open tty %s for write", path);
-  }
-
-  // transmit
-  ssize_t written = 0;
-  do {
-    ssize_t rv;
-    rv = write(fd, buf + written, len);
-    if (rv < 0) {
-      ABORT_WITH_ERRNO("unable to write to tty %s", path);
-    }
-    written += rv;
-    if (written == len) {
-      return;
-    }
-  } while (true);
-
-  // drain the message before closing the fd
-  tcdrain(fd);
-  close(fd);
-}
-
 #ifndef RELEASE
 static inline void list_dir_recursive(const char *path, int target_depth,
                                       int current_depth) {
@@ -330,7 +189,21 @@ static inline void list_dir(const char *path, int target_depth) {
 #define IVSHMEM_DEVICE_ID "0x1110"
 #define IVSHMEM_REVISION_ID "0x01"
 
-#define IVSHMEM_SIZE 16 * 1024 * 1024
+// holder of the ivshmem pack
+struct ivshmem {
+  int fd;
+  size_t size;
+  void *addr;
+};
+
+// holder of the ivshmem pack
+struct vmio {
+  uint64_t flag;
+  sem_t sema_host;
+  sem_t sema_guest;
+  uint64_t size;
+  char buf[0];
+};
 
 static inline bool __check_pci_ident(int dirfd, const char *kind,
                                      const char *expected) {
@@ -349,7 +222,7 @@ static inline bool __check_pci_ident(int dirfd, const char *kind,
   return strcmp(buf, expected) == 0;
 }
 
-static inline void *probe_for_ivshmem(void) {
+static inline void probe_ivshmem(struct ivshmem *pack, size_t size) {
   // indicator on whether we have found the ivshmem
   void *mem = NULL;
 
@@ -417,14 +290,15 @@ static inline void *probe_for_ivshmem(void) {
     }
 
     // map the memory
-    mem = mmap(NULL, IVSHMEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
-               dev_bar2_fd, 0);
+    mem = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, dev_bar2_fd, 0);
     if (mem == NULL) {
       ABORT_WITH_ERRNO("unable to mmap ivshmem");
     }
 
     // done with the initialization
-    close(dev_bar2_fd);
+    pack->fd = dev_bar2_fd;
+    pack->size = size;
+    pack->addr = mem;
 
   skip:
     // done with this entry
@@ -439,7 +313,13 @@ static inline void *probe_for_ivshmem(void) {
   if (mem == NULL) {
     ABORT_WITH("unable to find the ivshmem device");
   }
-  return mem;
+}
+
+static inline void unmap_ivshmem(const struct ivshmem *pack) {
+  if (munmap(pack->addr, pack->size) < 0) {
+    ABORT_WITH_ERRNO("failed to unmap ivshmem");
+  }
+  close(pack->fd);
 }
 
 /*

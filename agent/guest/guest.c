@@ -20,8 +20,7 @@
 #define BIN_MDEV "/bin/mdev"
 #endif
 
-#define AGENT_TTY "/dev/ttyS1"
-#define AGENT_MARK_READY "ready\n"
+#define IVSHMEM_SIZE (16 * 1024 * 1024)
 
 /*
  * Entrypoint
@@ -84,29 +83,29 @@ int main(int argc, char *argv[]) {
   LOG_INFO("network ready");
 
   // connect to the ivshmem device
-  void *ivshmem = probe_for_ivshmem();
+  struct ivshmem pack;
+  probe_ivshmem(&pack, IVSHMEM_SIZE);
   LOG_INFO("ivshmem ready");
 
-  // connect to a dedicated serial (tty)
-  check_config_tty(AGENT_TTY);
+  struct vmio *vmio = pack.addr;
 
-  // signal readiness
-  checked_tty_write(AGENT_TTY, AGENT_MARK_READY, strlen(AGENT_MARK_READY));
-
-  // mark milestone
+  // wait for host to be ready
+  while (vmio->flag == 0) {
+    // do nothing
+  }
+  if (sem_post(&vmio->sema_host) != 0) {
+    ABORT_WITH_ERRNO("failed to post to the host semaphore");
+  }
   LOG_INFO("notified host on ready");
 
   // wait for host to release us
-  char message[MAX_LEN_OF_MESSAGE];
-  checked_tty_read_line(AGENT_TTY, message, MAX_LEN_OF_MESSAGE);
-  if (strcmp(message, AGENT_MARK_READY) != 0) {
-    ABORT_WITH("unexpected response: %s, expecting %s", message,
-               AGENT_MARK_READY);
+  if (sem_wait(&vmio->sema_guest) != 0) {
+    ABORT_WITH_ERRNO("failed to wait on the guest semaphore");
   }
   LOG_INFO("operation resumed by host");
 
   // unmap the memory before proceeding with any actions
-  munmap(ivshmem, IVSHMEM_SIZE);
+  unmap_ivshmem(&pack);
 
 #ifdef HARNESS
 #ifdef BLOB
