@@ -46,21 +46,26 @@ PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
 
+
+# system constants
+NUM_CPUS = multiprocessing.cpu_count()
+KB_IN_BYTES = 1024
+MB_IN_BYTES = KB_IN_BYTES * 1024
+GB_IN_BYTES = MB_IN_BYTES * 1024
+
+
 # qemu constants
 VM_MONITOR_SOCKET = "monitor"
-VM_CONSOLE_PIPE = "vmio"
+VM_IVSHMEM_FILE = "ivshmem"
 
-VM_MEM_SIZE = 2 * 1024 * 1024 * 1024
-VM_DISK_SIZE = 2 * 1024 * 1024 * 1024
+VM_MEM_SIZE = 2 * GB_IN_BYTES
+VM_DISK_SIZE = 2 * GB_IN_BYTES
+VM_IVSHMEM_SIZE = 16 * MB_IN_BYTES
 
 # docker constants
 DOCKER_TAG = "qemu"
 DOCKER_SRC_DIR = "/src"
 DOCKER_WORKDIR_PREFIX = "/work"
-
-# system constants
-NUM_CPUS = multiprocessing.cpu_count()
-GB_IN_BYTES = 1024 * 1024 * 1024
 
 
 def _docker_exec(
@@ -305,8 +310,7 @@ def _execute_linux(
     verbose: bool,
 ) -> None:
     # prepare the pipe
-    path_pipe = Path(tmp).joinpath(VM_CONSOLE_PIPE)
-    os.mkfifo(path_pipe)
+    path_vmio = Path(tmp).joinpath(VM_IVSHMEM_FILE)
 
     # command holder
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
@@ -379,10 +383,12 @@ def _execute_linux(
     # interaction
     command.extend(
         [
-            "-chardev",
-            "pipe,id=vmio,path={}".format(path_pipe),
-            "-serial",
-            "chardev:vmio",
+            "-object",
+            "memory-backend-file,size={}M,share=on,mem-path={},id=vmio".format(
+                VM_IVSHMEM_SIZE / MB_IN_BYTES, path_vmio
+            ),
+            "-device",
+            "ivshmem-plain,memdev=vmio,master=on",
         ]
     )
 

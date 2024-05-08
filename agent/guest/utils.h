@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/signalfd.h>
 #include <sys/stat.h>
@@ -79,6 +80,31 @@ static inline void checked_trunc(const char *path) {
     ABORT_WITH_ERRNO("unable to open file %s", path);
   }
   close(fd);
+}
+
+static inline size_t checked_read_line_from_fd(int fd, char *buf,
+                                               size_t bufsize) {
+  size_t cur = 0;
+  do {
+    ssize_t len = read(fd, buf + cur, bufsize - cur);
+    if (len < 0) {
+      ABORT_WITH_ERRNO("unable to read from fd");
+    }
+    if (len == 0) {
+      continue;
+    }
+
+    cur += len;
+    if (buf[cur - 1] == '\n') {
+      buf[cur - 1] = '\0';
+      // return the strlen, with \n stripped
+      return cur - 1;
+    }
+
+    if (cur == bufsize) {
+      ABORT_WITH("buffer size too small for read");
+    }
+  } while (true);
 }
 
 static inline void checked_write_or_create(const char *path, const char *buf,
@@ -246,7 +272,9 @@ static inline void checked_tty_write(const char *path, const char *buf,
   close(fd);
 }
 
-static inline void list_dir(const char *path) {
+#ifndef RELEASE
+static inline void list_dir_recursive(const char *path, int target_depth,
+                                      int current_depth) {
   DIR *dir = opendir(path);
   if (dir == NULL) {
     ABORT_WITH_ERRNO("failed to open dir: %s", path);
@@ -254,17 +282,164 @@ static inline void list_dir(const char *path) {
 
   struct dirent *entry;
   while ((entry = readdir(dir)) != NULL) {
+    // ignore the links
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    // probe for the items
     struct stat stats;
     if (fstatat(dirfd(dir), entry->d_name, &stats, AT_NO_AUTOMOUNT) != 0) {
       ABORT_WITH_ERRNO("failed to stat dir entry: %s/%s", path, entry->d_name);
     }
+    fprintf(stderr, "%*s", current_depth * 2, "");
     fprintf(stderr, "%s | mode: %o, user: %d:%d\n", entry->d_name,
             stats.st_mode, stats.st_uid, stats.st_gid);
+
+    // check whether to list more directories
+    if (target_depth == current_depth) {
+      continue;
+    }
+    if (S_ISDIR(stats.st_mode)) {
+      size_t sub_path_len = strlen(path) + strlen(entry->d_name) + 2;
+      char sub_path[sub_path_len];
+      if (snprintf(sub_path, sub_path_len, "%s/%s", path, entry->d_name) < 0) {
+        ABORT_WITH("failed to allocate buffer for %s/%s", path, entry->d_name);
+      }
+      list_dir_recursive(sub_path, target_depth, current_depth + 1);
+    }
   }
-,
+
   if (closedir(dir) != 0) {
     ABORT_WITH_ERRNO("failed to close dir: %s", path);
   }
+}
+static inline void list_dir(const char *path, int target_depth) {
+  list_dir_recursive(path, target_depth, 0);
+}
+#endif
+
+/*
+ * Device Probing
+ */
+
+#define MAX_DENTRY_NAME_SIZE 256
+#define MAX_PCI_IDENT_SIZE 64
+
+#define IVSHMEM_VENDOR_ID "0x1af4"
+#define IVSHMEM_DEVICE_ID "0x1110"
+#define IVSHMEM_REVISION_ID "0x01"
+
+#define IVSHMEM_SIZE 16 * 1024 * 1024
+
+static inline bool __check_pci_ident(int dirfd, const char *kind,
+                                     const char *expected) {
+  char buf[MAX_PCI_IDENT_SIZE];
+  if (faccessat(dirfd, kind, R_OK, 0) != 0) {
+    return false;
+  }
+
+  int fd;
+  if ((fd = openat(dirfd, kind, O_RDONLY | O_CLOEXEC)) < 0) {
+    ABORT_WITH_ERRNO("failed to open PCI entry %s", kind);
+  }
+  checked_read_line_from_fd(fd, buf, MAX_PCI_IDENT_SIZE);
+  close(fd);
+
+  return strcmp(buf, expected) == 0;
+}
+
+static inline void *probe_for_ivshmem(void) {
+  // indicator on whether we have found the ivshmem
+  void *mem = NULL;
+
+  // scan over the entries
+  DIR *dir = opendir("/sys/bus/pci/devices/");
+  if (dir == NULL) {
+    ABORT_WITH_ERRNO("failed to open PCI device tree");
+  }
+
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    const char *name = entry->d_name;
+    size_t name_len = strnlen(name, MAX_DENTRY_NAME_SIZE);
+    if (name_len == 0 || name_len == MAX_DENTRY_NAME_SIZE) {
+      // unexpected length
+      continue;
+    }
+
+    // filter links
+    if (name[0] == '.') {
+      if (name_len == 1) {
+        continue;
+      }
+      if (name[1] == '.' && name_len == 2) {
+        continue;
+      }
+    }
+
+    // filter non-directories
+    struct stat stats;
+    if (fstatat(dirfd(dir), name, &stats, AT_NO_AUTOMOUNT) != 0) {
+      ABORT_WITH_ERRNO("failed to stat PCI entry: %s", name);
+    }
+    if (!S_ISDIR(stats.st_mode)) {
+      continue;
+    }
+
+    // now we have a valid entry
+    int dev_dir_fd;
+    if ((dev_dir_fd = openat(dirfd(dir), name,
+                             O_RDONLY | O_CLOEXEC | O_DIRECTORY)) < 0) {
+      ABORT_WITH_ERRNO("failed to open PCI entry: %s", name);
+    }
+
+    // check device identity
+    if (!__check_pci_ident(dev_dir_fd, "vendor", IVSHMEM_VENDOR_ID)) {
+      goto skip;
+    }
+    if (!__check_pci_ident(dev_dir_fd, "device", IVSHMEM_DEVICE_ID)) {
+      goto skip;
+    }
+    if (!__check_pci_ident(dev_dir_fd, "revision", IVSHMEM_REVISION_ID)) {
+      goto skip;
+    }
+
+    // found ivshmem, and make sure there is only one device
+    if (mem != NULL) {
+      ABORT_WITH("more than one ivshmem device found");
+    }
+
+    // check for resources
+    int dev_bar2_fd;
+    if ((dev_bar2_fd = openat(dev_dir_fd, "resource2", O_RDWR) < 0)) {
+      ABORT_WITH_ERRNO("unable to open BAR2 of ivshmem");
+    }
+
+    // map the memory
+    mem = mmap(NULL, IVSHMEM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED,
+               dev_bar2_fd, 0);
+    if (mem == NULL) {
+      ABORT_WITH_ERRNO("unable to mmap ivshmem");
+    }
+
+    // done with the initialization
+    close(dev_bar2_fd);
+
+  skip:
+    // done with this entry
+    close(dev_dir_fd);
+  }
+
+  if (closedir(dir) != 0) {
+    ABORT_WITH_ERRNO("failed to close PCI device tree");
+  }
+
+  // check we do have a memory
+  if (mem == NULL) {
+    ABORT_WITH("unable to find the ivshmem device");
+  }
+  return mem;
 }
 
 /*
