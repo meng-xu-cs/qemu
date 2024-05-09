@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -5,33 +6,40 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use log::error;
-use qapi::qmp::{Event, JobStatus};
+use qapi::qmp::{Event, JobStatus, RunState};
 use qapi::{qmp, Command, Qmp};
 
 const SNAPSHOT_TAG: &str = "qce";
 const SNAPSHOT_JOB_PREFIX: &str = "qce_job_";
 const SNAPSHOT_DISK: &str = "disk0";
 
-fn exec_sync<C: Command>(socket: &Path, command: C) -> io::Result<Event> {
+fn exec_sync<C: Command + Debug>(socket: &Path, command: C) -> io::Result<(C::Ok, Option<Event>)> {
     let stream = UnixStream::connect(socket)?;
     let mut qmp = Qmp::from_stream(&stream);
     qmp.handshake()?;
 
     // send the command
-    qmp.execute(&command)?;
+    let resp = qmp.execute(&command)?;
 
-    // wait for result
-    let events: Vec<_> = qmp.events().collect();
-    if events.len() != 1 {
-        for event in events {
-            error!("unexpected event {:?}", event);
-        }
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "expect one and only one event for a command in sync mode".to_string(),
-        ));
+    // consume generated events
+    qmp.nop()?;
+    let mut iter = qmp.events();
+    match iter.next() {
+        None => Ok((resp, None)),
+        Some(event) => match iter.next() {
+            None => Ok((resp, Some(event))),
+            Some(e) => {
+                error!("unexpected event {:?}", e);
+                for e in iter {
+                    error!("unexpected event {:?}", e);
+                }
+                Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "more than one events received for a command in sync mode".to_string(),
+                ))
+            }
+        },
     }
-    Ok(events.into_iter().next().unwrap())
 }
 
 fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result<()> {
@@ -123,8 +131,9 @@ impl QemuProxy {
     }
 
     fn vm_stop(&mut self) -> io::Result<()> {
-        match exec_sync(&self.socket, qmp::stop {})? {
-            Event::STOP { .. } => Ok(()),
+        let (_, event) = exec_sync(&self.socket, qmp::stop {})?;
+        match event {
+            Some(Event::STOP { .. }) => Ok(()),
             e => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("unexpected event: {:?}", e),
@@ -133,8 +142,9 @@ impl QemuProxy {
     }
 
     fn vm_cont(&mut self) -> io::Result<()> {
-        match exec_sync(&self.socket, qmp::cont {})? {
-            Event::RESUME { .. } => Ok(()),
+        let (_, event) = exec_sync(&self.socket, qmp::cont {})?;
+        match event {
+            Some(Event::RESUME { .. }) => Ok(()),
             e => Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!("unexpected event: {:?}", e),
@@ -155,8 +165,54 @@ impl QemuProxy {
                 devices: vec![SNAPSHOT_DISK.to_string()],
             },
             &job_id,
+        )
+    }
+
+    pub fn snapshot_load(&mut self) -> io::Result<()> {
+        let job_id = self.next_job_id();
+        exec_async(
+            &self.socket,
+            qmp::snapshot_load {
+                tag: SNAPSHOT_TAG.to_string(),
+                job_id: job_id.clone(),
+                vmstate: SNAPSHOT_DISK.to_string(),
+                devices: vec![SNAPSHOT_DISK.to_string()],
+            },
+            &job_id,
         )?;
 
         self.vm_cont()
     }
+
+    pub fn query_status(&mut self) -> io::Result<VMStatus> {
+        let (resp, _) = exec_sync(&self.socket, qmp::query_status {})?;
+        let status = match resp.status {
+            RunState::running => VMStatus::Running,
+            RunState::shutdown | RunState::guest_panicked => VMStatus::Stopped,
+            RunState::internal_error | RunState::io_error => VMStatus::Error,
+            RunState::debug
+            | RunState::suspended
+            | RunState::paused
+            | RunState::save_vm
+            | RunState::restore_vm
+            | RunState::prelaunch
+            | RunState::inmigrate
+            | RunState::postmigrate
+            | RunState::finish_migrate
+            | RunState::watchdog
+            | RunState::colo => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("unrecognized run state: {:?}", resp.status),
+                ));
+            }
+        };
+        Ok(status)
+    }
+}
+
+pub enum VMStatus {
+    Running,
+    Stopped,
+    Error,
 }
