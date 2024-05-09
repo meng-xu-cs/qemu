@@ -50,8 +50,7 @@ pub fn entrypoint() {
     info!("vmio initialized");
 
     // sync with guest on start-up
-    vmio.wait_on_host()
-        .unwrap_or_else(|e| panic!("error waiting for guest agent to be ready: {}", e));
+    vmio.wait_on_host();
     info!("guest agent is ready");
 
     // save a live snapshot
@@ -61,8 +60,7 @@ pub fn entrypoint() {
     info!("live snapshot is taken");
 
     // release the guest
-    vmio.post_to_guest()
-        .unwrap_or_else(|e| panic!("error posting for guest agent to resume: {}", e));
+    vmio.post_to_guest();
     info!("notified guest agent to continue");
 
     // drop the ivshmem at the end
