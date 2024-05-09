@@ -1,15 +1,38 @@
 use std::io;
 use std::os::unix::net::UnixStream;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::Duration;
 
+use log::error;
 use qapi::qmp::{Event, JobStatus};
 use qapi::{qmp, Command, Qmp};
 
 const SNAPSHOT_TAG: &str = "qce";
 const SNAPSHOT_JOB_PREFIX: &str = "qce_job_";
 const SNAPSHOT_DISK: &str = "disk0";
+
+fn exec_sync<C: Command>(socket: &Path, command: C) -> io::Result<Event> {
+    let stream = UnixStream::connect(socket)?;
+    let mut qmp = Qmp::from_stream(&stream);
+    qmp.handshake()?;
+
+    // send the command
+    qmp.execute(&command)?;
+
+    // wait for result
+    let events: Vec<_> = qmp.events().collect();
+    if events.len() != 1 {
+        for event in events {
+            error!("unexpected event {:?}", event);
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "expect one and only one event for a command in sync mode".to_string(),
+        ));
+    }
+    Ok(events.into_iter().next().unwrap())
+}
 
 fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result<()> {
     let stream = UnixStream::connect(socket)?;
@@ -80,16 +103,60 @@ fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result
     ))
 }
 
-pub fn snapshot_save(socket: &Path, job_index: usize) -> io::Result<()> {
-    let job_id = format!("{}{}", SNAPSHOT_JOB_PREFIX, job_index);
-    exec_async(
-        socket,
-        qmp::snapshot_save {
-            tag: SNAPSHOT_TAG.to_string(),
-            job_id: job_id.clone(),
-            vmstate: SNAPSHOT_DISK.to_string(),
-            devices: vec![SNAPSHOT_DISK.to_string()],
-        },
-        &job_id,
-    )
+pub struct QemuProxy {
+    socket: PathBuf,
+    job_count: usize,
+}
+
+impl QemuProxy {
+    pub fn new(socket: PathBuf) -> Self {
+        Self {
+            socket,
+            job_count: 0,
+        }
+    }
+
+    fn next_job_id(&mut self) -> String {
+        let job_id = format!("{}{}", SNAPSHOT_JOB_PREFIX, self.job_count);
+        self.job_count += 1;
+        job_id
+    }
+
+    fn vm_stop(&mut self) -> io::Result<()> {
+        match exec_sync(&self.socket, qmp::stop {})? {
+            Event::STOP { .. } => Ok(()),
+            e => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("unexpected event: {:?}", e),
+            )),
+        }
+    }
+
+    fn vm_cont(&mut self) -> io::Result<()> {
+        match exec_sync(&self.socket, qmp::cont {})? {
+            Event::RESUME { .. } => Ok(()),
+            e => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("unexpected event: {:?}", e),
+            )),
+        }
+    }
+
+    pub fn snapshot_save(&mut self) -> io::Result<()> {
+        self.vm_stop()?;
+
+        let job_id = self.next_job_id();
+        exec_async(
+            &self.socket,
+            qmp::snapshot_save {
+                tag: SNAPSHOT_TAG.to_string(),
+                job_id: job_id.clone(),
+                vmstate: SNAPSHOT_DISK.to_string(),
+                devices: vec![SNAPSHOT_DISK.to_string()],
+            },
+            &job_id,
+        )?;
+
+        self.vm_cont()
+    }
 }
