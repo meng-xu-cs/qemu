@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
 
   // wait for host to be ready
   while (vmio->flag == 0) {
-    // do nothing
+    // do nothing, this (unexpected) busy waiting is intentional
   }
   if (sem_post(&vmio->sema_host) != 0) {
     ABORT_WITH_ERRNO("failed to post to the host semaphore");

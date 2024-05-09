@@ -209,6 +209,7 @@ def __compile_agent_guest(
     command = [
         "cc",
         "-static",
+        "-pthread",
         "-std=c2x",
         PATH_AGENT_GUEST_SRC,
         "-o",
