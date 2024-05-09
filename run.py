@@ -367,7 +367,7 @@ def _execute_linux(
 
     # behaviors
     command.extend(["-no-reboot"])
-    kernel_args.append("panic=-1")
+    kernel_args.append("panic=0")
 
     # monitor
     command.extend(
