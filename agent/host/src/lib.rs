@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use crate::qemu::QemuProxy;
 use log::{info, LevelFilter};
 use structopt::StructOpt;
 
+use crate::qemu::{QemuProxy, VMStatus};
 use crate::utils::{inotify_watch_for_addition, Ivshmem};
 
 mod config;
@@ -62,9 +62,33 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
     info!("live snapshot is taken");
 
-    // release the guest
-    vmio.post_to_guest();
-    info!("notified guest agent to continue");
+    // fuzzing loop
+    'fuzz: loop {
+        // always refresh from a new snapshot
+        qemu_proxy
+            .snapshot_load()
+            .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
+
+        // release the guest
+        vmio.post_to_guest();
+        info!("notified guest agent to continue");
+
+        // wait for guest to stop
+        'wait: loop {
+            match qemu_proxy
+                .query_status()
+                .unwrap_or_else(|e| panic!("error querying status of the VM: {}", e))
+            {
+                VMStatus::Running => (),
+                VMStatus::Stopped => {
+                    break 'wait;
+                }
+                VMStatus::Error => {
+                    break 'fuzz;
+                }
+            }
+        }
+    }
 
     // drop the ivshmem at the end
     drop(ivshmem);
