@@ -285,7 +285,7 @@ static inline void probe_ivshmem(struct ivshmem *pack, size_t size) {
 
     // check for resources
     int dev_bar2_fd;
-    if ((dev_bar2_fd = openat(dev_dir_fd, "resource2", O_RDWR) < 0)) {
+    if ((dev_bar2_fd = openat(dev_dir_fd, "resource2", O_RDWR)) < 0) {
       ABORT_WITH_ERRNO("unable to open BAR2 of ivshmem");
     }
 
