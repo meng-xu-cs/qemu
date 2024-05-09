@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import List, Optional, Union
@@ -255,13 +256,19 @@ def __compile_agent_host(verbose: bool):
         )
 
 
+class AgentMode(Enum):
+    Shell = 0
+    Test = 1
+    Fuzz = 2
+
+
 def _prepare_linux(
     kernel: str,
     harness: Optional[str],
     blob: Optional[str],
     simulate_virtme: bool,
     verbose: bool,
-) -> None:
+) -> AgentMode:
     # sanity check
     if harness is None and blob is not None:
         sys.exit("cannot specify blob without harness")
@@ -281,14 +288,19 @@ def _prepare_linux(
     __compile_agent_guest(harness, blob, simulate_virtme)
 
     # prepare harness
-    if harness is not None:
+    if harness is None:
+        mode = AgentMode.Shell
+    else:
         if not os.path.exists(harness):
             sys.exit("harness source code does not exist at {}".format(harness))
         subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
 
-    if blob is not None:
-        if not os.path.exists(blob):
-            sys.exit("blob data file does not exist at {}".format(blob))
+        if blob is None:
+            mode = AgentMode.Fuzz
+        else:
+            if not os.path.exists(blob):
+                sys.exit("blob data file does not exist at {}".format(blob))
+            mode = AgentMode.Test
 
     # prepare the rootfs image
     utils.mk_rootfs(
@@ -304,6 +316,9 @@ def _prepare_linux(
 
     # prepare the init ramdisk image
     utils.mk_initramfs(PATH_WKS_LINUX_INITRD)
+
+    # done with the preparation
+    return mode
 
 
 def _execute_linux(
@@ -411,19 +426,23 @@ def cmd_linux(
     simulate_virtme: bool,
     verbose: bool,
 ) -> None:
-    _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
+    mode = _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
     with TemporaryDirectory() as tmp:
-        # start the host
-        command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
-        if verbose:
-            command.append("--verbose")
-        host = subprocess.Popen(command)
+        # start the host only in fuzzing mode
+        if mode == AgentMode.Fuzz:
+            command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
+            if verbose:
+                command.append("--verbose")
+            host = subprocess.Popen(command)
+        else:
+            host = None
 
         # start the guest
         _execute_linux(tmp, kvm, verbose)
 
-        # wait for host termination
-        host.wait()
+        # wait for host termination (if we have one)
+        if host is not None:
+            host.wait()
 
 
 def _dev_fresh() -> None:

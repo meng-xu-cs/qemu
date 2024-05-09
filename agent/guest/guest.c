@@ -82,6 +82,14 @@ int main(int argc, char *argv[]) {
   checked_exec("ip", "link", "set", "dev", "lo", "up", NULL);
   LOG_INFO("network ready");
 
+#ifdef HARNESS
+#ifdef BLOB
+  // testing mode
+  LOG_INFO("entered testing mode");
+  checked_exec(PATH_HARNESS, PATH_BLOB, NULL);
+#else
+  // fuzzing mode
+
   // connect to the ivshmem device
   struct ivshmem pack;
   probe_ivshmem(&pack, IVSHMEM_SIZE);
@@ -106,13 +114,6 @@ int main(int argc, char *argv[]) {
   // unmap the memory before proceeding with any actions
   unmap_ivshmem(&pack);
 
-#ifdef HARNESS
-#ifdef BLOB
-  // testing mode
-  LOG_INFO("entered testing mode");
-  checked_exec(PATH_HARNESS, PATH_BLOB, NULL);
-#else
-  // fuzzing mode (TODO)
   LOG_INFO("entered fuzzing mode");
   checked_exec(PATH_HARNESS, NULL);
 #endif

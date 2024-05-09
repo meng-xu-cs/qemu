@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::qemu::QemuProxy;
 use log::{info, LevelFilter};
 use structopt::StructOpt;
 
@@ -55,7 +56,9 @@ pub fn entrypoint() {
 
     // save a live snapshot
     let path_monitor_socket = args.path_tmp.join(VM_MONITOR_SOCKET);
-    qemu::snapshot_save(&path_monitor_socket, 0)
+    let mut qemu_proxy = QemuProxy::new(path_monitor_socket);
+    qemu_proxy
+        .snapshot_save()
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
     info!("live snapshot is taken");
 
