@@ -55,12 +55,12 @@ GB_IN_BYTES = MB_IN_BYTES * 1024
 
 
 # qemu constants
-VM_MONITOR_SOCKET = "monitor"
-VM_IVSHMEM_FILE = "ivshmem"
-
 VM_MEM_SIZE = 2 * GB_IN_BYTES
+VM_DISK_NAME = "disk0"
 VM_DISK_SIZE = 2 * GB_IN_BYTES
+VM_IVSHMEM_FILE = "ivshmem"
 VM_IVSHMEM_SIZE = 16 * MB_IN_BYTES
+VM_MONITOR_SOCKET = "monitor"
 
 # docker constants
 DOCKER_TAG = "qemu"
@@ -344,11 +344,10 @@ def _execute_linux(
             ",".join(
                 [
                     "file={}".format(PATH_WKS_LINUX_DISK),
-                    "node-name=disk0",
+                    "node-name={}".format(VM_DISK_NAME),
                     "if=virtio",
                     "media=disk",
                     "index=0",
-                    "snapshot=on",
                 ]
             ),
         ]

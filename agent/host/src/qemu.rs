@@ -9,6 +9,7 @@ use qapi::{qmp, Command, Qmp};
 
 const SNAPSHOT_TAG: &str = "qce";
 const SNAPSHOT_JOB_PREFIX: &str = "qce_job_";
+const SNAPSHOT_DISK: &str = "disk0";
 
 fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result<()> {
     let stream = UnixStream::connect(socket)?;
@@ -28,15 +29,22 @@ fn exec_async<C: Command>(socket: &Path, command: C, job_id: &str) -> io::Result
                     continue;
                 }
                 match data.status {
-                    JobStatus::created | JobStatus::running => (),
+                    JobStatus::created
+                    | JobStatus::ready
+                    | JobStatus::running
+                    | JobStatus::waiting
+                    | JobStatus::pending => (),
                     JobStatus::aborting => {
                         aborted = true;
                     }
                     JobStatus::concluded => break 'outer,
-                    status => {
+                    JobStatus::standby
+                    | JobStatus::null
+                    | JobStatus::undefined
+                    | JobStatus::paused => {
                         return Err(io::Error::new(
                             io::ErrorKind::Other,
-                            format!("unexpected job status: {:?}", status),
+                            format!("unexpected job status: {:?}", data.status),
                         ));
                     }
                 }
@@ -79,8 +87,8 @@ pub fn snapshot_save(socket: &Path, job_index: usize) -> io::Result<()> {
         qmp::snapshot_save {
             tag: SNAPSHOT_TAG.to_string(),
             job_id: job_id.clone(),
-            vmstate: "".to_string(),
-            devices: vec![],
+            vmstate: SNAPSHOT_DISK.to_string(),
+            devices: vec![SNAPSHOT_DISK.to_string()],
         },
         &job_id,
     )
