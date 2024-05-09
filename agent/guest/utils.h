@@ -7,9 +7,9 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
-#include <semaphore.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -198,9 +198,10 @@ struct ivshmem {
 
 // holder of the ivshmem pack
 struct vmio {
-  uint64_t flag;
-  sem_t sema_host;
-  sem_t sema_guest;
+  atomic_uintptr_t flag;
+  atomic_uintptr_t spin_host;
+  atomic_uintptr_t spin_guest;
+  atomic_uintptr_t __pad;
   uint64_t size;
   char buf[0];
 };

@@ -90,17 +90,16 @@ int main(int argc, char *argv[]) {
   struct vmio *vmio = pack.addr;
 
   // wait for host to be ready
-  while (vmio->flag == 0) {
+  while (atomic_load(&vmio->flag) == 0) {
     // do nothing, this (unexpected) busy waiting is intentional
   }
-  if (sem_post(&vmio->sema_host) != 0) {
-    ABORT_WITH_ERRNO("failed to post to the host semaphore");
-  }
+  atomic_store(&vmio->spin_guest, 1);
+  atomic_store(&vmio->spin_host, 0);
   LOG_INFO("notified host on ready");
 
   // wait for host to release us
-  if (sem_wait(&vmio->sema_guest) != 0) {
-    ABORT_WITH_ERRNO("failed to wait on the guest semaphore");
+  while (atomic_load(&vmio->spin_guest)) {
+    // busy wait
   }
   LOG_INFO("operation resumed by host");
 
