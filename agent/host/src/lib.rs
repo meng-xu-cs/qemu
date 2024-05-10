@@ -88,6 +88,7 @@ pub fn entrypoint() {
                 }
             }
         }
+        info!("guest vm stopped, reloading a new snapshot");
     }
 
     // drop the ivshmem at the end

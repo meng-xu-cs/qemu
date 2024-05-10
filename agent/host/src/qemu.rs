@@ -136,7 +136,7 @@ impl QemuProxy {
             Some(Event::STOP { .. }) => Ok(()),
             e => Err(io::Error::new(
                 io::ErrorKind::Other,
-                format!("unexpected event: {:?}", e),
+                format!("unexpected event in vm_stop: {:?}", e),
             )),
         }
     }
@@ -147,7 +147,7 @@ impl QemuProxy {
             Some(Event::RESUME { .. }) => Ok(()),
             e => Err(io::Error::new(
                 io::ErrorKind::Other,
-                format!("unexpected event: {:?}", e),
+                format!("unexpected event in vm_cont: {:?}", e),
             )),
         }
     }
