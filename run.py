@@ -337,6 +337,9 @@ def _execute_linux(
     command.extend(["-m", "{}G".format(VM_MEM_SIZE // VM_MEM_SIZE)])
     if kvm:
         command.extend(["-machine", "accel=kvm:tcg"])
+    else:
+        # we need to ask vm snapshot to store the clock as well
+        command.extend(["-icount", "shift=auto"])
 
     # no display
     command.extend(["-vga", "none"])
