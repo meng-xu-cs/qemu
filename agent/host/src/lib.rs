@@ -68,19 +68,19 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
     info!("live snapshot is taken");
 
-    // release the guest
-    vmio.post_to_guest();
-    info!("notified guest agent to continue");
-
     // fuzzing loop
     loop {
+        // release the guest
+        vmio.post_to_guest();
+        info!("notified guest agent to continue");
+
         // wait for guest to stop
         match qemu
-            .wait_for_guest_finish()
+            .wait_for_guest_reset()
             .unwrap_or_else(|e| panic!("error waiting for status events from VM: {}", e))
         {
             VMExitMode::Soft => (),
-            VMExitMode::Hard => break,
+            VMExitMode::Hard | VMExitMode::Host => break,
         }
         info!("guest vm stopped");
 
@@ -91,7 +91,7 @@ pub fn entrypoint() {
     }
 
     // technically we should never reach here
-    error!("guest vm is forced to exit unexpectedly");
+    error!("guest vm is forced to exit in an unexpected way");
 
     // drop the ivshmem at the end
     drop(ivshmem);

@@ -110,27 +110,31 @@ impl<'a> QemuProxy<'a> {
         self.wait_for_async_job(&job_id)
     }
 
-    pub fn wait_for_guest_finish(&mut self) -> io::Result<VMExitMode> {
-        let mut mode = VMExitMode::Soft;
+    pub fn wait_for_guest_reset(&mut self) -> io::Result<VMExitMode> {
         loop {
             self.qmp.nop()?;
             for event in self.qmp.events() {
                 match &event {
-                    Event::STOP { .. } => return Ok(mode),
+                    Event::STOP { .. } => return Ok(VMExitMode::Host),
                     Event::SHUTDOWN { data, .. } => {
-                        if !data.guest {
-                            mode = VMExitMode::Hard;
-                        }
+                        let mode = if !data.guest {
+                            VMExitMode::Host
+                        } else {
+                            VMExitMode::Hard
+                        };
+                        return Ok(mode);
                     }
                     Event::POWERDOWN { .. } => {
-                        mode = VMExitMode::Hard;
+                        return Ok(VMExitMode::Host);
                     }
                     Event::RESET { data, .. } => {
-                        if !data.guest {
-                            mode = VMExitMode::Hard;
-                        }
+                        let mode = if !data.guest {
+                            VMExitMode::Host
+                        } else {
+                            VMExitMode::Soft
+                        };
+                        return Ok(mode);
                     }
-                    Event::GUEST_PANICKED { .. } => {}
                     Event::MEMORY_FAILURE { .. }
                     | Event::BLOCK_IMAGE_CORRUPTED { .. }
                     | Event::BLOCK_IO_ERROR { .. }
@@ -160,4 +164,5 @@ impl<'a> QemuProxy<'a> {
 pub enum VMExitMode {
     Soft,
     Hard,
+    Host,
 }

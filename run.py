@@ -381,8 +381,8 @@ def _execute_linux(
     )
 
     # behaviors
-    command.extend(["-no-reboot", "-no-shutdown"])
-    kernel_args.append("panic=-1")
+    command.extend(["-no-shutdown"])
+    kernel_args.append("panic=-1")  # this instructs the kernel to reboot immediately
 
     # monitor
     command.extend(
