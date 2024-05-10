@@ -88,30 +88,7 @@ impl<'a> QemuProxy<'a> {
         ))
     }
 
-    fn wait_for_status_change<F: Fn(Event) -> bool>(&mut self, predicate: F) -> io::Result<()> {
-        loop {
-            self.qmp.nop()?;
-            for event in self.qmp.events() {
-                if predicate(event) {
-                    return Ok(());
-                }
-            }
-        }
-    }
-
-    fn vm_stop(&mut self) -> io::Result<()> {
-        self.qmp.execute(&qmp::stop {})?;
-        self.wait_for_status_change(|event| matches!(event, Event::STOP { .. }))
-    }
-
-    fn vm_cont(&mut self) -> io::Result<()> {
-        self.qmp.execute(&qmp::cont {})?;
-        self.wait_for_status_change(|event| matches!(event, Event::RESUME { .. }))
-    }
-
     pub fn snapshot_save(&mut self) -> io::Result<()> {
-        self.vm_stop()?;
-
         let job_id = self.next_job_id();
         self.qmp.execute(&qmp::snapshot_save {
             tag: SNAPSHOT_TAG.to_string(),
@@ -130,9 +107,7 @@ impl<'a> QemuProxy<'a> {
             vmstate: SNAPSHOT_DISK.to_string(),
             devices: vec![SNAPSHOT_DISK.to_string()],
         })?;
-        self.wait_for_async_job(&job_id)?;
-
-        self.vm_cont()
+        self.wait_for_async_job(&job_id)
     }
 
     pub fn wait_for_guest_finish(&mut self) -> io::Result<VMExitMode> {
@@ -167,6 +142,16 @@ impl<'a> QemuProxy<'a> {
                     }
                     _ => (),
                 }
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn probe_for_events(&mut self) -> io::Result<()> {
+        loop {
+            self.qmp.nop()?;
+            for event in self.qmp.events() {
+                eprintln!("event: {:?}", event);
             }
         }
     }

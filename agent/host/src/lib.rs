@@ -68,16 +68,12 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
     info!("live snapshot is taken");
 
+    // release the guest
+    vmio.post_to_guest();
+    info!("notified guest agent to continue");
+
     // fuzzing loop
     loop {
-        // always refresh from a new snapshot
-        qemu.snapshot_load()
-            .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
-
-        // release the guest
-        vmio.post_to_guest();
-        info!("notified guest agent to continue");
-
         // wait for guest to stop
         match qemu
             .wait_for_guest_finish()
@@ -86,7 +82,12 @@ pub fn entrypoint() {
             VMExitMode::Soft => (),
             VMExitMode::Hard => break,
         }
-        info!("guest vm stopped, reloading a new snapshot");
+        info!("guest vm stopped");
+
+        // always refresh from a new snapshot
+        qemu.snapshot_load()
+            .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
+        info!("snapshot reloaded");
     }
 
     // technically we should never reach here
