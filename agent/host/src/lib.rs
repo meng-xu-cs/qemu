@@ -1,9 +1,10 @@
+use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
-use log::{info, LevelFilter};
+use log::{error, info, LevelFilter};
 use structopt::StructOpt;
 
-use crate::qemu::{QemuProxy, VMStatus};
+use crate::qemu::{QemuProxy, VMExitMode};
 use crate::utils::{inotify_watch_for_addition, Ivshmem};
 
 mod config;
@@ -50,23 +51,27 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error initializing vmio: {}", e));
     info!("vmio initialized");
 
+    // connect to QEMU monitor
+    let path_monitor_socket = args.path_tmp.join(VM_MONITOR_SOCKET);
+    let stream = UnixStream::connect(path_monitor_socket)
+        .unwrap_or_else(|e| panic!("error connecting to QEMU monitor socket: {}", e));
+    let mut qemu = QemuProxy::new(&stream)
+        .unwrap_or_else(|e| panic!("error negotiating with the QEMU-QMP: {}", e));
+    info!("QEMU-QMP connected");
+
     // sync with guest on start-up
     vmio.wait_on_host();
     info!("guest agent is ready");
 
     // save a live snapshot
-    let path_monitor_socket = args.path_tmp.join(VM_MONITOR_SOCKET);
-    let mut qemu_proxy = QemuProxy::new(path_monitor_socket);
-    qemu_proxy
-        .snapshot_save()
+    qemu.snapshot_save()
         .unwrap_or_else(|e| panic!("error taking a snapshot: {}", e));
     info!("live snapshot is taken");
 
     // fuzzing loop
-    'fuzz: loop {
+    loop {
         // always refresh from a new snapshot
-        qemu_proxy
-            .snapshot_load()
+        qemu.snapshot_load()
             .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
 
         // release the guest
@@ -74,22 +79,18 @@ pub fn entrypoint() {
         info!("notified guest agent to continue");
 
         // wait for guest to stop
-        'wait: loop {
-            match qemu_proxy
-                .query_status()
-                .unwrap_or_else(|e| panic!("error querying status of the VM: {}", e))
-            {
-                VMStatus::Running => (),
-                VMStatus::Stopped => {
-                    break 'wait;
-                }
-                VMStatus::Error => {
-                    break 'fuzz;
-                }
-            }
+        match qemu
+            .wait_for_guest_finish()
+            .unwrap_or_else(|e| panic!("error waiting for status events from VM: {}", e))
+        {
+            VMExitMode::Soft => (),
+            VMExitMode::Hard => break,
         }
         info!("guest vm stopped, reloading a new snapshot");
     }
+
+    // technically we should never reach here
+    error!("guest vm is forced to exit unexpectedly");
 
     // drop the ivshmem at the end
     drop(ivshmem);
