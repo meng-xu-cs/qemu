@@ -2167,9 +2167,8 @@ void helper_sgx(CPUX86State *env)
   /* prepare the backing memory */
   qce_debug("started with addr 0x%lx and len %ld", addr, len);
 
-  /* repurpose the xsave_buf (which is only used in kvm) for context */
-  if (env->xsave_buf != NULL) {
-    qce_fatal("xsave_buf is not NULL as expected");
+  /* initialize the QCE context */
+  if (qce_init(env_cpu(env)) != 0) {
     goto error;
   }
 

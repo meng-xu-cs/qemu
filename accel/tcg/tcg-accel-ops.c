@@ -70,6 +70,7 @@ void tcg_cpu_destroy(CPUState *cpu)
     cpu_thread_signal_destroyed(cpu);
 }
 
+#include "qemu/qce.h"
 int tcg_cpu_exec(CPUState *cpu)
 {
     int ret;
@@ -77,6 +78,7 @@ int tcg_cpu_exec(CPUState *cpu)
     cpu_exec_start(cpu);
     ret = cpu_exec(cpu);
     cpu_exec_end(cpu);
+    qce_shutdown(cpu);
     return ret;
 }
 
