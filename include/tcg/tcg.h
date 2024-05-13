@@ -1073,6 +1073,4 @@ static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
 void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs);
 
-#include "qemu/qce.h"
-
 #endif /* TCG_H */

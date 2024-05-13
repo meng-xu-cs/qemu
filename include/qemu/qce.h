@@ -3,6 +3,7 @@
 
 #include "hw/core/cpu.h"
 #include "qemu/thread.h"
+#include "tcg/tcg.h"
 
 // logging utilities
 #ifndef QCE_RELEASE
@@ -27,6 +28,6 @@ int qce_init(CPUState *cpu);
 void qce_shutdown(CPUState *cpu);
 
 // callback on TCG IR is first generated
-void qce_on_tcg_ir_generated(CPUState *cpu);
+void qce_on_tcg_ir_generated(TCGContext *cpu);
 
 #endif /* QEMU_QCE_H */

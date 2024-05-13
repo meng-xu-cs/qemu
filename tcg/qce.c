@@ -30,8 +30,8 @@ void qce_shutdown(CPUState *cpu) {
   free(cpu->kvm_state);
 }
 
-void qce_on_tcg_ir_generated(CPUState *cpu) {
-  if (cpu->kvm_state == NULL) {
+void qce_on_tcg_ir_generated(TCGContext *tcg_ctx) {
+  if (tcg_ctx->cpu->kvm_state == NULL) {
     return;
   }
 }
