@@ -42,7 +42,8 @@ PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_DISK = os.path.join(PATH_WKS_LINUX, "disk.qcow2")
-PATH_WKS_LINUX_HARNESS = os.path.join(PATH_WKS_LINUX, "harness")
+PATH_WKS_LINUX_HARNESS_SRC = os.path.join(PATH_WKS_LINUX, "harness.c")
+PATH_WKS_LINUX_HARNESS_BIN = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
@@ -263,6 +264,7 @@ class AgentMode(Enum):
 
 
 def _prepare_linux(
+    kvm: bool,
     kernel: str,
     harness: Optional[str],
     blob: Optional[str],
@@ -293,7 +295,21 @@ def _prepare_linux(
     else:
         if not os.path.exists(harness):
             sys.exit("harness source code does not exist at {}".format(harness))
-        subprocess.check_call(["cc", "-static", harness, "-o", PATH_WKS_LINUX_HARNESS])
+
+        if kvm:
+            shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
+        else:
+            utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
+
+        subprocess.check_call(
+            [
+                "cc",
+                "-static",
+                PATH_WKS_LINUX_HARNESS_SRC,
+                "-o",
+                PATH_WKS_LINUX_HARNESS_BIN,
+            ]
+        )
 
         if blob is None:
             mode = AgentMode.Fuzz
@@ -309,7 +325,7 @@ def _prepare_linux(
         PATH_WKS_LINUX_DISK,
         "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
         PATH_WKS_LINUX_AGENT_GUEST,
-        None if harness is None else PATH_WKS_LINUX_HARNESS,
+        None if harness is None else PATH_WKS_LINUX_HARNESS_BIN,
         blob,
         use_host_rootfs=simulate_virtme,
     )
@@ -324,6 +340,7 @@ def _prepare_linux(
 def _execute_linux(
     tmp: str,
     kvm: bool,
+    loop: bool,
     verbose: bool,
 ) -> None:
     # prepare the pipe
@@ -386,7 +403,11 @@ def _execute_linux(
 
     # behaviors
     command.extend(["-no-shutdown"])
-    kernel_args.append("panic=-1")  # this instructs the kernel to reboot immediately
+    if loop:
+        kernel_args.append("panic=-1")  # instructs the kernel to reboot immediately
+    else:
+        command.extend(["-no-reboot"])
+        kernel_args.append("panic=0")
 
     # monitor
     command.extend(
@@ -423,14 +444,14 @@ def _execute_linux(
 
 
 def cmd_linux(
-    kernel: str,
     kvm: bool,
+    kernel: str,
     harness: Optional[str],
     blob: Optional[str],
     simulate_virtme: bool,
     verbose: bool,
 ) -> None:
-    mode = _prepare_linux(kernel, harness, blob, simulate_virtme, verbose)
+    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose)
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
@@ -442,7 +463,7 @@ def cmd_linux(
             host = None
 
         # start the guest
-        _execute_linux(tmp, kvm, verbose)
+        _execute_linux(tmp, kvm, host is not None, verbose)
 
         # wait for host termination (if we have one)
         if host is not None:
@@ -565,7 +586,7 @@ def main() -> None:
         cmd_build(args.release)
     elif args.command == "linux":
         cmd_linux(
-            args.kernel, args.kvm, args.harness, args.blob, args.virtme, args.verbose
+            args.kvm, args.kernel, args.harness, args.blob, args.virtme, args.verbose
         )
     else:
         parser.print_help()
