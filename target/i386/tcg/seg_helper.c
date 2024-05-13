@@ -2151,26 +2151,34 @@ void helper_lret_protected(CPUX86State *env, int shift, int addend)
     helper_ret_protected(env, shift, 0, addend, GETPC());
 }
 
-#include "qemu/error-report.h"
-#define SGX_EDBGWR 0x05
+#include "qemu/qce.h"
 void helper_sgx(CPUX86State *env)
 {
   target_ulong nr = env->regs[R_EAX];
   if (nr != SGX_EDBGWR) {
-    error_report("invalid SGX command number: %ld", nr);
-    env->regs[R_EAX] = 1;
-    return;
+    qce_fatal("invalid SGX command number: %ld", nr);
+    goto error;
   }
 
   /* extract information */
   target_ulong len = env->regs[R_EBX];
   target_ulong addr = env->regs[R_ECX];
 
-  /* TODO: actual logic */
-  warn_report("!!! now in helper_sgx: addr at 0x%lx, len at %ld", addr, len);
+  /* prepare the backing memory */
+  qce_debug("started with addr 0x%lx and len %ld", addr, len);
+
+  /* repurpose the xsave_buf (which is only used in kvm) for context */
+  if (env->xsave_buf != NULL) {
+    qce_fatal("xsave_buf is not NULL as expected");
+    goto error;
+  }
 
   /* done with this routine */
   env->regs[R_EAX] = 0;
+  return;
+
+error:
+  env->regs[R_EAX] = 1;
 }
 
 void helper_sysenter(CPUX86State *env)
