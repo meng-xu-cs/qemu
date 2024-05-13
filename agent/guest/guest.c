@@ -4,14 +4,12 @@
  * Project Constants
  */
 
-#ifdef HARNESS
+#if defined(MODE_Fuzz) || defined(MODE_Test)
 #define PATH_HARNESS "/root/harness"
-
-#ifdef BLOB
 #define PATH_BLOB "/root/blob"
-#else
-#define PATH_SHELL "/bin/sh"
 #endif
+#ifdef MODE_Shell
+#define PATH_SHELL "/bin/sh"
 #endif
 
 #ifdef VIRTME
@@ -82,22 +80,23 @@ int main(int argc, char *argv[]) {
   checked_exec("ip", "link", "set", "dev", "lo", "up", NULL);
   LOG_INFO("network ready");
 
-#ifdef HARNESS
-#ifdef BLOB
+#ifdef MODE_Test
   // testing mode
   LOG_INFO("entered testing mode");
   checked_exec(PATH_HARNESS, PATH_BLOB, NULL);
-#else
+#endif
+
+#ifdef MODE_Fuzz
   // fuzzing mode
+  checked_write_or_create(PATH_BLOB, "X", 1);
 
   // connect to the ivshmem device
   struct ivshmem pack;
   probe_ivshmem(&pack, IVSHMEM_SIZE);
   LOG_INFO("ivshmem ready");
 
-  struct vmio *vmio = pack.addr;
-
   // wait for host to be ready
+  struct vmio *vmio = pack.addr;
   while (atomic_load(&vmio->flag) == 0) {
     // do nothing, this (unexpected) busy waiting is intentional
   }
@@ -115,12 +114,14 @@ int main(int argc, char *argv[]) {
   unmap_ivshmem(&pack);
 
   LOG_INFO("entered fuzzing mode");
-  checked_exec(PATH_HARNESS, NULL);
+  checked_exec(PATH_HARNESS, PATH_BLOB, NULL);
 #endif
-#else
+
+#ifdef MODE_Shell
   // shell mode
   LOG_INFO("entered shell mode");
-  checked_exec(PATH_SHELL, NULL)
+  checked_exec(PATH_SHELL, NULL);
 #endif
+
   return 1;
 }

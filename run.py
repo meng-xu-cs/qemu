@@ -205,21 +205,22 @@ def cmd_build(release: bool) -> None:
     subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
 
 
-def __compile_agent_guest(
-    harness: Optional[str], blob: Optional[str], simulate_virtme: bool
-):
+class AgentMode(Enum):
+    Shell = 0
+    Test = 1
+    Fuzz = 2
+
+
+def __compile_agent_guest(mode: AgentMode, simulate_virtme: bool):
     command = [
         "cc",
         "-static",
         "-std=c2x",
+        "-DMODE_{}=1".format(mode.name),
         PATH_AGENT_GUEST_SRC,
         "-o",
         PATH_WKS_LINUX_AGENT_GUEST,
     ]
-    if harness is not None:
-        command.append('-DHARNESS="{}"'.format(harness))
-    if blob is not None:
-        command.append('-DBLOB="{}"'.format(blob))
     if simulate_virtme:
         command.append("-DVIRTME")
 
@@ -257,12 +258,6 @@ def __compile_agent_host(verbose: bool):
         )
 
 
-class AgentMode(Enum):
-    Shell = 0
-    Test = 1
-    Fuzz = 2
-
-
 def _prepare_linux(
     kvm: bool,
     kernel: str,
@@ -271,9 +266,21 @@ def _prepare_linux(
     simulate_virtme: bool,
     verbose: bool,
 ) -> AgentMode:
-    # sanity check
-    if harness is None and blob is not None:
-        sys.exit("cannot specify blob without harness")
+    # infer mode
+    if harness is None:
+        if blob is not None:
+            sys.exit("cannot specify blob without harness")
+        mode = AgentMode.Shell
+    else:
+        if not os.path.exists(harness):
+            sys.exit("harness source code does not exist at {}".format(harness))
+
+        if blob is None:
+            mode = AgentMode.Fuzz
+        else:
+            if not os.path.exists(blob):
+                sys.exit("blob data file does not exist at {}".format(blob))
+            mode = AgentMode.Test
 
     # clear previous states
     if os.path.exists(PATH_WKS_LINUX):
@@ -286,17 +293,13 @@ def _prepare_linux(
     shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
 
     # compile the agents
-    __compile_agent_host(verbose)
-    __compile_agent_guest(harness, blob, simulate_virtme)
+    if mode == AgentMode.Fuzz:
+        __compile_agent_host(verbose)
+    __compile_agent_guest(mode, simulate_virtme)
 
     # prepare harness
-    if harness is None:
-        mode = AgentMode.Shell
-    else:
-        if not os.path.exists(harness):
-            sys.exit("harness source code does not exist at {}".format(harness))
-
-        if kvm:
+    if mode != AgentMode.Shell:
+        if kvm or mode == AgentMode.Test:
             shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
         else:
             utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
@@ -310,13 +313,6 @@ def _prepare_linux(
                 PATH_WKS_LINUX_HARNESS_BIN,
             ]
         )
-
-        if blob is None:
-            mode = AgentMode.Fuzz
-        else:
-            if not os.path.exists(blob):
-                sys.exit("blob data file does not exist at {}".format(blob))
-            mode = AgentMode.Test
 
     # prepare the rootfs image
     utils.mk_rootfs(
