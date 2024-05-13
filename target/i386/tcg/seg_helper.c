@@ -2151,7 +2151,6 @@ void helper_lret_protected(CPUX86State *env, int shift, int addend)
     helper_ret_protected(env, shift, 0, addend, GETPC());
 }
 
-#include "qemu/qce.h"
 void helper_sgx(CPUX86State *env)
 {
   target_ulong nr = env->regs[R_EAX];
