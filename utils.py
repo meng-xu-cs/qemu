@@ -1,6 +1,8 @@
 import os.path
+import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional, List
@@ -281,3 +283,40 @@ def mk_initramfs(out: str) -> None:
 
         # done
         cw.output(out)
+
+
+def patch_harness(src: str, dst: str) -> None:
+    pattern = re.compile(
+        r"(?P<ret_type>\w+)\s+"
+        r"harness\s*\(\s*"
+        r"(?P<blob_type>\w+)\s*\*\s*(?P<blob_name>\w+)"
+        r"\s*,\s*"
+        r"(?P<size_type>\w+)\s+(?P<size_name>\w+)"
+        r"\s*\)\s*\{",
+        re.MULTILINE,
+    )
+
+    with open(src) as f:
+        content = f.read()
+
+    # locate the harness function
+    match = pattern.search(content)
+    if match is None:
+        sys.exit("Unable to find the harness function")
+
+    # enrich with the marker
+    repl = """{}
+long __r = 1;
+asm volatile ("encls"
+    : "=a"(__r)
+    : "a"(0x5), "b"({}), "c"({})
+    : "memory");
+if (__r) {{ exit(1); }}
+""".format(
+        match.group(0), match["size_name"], match["blob_name"]
+    )
+    replaced = pattern.sub(repl, content)
+
+    # dump the updated content
+    with open(dst, "w") as f:
+        f.write(replaced)
