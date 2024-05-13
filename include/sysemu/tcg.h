@@ -17,4 +17,6 @@ extern bool tcg_allowed;
 #define tcg_enabled() 0
 #endif
 
+#include "qemu/qce.h"
+
 #endif
