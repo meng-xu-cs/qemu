@@ -18,10 +18,8 @@
 // command selector
 #define SGX_EDBGWR 0x05
 
-// context
-struct QCEContext {
-  QemuSpin lock;
-};
+// exposed type
+struct QCEContext;
 
 // context management
 int qce_init(CPUState *cpu);

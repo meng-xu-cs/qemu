@@ -1,4 +1,19 @@
 #include "qemu/qce.h"
+#include "exec/translation-block.h"
+#include "qemu/qht.h"
+
+// context
+struct QCEContext {
+  // a map of the translation block
+  struct qht /* <TranslationBlock, vaddr> */ tb_map;
+};
+
+#define QCE_CTXT_TB_MAP_SIZE 1 << 16
+static bool qce_ctxt_tb_map_cmp(const void *a, const void *b) {
+  const TranslationBlock *lhs = a;
+  const TranslationBlock *rhs = b;
+  return lhs->pc == rhs->pc;
+}
 
 int qce_init(CPUState *cpu) {
   // repurpose the kvm_state (which is only used in kvm) for context
@@ -13,7 +28,9 @@ int qce_init(CPUState *cpu) {
     qce_fatal("unable to allocate QCE context");
     return 1;
   }
-  qemu_spin_init(&ctxt->lock);
+
+  qht_init(&ctxt->tb_map, qce_ctxt_tb_map_cmp, QCE_CTXT_TB_MAP_SIZE,
+           QHT_MODE_AUTO_RESIZE);
 
   // done
   cpu->kvm_state = (struct KVMState *)ctxt;
@@ -46,13 +63,17 @@ void qce_try_shutdown(void) {
     return;
   }
 
-  if (unlikely(ctxt->kvm_state == NULL)) {
+  // destruct the QCE context
+  struct QCEContext *qce = (struct QCEContext *)ctxt->kvm_state;
+  if (unlikely(qce == NULL)) {
     qce_fatal("context manager does not carry a QCE engine");
     return;
   }
 
+  qht_destroy(&qce->tb_map);
+
   // de-allocate resources
-  free(ctxt->kvm_state);
+  free(qce);
   ctxt->kvm_state = NULL;
   ctxt->vcpu_dirty = false;
   qce_debug("destroyed");
