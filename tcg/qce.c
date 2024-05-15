@@ -2,14 +2,14 @@
 
 int qce_init(CPUState *cpu) {
   // repurpose the kvm_state (which is only used in kvm) for context
-  if (cpu->kvm_state != NULL) {
+  if (unlikely(cpu->kvm_state != NULL)) {
     qce_fatal("kvm_state is not NULL, cannot repurpose it");
     return 1;
   }
 
   // initialize the context
   struct QCEContext *ctxt = malloc(sizeof(struct QCEContext));
-  if (ctxt == NULL) {
+  if (unlikely(ctxt == NULL)) {
     qce_fatal("unable to allocate QCE context");
     return 1;
   }
@@ -33,7 +33,7 @@ void qce_try_shutdown(void) {
     }
     // locate the context manager
     if (cpu->vcpu_dirty) {
-      if (ctxt != NULL) {
+      if (unlikely(ctxt != NULL)) {
         qce_fatal("more than one context manager for QCE");
         return;
       }
@@ -46,7 +46,7 @@ void qce_try_shutdown(void) {
     return;
   }
 
-  if (ctxt->kvm_state == NULL) {
+  if (unlikely(ctxt->kvm_state == NULL)) {
     qce_fatal("context manager does not carry a QCE engine");
     return;
   }
@@ -58,8 +58,43 @@ void qce_try_shutdown(void) {
   qce_debug("destroyed");
 }
 
-void qce_on_tcg_ir_generated(const TCGContext *tcg_ctx) {
-  if (tcg_ctx->cpu->kvm_state == NULL) {
+void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
+                             TranslationBlock *tb) {
+  if (cpu->kvm_state == NULL) {
     return;
   }
+  if (tcg->gen_tb != tb) {
+    qce_fatal("TCGContext::gen_tb does not match the tb argument");
+  }
+  tcg->cpu = cpu;
+}
+
+void qce_on_tcg_ir_optimized(TCGContext *tcg) {
+  if (tcg->cpu == NULL) {
+    return;
+  }
+
+  // obtain the context manager
+  struct QCEContext *qce = (struct QCEContext *)tcg->cpu->kvm_state;
+  if (unlikely(qce == NULL)) {
+    qce_fatal("TCG context does not carry a QCE engine");
+    return;
+  }
+
+  // go over the operators
+  TCGOp *op;
+  QTAILQ_FOREACH(op, &tcg->ops, link) {
+    // TODO
+  }
+
+  // clear the CPU marker
+  tcg->cpu = NULL;
+}
+
+void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
+  struct QCEContext *qce = (struct QCEContext *)cpu->kvm_state;
+  if (qce == NULL) {
+    return;
+  }
+  // CPUArchState *arch = cpu_env(cpu);
 }
