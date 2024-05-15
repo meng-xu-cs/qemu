@@ -28,6 +28,6 @@ int qce_init(CPUState *cpu);
 void qce_shutdown(CPUState *cpu);
 
 // callback on TCG IR is first generated
-void qce_on_tcg_ir_generated(TCGContext *cpu);
+void qce_on_tcg_ir_generated(const TCGContext *ctx);
 
 #endif /* QEMU_QCE_H */
