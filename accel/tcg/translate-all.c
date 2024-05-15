@@ -277,10 +277,10 @@ static int setjmp_gen_code(CPUArchState *env, TranslationBlock *tb,
     tcg_ctx->cpu = env_cpu(env);
     gen_intermediate_code(env_cpu(env), tb, max_insns, pc, host_pc);
     assert(tb->size != 0);
-    qce_on_tcg_ir_generated(tcg_ctx);
     tcg_ctx->cpu = NULL;
     *max_insns = tb->icount;
 
+    qce_on_tcg_ir_generated(tcg_ctx, env_cpu(env), tb);
     return tcg_gen_code(tcg_ctx, tb, pc);
 }
 

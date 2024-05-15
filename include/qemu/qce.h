@@ -28,6 +28,13 @@ int qce_init(CPUState *cpu);
 void qce_try_shutdown(void);
 
 // callback on TCG IR is first generated
-void qce_on_tcg_ir_generated(const TCGContext *ctx);
+void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
+                             TranslationBlock *tb);
+
+// callback on TCG IR is fully optimized
+void qce_on_tcg_ir_optimized(TCGContext *tcg);
+
+// callback on TCG translation block being executed
+void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu);
 
 #endif /* QEMU_QCE_H */
