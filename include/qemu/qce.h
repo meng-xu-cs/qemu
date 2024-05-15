@@ -25,7 +25,7 @@ struct QCEContext {
 
 // context management
 int qce_init(CPUState *cpu);
-void qce_shutdown(CPUState *cpu);
+void qce_try_shutdown(void);
 
 // callback on TCG IR is first generated
 void qce_on_tcg_ir_generated(const TCGContext *ctx);
