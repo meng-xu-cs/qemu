@@ -1,5 +1,7 @@
 #include "qemu/qce.h"
 #include "exec/translation-block.h"
+#include "qemu/xxhash.h"
+
 #include "qemu/qht.h"
 
 // context
@@ -13,6 +15,12 @@ static bool qce_ctxt_tb_map_cmp(const void *a, const void *b) {
   const TranslationBlock *lhs = a;
   const TranslationBlock *rhs = b;
   return lhs->pc == rhs->pc;
+}
+static inline void qce_ctxt_register_tb(struct QCEContext *qce,
+                                        const TranslationBlock *tb) {
+  if (!qht_insert(&qce->tb_map, (void *)tb, qemu_xxhash2(tb->pc), NULL)) {
+    qce_fatal("duplicate translation block for PC 0x%lx", tb->pc);
+  }
 }
 
 int qce_init(CPUState *cpu) {
@@ -84,7 +92,7 @@ void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
   if (cpu->kvm_state == NULL) {
     return;
   }
-  if (tcg->gen_tb != tb) {
+  if (unlikely(tcg->gen_tb != tb)) {
     qce_fatal("TCGContext::gen_tb does not match the tb argument");
   }
   tcg->cpu = cpu;
@@ -107,6 +115,9 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   QTAILQ_FOREACH(op, &tcg->ops, link) {
     // TODO
   }
+
+  // mark the translation block
+  qce_ctxt_register_tb(qce, tcg->gen_tb);
 
   // clear the CPU marker
   tcg->cpu = NULL;
