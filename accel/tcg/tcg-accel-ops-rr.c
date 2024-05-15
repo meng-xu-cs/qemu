@@ -300,6 +300,7 @@ static void *rr_cpu_thread_fn(void *arg)
 
         rr_wait_io_event();
         rr_deal_with_unplugged_cpus();
+        qce_try_shutdown();
     }
 
     rcu_remove_force_rcu_notifier(&force_rcu);

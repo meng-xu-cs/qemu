@@ -18,18 +18,44 @@ int qce_init(CPUState *cpu) {
   // done
   cpu->kvm_state = (struct KVMState *)ctxt;
   cpu->vcpu_dirty = true; // mark this vcpu as the main context manager
+  qce_debug("initialized");
   return 0;
 }
 
-void qce_shutdown(CPUState *cpu) {
-  // only applicable to QCE context
-  if (cpu->kvm_state == NULL) {
+void qce_try_shutdown(void) {
+  CPUState *cpu;
+  CPUState *ctxt = NULL;
+
+  CPU_FOREACH(cpu) {
+    // only shutdown QCE when all CPUs are stopped
+    if (!cpu->stopped) {
+      return;
+    }
+    // locate the context manager
+    if (cpu->vcpu_dirty) {
+      if (ctxt != NULL) {
+        qce_fatal("more than one context manager for QCE");
+        return;
+      }
+      ctxt = cpu;
+    }
+  }
+
+  // no manager found, QCE has been destroyed
+  if (ctxt == NULL) {
+    return;
+  }
+
+  if (ctxt->kvm_state == NULL) {
+    qce_fatal("context manager does not carry a QCE engine");
     return;
   }
 
   // de-allocate resources
-  cpu->vcpu_dirty = false;
-  free(cpu->kvm_state);
+  free(ctxt->kvm_state);
+  ctxt->kvm_state = NULL;
+  ctxt->vcpu_dirty = false;
+  qce_debug("destroyed");
 }
 
 void qce_on_tcg_ir_generated(const TCGContext *tcg_ctx) {
