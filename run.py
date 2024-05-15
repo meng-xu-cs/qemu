@@ -353,7 +353,7 @@ def _execute_linux(
     else:
         command.extend(["-machine", "accel=tcg"])
         # we need to ask vm snapshot to store the clock as well
-        command.extend(["-icount", "shift=auto"])
+        command.extend(["-icount", "shift=auto", "-rtc", "clock=vm"])
 
     # no display
     command.extend(["-vga", "none"])
