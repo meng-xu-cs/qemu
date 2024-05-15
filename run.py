@@ -189,16 +189,21 @@ def cmd_init(force: bool) -> None:
     )
 
 
-def cmd_build(release: bool) -> None:
-    # prepare directory
-    if os.path.exists(PATH_WKS_ARTIFACT):
-        shutil.rmtree(PATH_WKS_ARTIFACT)
-
-    os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
-    os.mkdir(PATH_WKS_ARTIFACT_BUILD)
+def cmd_build(incremental: bool, release: bool) -> None:
+    # config
+    if incremental:
+        if not os.path.exists(PATH_WKS_ARTIFACT_BUILD):
+            sys.exit("cannot run incremental build without a build directory")
+        if release:
+            sys.exit("cannot run build in both incremental and release mode")
+    else:
+        if os.path.exists(PATH_WKS_ARTIFACT):
+            shutil.rmtree(PATH_WKS_ARTIFACT)
+            os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
+        os.mkdir(PATH_WKS_ARTIFACT_BUILD)
+        _qemu_config(PATH_WKS_ARTIFACT_BUILD, PATH_WKS_ARTIFACT_INSTALL, release)
 
     # build
-    _qemu_config(PATH_WKS_ARTIFACT_BUILD, PATH_WKS_ARTIFACT_INSTALL, release)
     subprocess.run(
         ["make", "-j{}".format(NUM_CPUS)], cwd=PATH_WKS_ARTIFACT_BUILD, check=True
     )
@@ -299,6 +304,7 @@ def _prepare_linux(
 
     # prepare harness
     if mode != AgentMode.Shell:
+        assert harness is not None  # to keep mypy happy
         if kvm or mode == AgentMode.Test:
             shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
         else:
@@ -466,10 +472,6 @@ def cmd_linux(
             host.wait()
 
 
-def _dev_fresh() -> None:
-    _docker_exec_self([], ["build"])
-
-
 def cmd_dev_sample(volumes: List[str], kvm: bool, virtme: bool, solution: bool) -> None:
     if len(volumes) != 1:
         sys.exit("Expect one and only one volume to attach")
@@ -548,6 +550,7 @@ def main() -> None:
     parser_init.add_argument("--force", action="store_true")
 
     parser_build = subparsers.add_parser("build")
+    parser_build.add_argument("--incremental", action="store_true")
     parser_build.add_argument("--release", action="store_true")
 
     parser_linux = subparsers.add_parser("linux")
@@ -570,7 +573,10 @@ def main() -> None:
 
     elif args.command == "dev":
         if args.fresh:
-            _dev_fresh()
+            _docker_exec_self([], ["build"])
+        else:
+            _docker_exec_self([], ["build", "--incremental"])
+
         if args.cmd_dev == "sample":
             cmd_dev_sample(args.volume, args.kvm, args.virtme, args.solution)
         else:
@@ -579,7 +585,7 @@ def main() -> None:
     elif args.command == "init":
         cmd_init(args.force)
     elif args.command == "build":
-        cmd_build(args.release)
+        cmd_build(args.incremental, args.release)
     elif args.command == "linux":
         cmd_linux(
             args.kvm, args.kernel, args.harness, args.blob, args.virtme, args.verbose
