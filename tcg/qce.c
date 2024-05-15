@@ -17,6 +17,7 @@ int qce_init(CPUState *cpu) {
 
   // done
   cpu->kvm_state = (struct KVMState *)ctxt;
+  cpu->vcpu_dirty = true; // mark this vcpu as the main context manager
   return 0;
 }
 
@@ -26,11 +27,12 @@ void qce_shutdown(CPUState *cpu) {
     return;
   }
 
-  // free memory usage
+  // de-allocate resources
+  cpu->vcpu_dirty = false;
   free(cpu->kvm_state);
 }
 
-void qce_on_tcg_ir_generated(TCGContext *tcg_ctx) {
+void qce_on_tcg_ir_generated(const TCGContext *tcg_ctx) {
   if (tcg_ctx->cpu->kvm_state == NULL) {
     return;
   }
