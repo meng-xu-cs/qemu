@@ -2166,10 +2166,8 @@ void helper_sgx(CPUX86State *env)
   /* prepare the backing memory */
   qce_debug("started with addr 0x%lx and len %ld", addr, len);
 
-  /* initialize the QCE context */
-  if (qce_init(env_cpu(env)) != 0) {
-    goto error;
-  }
+  /* mark the trace to start */
+  qce_trace_start();
 
   /* done with this routine */
   env->regs[R_EAX] = 0;

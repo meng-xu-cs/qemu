@@ -4,25 +4,28 @@
 
 #include "qemu/qht.h"
 
+// exec-graph
+struct QCEBlock {
+  const TranslationBlock *tb;
+};
+
+static bool qce_block_qht_cmp(const void *a, const void *b) {
+  return ((struct QCEBlock *)a)->tb == ((struct QCEBlock *)b)->tb;
+}
+static bool qce_block_qht_lookup(const void *p, const void *userp) {
+  return ((struct QCEBlock *)p)->tb == (const TranslationBlock *)userp;
+}
+static void qce_block_qht_iter_free(void *p, uint32_t _h, void *_userp) {
+  g_free(p);
+}
+
 // context
 struct QCEContext {
   // a map of the translation block
-  struct qht /* <TranslationBlock, vaddr> */ tb_map;
+  struct qht /* <const TranslationBlock *, QCEBlock> */ tb_map;
 };
 
 #define QCE_CTXT_TB_MAP_SIZE 1 << 16
-static bool qce_ctxt_tb_map_cmp(const void *a, const void *b) {
-  const TranslationBlock *lhs = a;
-  const TranslationBlock *rhs = b;
-  return lhs->pc == rhs->pc;
-}
-static inline void qce_ctxt_register_tb(struct QCEContext *qce,
-                                        const TranslationBlock *tb) {
-  if (!qht_insert(&qce->tb_map, (void *)tb, qemu_xxhash2(tb->pc), NULL)) {
-    qce_fatal("duplicate translation block for PC 0x%lx", tb->pc);
-  }
-}
-
 int qce_init(CPUState *cpu) {
   // repurpose the kvm_state (which is only used in kvm) for context
   if (unlikely(cpu->kvm_state != NULL)) {
@@ -37,7 +40,7 @@ int qce_init(CPUState *cpu) {
     return 1;
   }
 
-  qht_init(&ctxt->tb_map, qce_ctxt_tb_map_cmp, QCE_CTXT_TB_MAP_SIZE,
+  qht_init(&ctxt->tb_map, qce_block_qht_cmp, QCE_CTXT_TB_MAP_SIZE,
            QHT_MODE_AUTO_RESIZE);
 
   // done
@@ -65,7 +68,6 @@ void qce_try_shutdown(void) {
       ctxt = cpu;
     }
   }
-
   // no manager found, QCE has been destroyed
   if (ctxt == NULL) {
     return;
@@ -78,6 +80,7 @@ void qce_try_shutdown(void) {
     return;
   }
 
+  qht_iter(&qce->tb_map, qce_block_qht_iter_free, NULL);
   qht_destroy(&qce->tb_map);
 
   // de-allocate resources
@@ -86,6 +89,8 @@ void qce_try_shutdown(void) {
   ctxt->vcpu_dirty = false;
   qce_debug("destroyed");
 }
+
+void qce_trace_start(void) {}
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
                              TranslationBlock *tb) {
@@ -110,14 +115,22 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
     return;
   }
 
+  // mark the translation block
+  struct TranslationBlock *tb = tcg->gen_tb;
+  struct QCEBlock *blk = g_malloc0(sizeof(*blk));
+  blk->tb = tb;
+
   // go over the operators
   TCGOp *op;
   QTAILQ_FOREACH(op, &tcg->ops, link) {
     // TODO
   }
 
-  // mark the translation block
-  qce_ctxt_register_tb(qce, tcg->gen_tb);
+  // insert it
+  if (!qht_insert(&qce->tb_map, (void *)blk, qemu_xxhash2((uint64_t)tb),
+                  NULL)) {
+    qce_fatal("duplicate translation block: 0x%p", tb);
+  }
 
   // clear the CPU marker
   tcg->cpu = NULL;
@@ -128,5 +141,13 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   if (qce == NULL) {
     return;
   }
+
+  // find the block
+  struct QCEBlock *blk = qht_lookup_custom(
+      &qce->tb_map, tb, qemu_xxhash2((uint64_t)tb), qce_block_qht_lookup);
+  if (blk == NULL) {
+    qce_fatal("unable to find QCE block for translation block: 0x%p", tb);
+  }
+
   // CPUArchState *arch = cpu_env(cpu);
 }
