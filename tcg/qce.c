@@ -135,6 +135,7 @@ void qce_trace_try_finish(void) {
   // destruct the session
   struct QCESession *session = (struct QCESession *)ctxt->kvm_run;
   g_free(session);
+  ctxt->kvm_run = NULL;
   qce_debug("trace session stops");
 }
 
