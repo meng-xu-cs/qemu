@@ -210,7 +210,7 @@ static void *rr_cpu_thread_fn(void *arg)
     rr_start_kick_timer();
 
     cpu = first_cpu;
-    qce_init(cpu);
+    qce_init();
 
     /* process any pending work */
     cpu->exit_request = 1;

@@ -26,9 +26,10 @@
 
 // exposed type
 struct QCEContext;
+extern struct QCEContext *g_qce;
 
 // context management
-int qce_init(CPUState *cpu);
+void qce_init(void);
 void qce_destroy(void);
 
 // tracing
