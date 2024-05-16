@@ -301,9 +301,10 @@ static void *rr_cpu_thread_fn(void *arg)
 
         rr_wait_io_event();
         rr_deal_with_unplugged_cpus();
-        qce_try_shutdown();
+        qce_trace_try_finish();
     }
 
+    qce_destroy();
     rcu_remove_force_rcu_notifier(&force_rcu);
     rcu_unregister_thread();
     return NULL;
