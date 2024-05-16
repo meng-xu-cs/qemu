@@ -30,14 +30,12 @@ int qce_init(CPUState *cpu) {
   // repurpose the kvm_state (which is only used in kvm) for context
   if (unlikely(cpu->kvm_state != NULL)) {
     qce_fatal("kvm_state is not NULL, cannot repurpose it");
-    return 1;
   }
 
   // initialize the context
   struct QCEContext *ctxt = malloc(sizeof(struct QCEContext));
   if (unlikely(ctxt == NULL)) {
     qce_fatal("unable to allocate QCE context");
-    return 1;
   }
 
   qht_init(&ctxt->tb_map, qce_block_qht_cmp, QCE_CTXT_TB_MAP_SIZE,
@@ -50,7 +48,7 @@ int qce_init(CPUState *cpu) {
   return 0;
 }
 
-void qce_try_shutdown(void) {
+void qce_destroy(void) {
   CPUState *cpu;
   CPUState *ctxt = NULL;
 
@@ -63,7 +61,6 @@ void qce_try_shutdown(void) {
     if (cpu->vcpu_dirty) {
       if (unlikely(ctxt != NULL)) {
         qce_fatal("more than one context manager for QCE");
-        return;
       }
       ctxt = cpu;
     }
@@ -77,7 +74,6 @@ void qce_try_shutdown(void) {
   struct QCEContext *qce = (struct QCEContext *)ctxt->kvm_state;
   if (unlikely(qce == NULL)) {
     qce_fatal("context manager does not carry a QCE engine");
-    return;
   }
 
   qht_iter(&qce->tb_map, qce_block_qht_iter_free, NULL);
@@ -90,7 +86,57 @@ void qce_try_shutdown(void) {
   qce_debug("destroyed");
 }
 
-void qce_trace_start(void) {}
+// session
+struct QCESession {
+  tcg_target_ulong blob_addr;
+  tcg_target_ulong size_val;
+};
+
+void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
+                     tcg_target_ulong len) {
+  struct QCEContext *qce = (struct QCEContext *)cpu->kvm_state;
+  if (unlikely(qce == NULL)) {
+    qce_fatal("vCPU does not carry a QCE engine");
+  }
+  if (unlikely(cpu->kvm_run != NULL)) {
+    qce_fatal("vCPU already carries a session");
+  }
+
+  /* prepare the backing memory */
+  qce_debug("started with addr 0x%lx and len %ld", addr, len);
+  struct QCESession *session = g_malloc0(sizeof(*session));
+  session->blob_addr = addr;
+  session->size_val = len;
+  cpu->kvm_run = (struct kvm_run *)session;
+}
+
+void qce_trace_try_finish(void) {
+  CPUState *cpu;
+  CPUState *ctxt = NULL;
+
+  CPU_FOREACH(cpu) {
+    // only shutdown QCE when all CPUs are stopped
+    if (!cpu->stopped) {
+      return;
+    }
+    // locate the context manager
+    if (cpu->kvm_run != NULL) {
+      if (unlikely(ctxt != NULL)) {
+        qce_fatal("more than one session exists for QCE");
+      }
+      ctxt = cpu;
+    }
+  }
+  // no session found, session might have finished
+  if (ctxt == NULL) {
+    return;
+  }
+
+  // destruct the session
+  struct QCESession *session = (struct QCESession *)ctxt->kvm_run;
+  g_free(session);
+  qce_debug("trace session stops");
+}
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
                              TranslationBlock *tb) {
@@ -112,7 +158,6 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   struct QCEContext *qce = (struct QCEContext *)tcg->cpu->kvm_state;
   if (unlikely(qce == NULL)) {
     qce_fatal("TCG context does not carry a QCE engine");
-    return;
   }
 
   // mark the translation block
@@ -149,5 +194,6 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     qce_fatal("unable to find QCE block for translation block: 0x%p", tb);
   }
 
+  // TODO
   // CPUArchState *arch = cpu_env(cpu);
 }

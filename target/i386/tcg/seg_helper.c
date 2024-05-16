@@ -2163,11 +2163,8 @@ void helper_sgx(CPUX86State *env)
   target_ulong len = env->regs[R_EBX];
   target_ulong addr = env->regs[R_ECX];
 
-  /* prepare the backing memory */
-  qce_debug("started with addr 0x%lx and len %ld", addr, len);
-
   /* mark the trace to start */
-  qce_trace_start();
+  qce_trace_start(env_cpu(env), addr, len);
 
   /* done with this routine */
   env->regs[R_EAX] = 0;

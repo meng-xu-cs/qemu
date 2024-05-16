@@ -29,10 +29,12 @@ struct QCEContext;
 
 // context management
 int qce_init(CPUState *cpu);
-void qce_try_shutdown(void);
+void qce_destroy(void);
 
 // tracing
-void qce_trace_start(void);
+void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
+                     tcg_target_ulong len);
+void qce_trace_try_finish(void);
 
 // callback on TCG IR is first generated
 void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
