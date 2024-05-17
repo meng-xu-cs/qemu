@@ -4,6 +4,7 @@
 
 #include "qemu/qht.h"
 
+// cache
 struct QCECache {
   const TranslationBlock *tb;  // key for hashtable
   QSLIST_ENTRY(QCECache) next; // part of the linked list
@@ -21,21 +22,22 @@ static void qce_cache_qht_iter_free(void *p, uint32_t _h, void *_userp) {
 
 // session
 struct QCESession {
+  // a holder of cache entries generated within this session
+  QSLIST_HEAD(, QCECache) cache_entries;
+
+  // mark whether the session is in tracing mode
+  bool tracing;
   // symbolic memory address
   tcg_target_ulong blob_addr;
   // symbolic memory size
   tcg_target_ulong size_val;
-  // a holder of cache entries generated within this session
-  QSLIST_HEAD(, QCECache) cache_entries;
-  // mark the session as dirty so that it will be cleaned on next creation
-  bool dirty;
 };
 
 // context
 struct QCEContext {
   // a map of the translation block
   struct qht /* <const TranslationBlock *, QCECache> */ cache;
-  // current QCE session
+  // current session (i.e., execution of one snapshot)
   struct QCESession *session;
 };
 
@@ -79,114 +81,98 @@ void qce_destroy(void) {
 
   // ensure that we are not in the middle of a session
   struct QCESession *session = g_qce->session;
-  if (unlikely(g_qce->session == NULL)) {
+  if (unlikely(session == NULL)) {
     qce_fatal("trying to shutdown QCE with no session executed");
   }
-  if (!session->dirty) {
-    qce_fatal("trying to shutdown QCE while an active session is running");
+  if (session->tracing) {
+    qce_fatal("trying to shutdown QCE while an active session is tracing");
   }
 
   // de-allocate resources
+  g_free(session); // there is no need to free internal fields of session
   qht_iter(&g_qce->cache, qce_cache_qht_iter_free, NULL);
   qht_destroy(&g_qce->cache);
-
-  free(g_qce);
+  g_free(g_qce);
   g_qce = NULL;
 
   // done
   qce_debug("destroyed");
 }
 
-void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
-                     tcg_target_ulong len) {
+void qce_session_init(void) {
   if (unlikely(g_qce == NULL)) {
     qce_fatal("QCE is not initialized yet");
   }
-
-  // create a new session or clean-up last session
-  struct QCESession *session = g_qce->session;
   if (g_qce->session != NULL) {
-    if (unlikely(session->dirty)) {
-      qce_fatal("QCE is already in an active session");
-    }
-
-    struct QCECache *entry;
-    QSLIST_FOREACH(entry, &session->cache_entries, next) {
-      if (!qht_remove(&g_qce->cache, (void *)entry,
-                      qemu_xxhash2((uint64_t)entry->tb))) {
-        qce_fatal("invalid QCE cache entry to be removed");
-      }
-    }
-
-    struct QCECache *tmp;
-    QSLIST_FOREACH_SAFE(entry, &session->cache_entries, next, tmp) {
-      g_free(tmp);
-    }
-
-    // also clean-up this session as well
-    g_free(session);
-    session = NULL;
-    qce_debug("previous session cleaned");
+    qce_fatal("re-creating a session");
   }
 
-  // prepare a new session
-  session = g_malloc0(sizeof(*session));
-  session->blob_addr = addr;
-  session->size_val = len;
+  // create a new session
+  struct QCESession *session = g_malloc0(sizeof(*session));
+  session->tracing = false;
+  session->blob_addr = 0;
+  session->size_val = 0;
   QSLIST_INIT(&session->cache_entries);
-  session->dirty = false;
-  g_qce->session = session;
 
-  // re-purpose the kvm-related flag
-  if (unlikely(cpu->vcpu_dirty)) {
-    qce_fatal("vCPU already carries a session");
-  }
-  cpu->vcpu_dirty = true;
-  qce_debug("new session started with addr 0x%lx and len %ld", addr, len);
+  g_qce->session = session;
+  qce_debug("session created");
 }
 
-void qce_trace_try_finish(void) {
+void qce_session_reload(void) {
   if (unlikely(g_qce == NULL)) {
     qce_fatal("QCE is not initialized yet");
   }
 
-  // nothing to destroy if we don't have a session yet
+  // sanity check
+  struct QCESession *session = g_qce->session;
+  if (unlikely(session != NULL)) {
+    qce_fatal("no session to reload");
+  }
+  if (unlikely(!session->tracing)) {
+    qce_fatal("the current session is not tracing");
+  }
+
+  // clean up cache
+  struct QCECache *entry;
+  QSLIST_FOREACH(entry, &session->cache_entries, next) {
+    if (!qht_remove(&g_qce->cache, (void *)entry,
+                    qemu_xxhash2((uint64_t)entry->tb))) {
+      qce_fatal("invalid QCE cache entry to be removed");
+    }
+  }
+  struct QCECache *tmp;
+  QSLIST_FOREACH_SAFE(entry, &session->cache_entries, next, tmp) {
+    g_free(tmp);
+  }
+
+  // reset the cache list
+  QSLIST_INIT(&session->cache_entries);
+
+  // reset the tracing states
+  session->tracing = false;
+  session->blob_addr = 0;
+  session->size_val = 0;
+  qce_debug("session reloaded");
+}
+
+void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
+  // sanity checks
+  if (unlikely(g_qce == NULL)) {
+    qce_fatal("QCE is not initialized yet");
+  }
+
   struct QCESession *session = g_qce->session;
   if (unlikely(session == NULL)) {
-    return;
+    qce_fatal("no active session is running");
   }
 
-  // ensure that all vCPUs are stopped
-  CPUState *cpu;
-  CPUState *mark = NULL;
-  CPU_FOREACH(cpu) {
-    // only shutdown QCE when all CPUs are stopped
-    if (!cpu->stopped) {
-      return;
-    }
-    // locate the context manager
-    if (cpu->vcpu_dirty) {
-      if (unlikely(mark != NULL)) {
-        qce_fatal("more than one vCPU carries a QCE session");
-      }
-      mark = cpu;
-    }
-  }
+  // mark that tracing should be started now
+  session->blob_addr = addr;
+  session->size_val = len;
+  session->tracing = true;
 
-  // no vCPU found, session might have been cleared already
-  if (mark == NULL) {
-    if (unlikely(!session->dirty)) {
-      qce_fatal("the session is active without associated vCPU");
-    }
-    return;
-  }
-
-  // mark the session as dirty
-  session->dirty = true;
-
-  // clear the vCPU dirty bit
-  mark->vcpu_dirty = false;
-  qce_debug("session stopped");
+  // done
+  qce_debug("tracing started with addr 0x%lx and len %ld", addr, len);
 }
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb) {
@@ -221,9 +207,6 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   if (session != NULL) {
     QSLIST_INSERT_HEAD(&session->cache_entries, entry, next);
   }
-
-  // clear the CPU marker
-  tcg->cpu = NULL;
 }
 
 void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {

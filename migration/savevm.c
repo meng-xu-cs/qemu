@@ -69,6 +69,7 @@
 #include "yank_functions.h"
 #include "sysemu/qtest.h"
 #include "options.h"
+#include "qemu/qce.h"
 
 const unsigned int postcopy_ram_discard_version;
 
@@ -3170,7 +3171,7 @@ bool save_snapshot(const char *name, bool overwrite, const char *vmstate,
 
  the_end:
     bdrv_drain_all_end();
-
+    qce_session_init();
     vm_resume(saved_state);
     return ret == 0;
 }
@@ -3331,7 +3332,7 @@ bool load_snapshot(const char *name, const char *vmstate,
         error_setg(errp, "Error %d while loading VM state", ret);
         return false;
     }
-
+    qce_session_reload();
     return true;
 
 err_drain:

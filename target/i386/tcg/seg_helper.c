@@ -2164,7 +2164,7 @@ void helper_sgx(CPUX86State *env)
   target_ulong addr = env->regs[R_ECX];
 
   /* mark the trace to start */
-  qce_trace_start(env_cpu(env), addr, len);
+  qce_trace_start(addr, len);
 
   /* done with this routine */
   env->regs[R_EAX] = 0;
