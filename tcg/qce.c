@@ -27,6 +27,8 @@ struct QCESession {
   tcg_target_ulong size_val;
   // a holder of cache entries generated within this session
   QSLIST_HEAD(, QCECache) cache_entries;
+  // mark the session as dirty so that it will be cleaned on next creation
+  bool dirty;
 };
 
 // context
@@ -76,8 +78,12 @@ void qce_destroy(void) {
   }
 
   // ensure that we are not in the middle of a session
-  if (unlikely(g_qce->session != NULL)) {
-    qce_fatal("Trying to shutdown QCE while an active session is running");
+  struct QCESession *session = g_qce->session;
+  if (unlikely(g_qce->session == NULL)) {
+    qce_fatal("trying to shutdown QCE with no session executed");
+  }
+  if (!session->dirty) {
+    qce_fatal("trying to shutdown QCE while an active session is running");
   }
 
   // de-allocate resources
@@ -96,16 +102,39 @@ void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
   if (unlikely(g_qce == NULL)) {
     qce_fatal("QCE is not initialized yet");
   }
-  if (unlikely(g_qce->session != NULL)) {
-    qce_fatal("QCE is already in an active session");
+
+  // create a new session or clean-up last session
+  struct QCESession *session = g_qce->session;
+  if (g_qce->session != NULL) {
+    if (unlikely(session->dirty)) {
+      qce_fatal("QCE is already in an active session");
+    }
+
+    struct QCECache *entry;
+    QSLIST_FOREACH(entry, &session->cache_entries, next) {
+      if (!qht_remove(&g_qce->cache, (void *)entry,
+                      qemu_xxhash2((uint64_t)entry->tb))) {
+        qce_fatal("invalid QCE cache entry to be removed");
+      }
+    }
+
+    struct QCECache *tmp;
+    QSLIST_FOREACH_SAFE(entry, &session->cache_entries, next, tmp) {
+      g_free(tmp);
+    }
+
+    // also clean-up this session as well
+    g_free(session);
+    session = NULL;
+    qce_debug("previous session cleaned");
   }
 
-  // prepare the session
-  qce_debug("started with addr 0x%lx and len %ld", addr, len);
-  struct QCESession *session = g_malloc0(sizeof(*session));
+  // prepare a new session
+  session = g_malloc0(sizeof(*session));
   session->blob_addr = addr;
   session->size_val = len;
   QSLIST_INIT(&session->cache_entries);
+  session->dirty = false;
   g_qce->session = session;
 
   // re-purpose the kvm-related flag
@@ -113,6 +142,7 @@ void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
     qce_fatal("vCPU already carries a session");
   }
   cpu->vcpu_dirty = true;
+  qce_debug("new session started with addr 0x%lx and len %ld", addr, len);
 }
 
 void qce_trace_try_finish(void) {
@@ -122,7 +152,6 @@ void qce_trace_try_finish(void) {
 
   CPUState *cpu;
   CPUState *mark = NULL;
-
   CPU_FOREACH(cpu) {
     // only shutdown QCE when all CPUs are stopped
     if (!cpu->stopped) {
@@ -136,34 +165,27 @@ void qce_trace_try_finish(void) {
       mark = cpu;
     }
   }
-  // no session found, session might have finished
+
+  // when all vCPUs are stopped, we should have a session
+  struct QCESession *session = g_qce->session;
+  if (unlikely(session == NULL)) {
+    qce_fatal("trying to stop a session without starting one");
+  }
+
+  // no vCPU found, session might have been cleared already
   if (mark == NULL) {
-    if (unlikely(g_qce->session != NULL)) {
-      qce_fatal("the session is running without associated vCPU");
+    if (unlikely(!session->dirty)) {
+      qce_fatal("the session is active without associated vCPU");
     }
     return;
   }
 
-  // destruct the session
-  struct QCESession *session = g_qce->session;
-  if (unlikely(session == NULL)) {
-    qce_fatal("the session is cleared without vCPU");
-  }
+  // mark the session as dirty
+  session->dirty = true;
 
-  // clear all session-specific cache entries
-  struct QCECache *entry;
-  QSLIST_FOREACH(entry, &session->cache_entries, next) {
-    if (!qht_remove(&g_qce->cache, (void *)entry,
-                    qemu_xxhash2((uint64_t)entry->tb))) {
-      qce_fatal("invalid entry to remove");
-    }
-  }
-
-  // destroy the session itself
-  g_free(g_qce->session);
-  g_qce->session = NULL;
+  // clear the vCPU dirty bit
   mark->vcpu_dirty = false;
-  qce_debug("trace session stops");
+  qce_debug("session stopped");
 }
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb) {
