@@ -125,7 +125,7 @@ void qce_session_reload(void) {
 
   // sanity check
   struct QCESession *session = g_qce->session;
-  if (unlikely(session != NULL)) {
+  if (unlikely(session == NULL)) {
     qce_fatal("no session to reload");
   }
   if (unlikely(!session->tracing)) {
