@@ -38,8 +38,7 @@ void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
 void qce_trace_try_finish(void);
 
 // callback on TCG IR is first generated
-void qce_on_tcg_ir_generated(TCGContext *tcg, CPUState *cpu,
-                             TranslationBlock *tb);
+void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb);
 
 // callback on TCG IR is fully optimized
 void qce_on_tcg_ir_optimized(TCGContext *tcg);
