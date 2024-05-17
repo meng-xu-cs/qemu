@@ -1,30 +1,14 @@
 #include "qemu/qce.h"
+
 #include "exec/translation-block.h"
+#include "qemu/qht.h"
+#include "qemu/queue.h"
 #include "qemu/xxhash.h"
 
-#include "qemu/qht.h"
-
-// cache
-struct QCECache {
-  const TranslationBlock *tb;  // key for hashtable
-  QSLIST_ENTRY(QCECache) next; // part of the linked list
-};
-
-static bool qce_cache_qht_cmp(const void *a, const void *b) {
-  return ((struct QCECache *)a)->tb == ((struct QCECache *)b)->tb;
-}
-static bool qce_cache_qht_lookup(const void *p, const void *userp) {
-  return ((struct QCECache *)p)->tb == (const TranslationBlock *)userp;
-}
-static void qce_cache_qht_iter_free(void *p, uint32_t _h, void *_userp) {
-  g_free(p);
-}
+#include "qce-ir.h"
 
 // session
 struct QCESession {
-  // a holder of cache entries generated within this session
-  QSLIST_HEAD(, QCECache) cache_entries;
-
   // mark whether the session is in tracing mode
   bool tracing;
   // symbolic memory address
@@ -33,10 +17,28 @@ struct QCESession {
   tcg_target_ulong size_val;
 };
 
+// cache entry
+struct QCECacheEntry {
+  const TranslationBlock *tb; // key for hashtable
+};
+
+static bool qce_cache_qht_cmp(const void *a, const void *b) {
+  return ((struct QCECacheEntry *)a)->tb == ((struct QCECacheEntry *)b)->tb;
+}
+static bool qce_cache_qht_lookup(const void *p, const void *userp) {
+  return ((struct QCECacheEntry *)p)->tb == (const TranslationBlock *)userp;
+}
+
 // context
+#define QCE_CTXT_CACHE_SIZE 1 << 24
 struct QCEContext {
+  // pre-allocated cache entry pool
+  struct QCECacheEntry cache_pool[QCE_CTXT_CACHE_SIZE];
+  // index of the next available cache entry
+  size_t cache_next_entry;
   // a map of the translation block
   struct qht /* <const TranslationBlock *, QCECache> */ cache;
+
   // current session (i.e., execution of one snapshot)
   struct QCESession *session;
 };
@@ -44,9 +46,7 @@ struct QCEContext {
 // global variable
 struct QCEContext *g_qce = NULL;
 
-#define QCE_CTXT_CACHE_SIZE 1 << 16
 void qce_init(void) {
-  // repurpose the kvm_state (which is only used in kvm) for context
   if (unlikely(g_qce != NULL)) {
     qce_fatal("QCE is already initialized");
   }
@@ -57,6 +57,7 @@ void qce_init(void) {
     qce_fatal("unable to allocate QCE context");
   }
 
+  g_qce->cache_next_entry = 0;
   qht_init(&g_qce->cache, qce_cache_qht_cmp, QCE_CTXT_CACHE_SIZE,
            QHT_MODE_AUTO_RESIZE);
   g_qce->session = NULL;
@@ -90,7 +91,6 @@ void qce_destroy(void) {
 
   // de-allocate resources
   g_free(session); // there is no need to free internal fields of session
-  qht_iter(&g_qce->cache, qce_cache_qht_iter_free, NULL);
   qht_destroy(&g_qce->cache);
   g_free(g_qce);
   g_qce = NULL;
@@ -99,10 +99,15 @@ void qce_destroy(void) {
   qce_debug("destroyed");
 }
 
-void qce_session_init(void) {
+static inline void assert_qce_initialized(void) {
   if (unlikely(g_qce == NULL)) {
     qce_fatal("QCE is not initialized yet");
   }
+}
+
+void qce_session_init(void) {
+  assert_qce_initialized();
+
   if (g_qce->session != NULL) {
     qce_fatal("re-creating a session");
   }
@@ -112,16 +117,13 @@ void qce_session_init(void) {
   session->tracing = false;
   session->blob_addr = 0;
   session->size_val = 0;
-  QSLIST_INIT(&session->cache_entries);
 
   g_qce->session = session;
   qce_debug("session created");
 }
 
 void qce_session_reload(void) {
-  if (unlikely(g_qce == NULL)) {
-    qce_fatal("QCE is not initialized yet");
-  }
+  assert_qce_initialized();
 
   // sanity check
   struct QCESession *session = g_qce->session;
@@ -132,22 +134,6 @@ void qce_session_reload(void) {
     qce_fatal("the current session is not tracing");
   }
 
-  // clean up cache
-  struct QCECache *entry;
-  QSLIST_FOREACH(entry, &session->cache_entries, next) {
-    if (!qht_remove(&g_qce->cache, (void *)entry,
-                    qemu_xxhash2((uint64_t)entry->tb))) {
-      qce_fatal("invalid QCE cache entry to be removed");
-    }
-  }
-  struct QCECache *tmp;
-  QSLIST_FOREACH_SAFE(entry, &session->cache_entries, next, tmp) {
-    g_free(tmp);
-  }
-
-  // reset the cache list
-  QSLIST_INIT(&session->cache_entries);
-
   // reset the tracing states
   session->tracing = false;
   session->blob_addr = 0;
@@ -156,11 +142,9 @@ void qce_session_reload(void) {
 }
 
 void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
-  // sanity checks
-  if (unlikely(g_qce == NULL)) {
-    qce_fatal("QCE is not initialized yet");
-  }
+  assert_qce_initialized();
 
+  // sanity check
   struct QCESession *session = g_qce->session;
   if (unlikely(session == NULL)) {
     qce_fatal("no active session is running");
@@ -176,47 +160,46 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
 }
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb) {
+  assert_qce_initialized();
+
   if (unlikely(tcg->gen_tb != tb)) {
     qce_fatal("TCGContext::gen_tb does not match the tb argument");
   }
 }
 
 void qce_on_tcg_ir_optimized(TCGContext *tcg) {
-  if (g_qce == NULL) {
-    return;
+  assert_qce_initialized();
+
+  struct TranslationBlock *tb = tcg->gen_tb;
+#ifdef QCE_DUMP
+  qce_debug("Translation block: 0x%p", tb);
+  tcg_dump_ops(tcg, stderr, false);
+#endif
+
+  // sanity check
+  if (g_qce->cache_next_entry == QCE_CTXT_CACHE_SIZE) {
+    qce_fatal("cache is at capacity");
   }
 
   // mark the translation block
-  struct TranslationBlock *tb = tcg->gen_tb;
-  struct QCECache *entry = g_malloc0(sizeof(*entry));
+  struct QCECacheEntry *entry = &g_qce->cache_pool[g_qce->cache_next_entry];
   entry->tb = tb;
 
-  // go over the operators
-  TCGOp *op;
-  QTAILQ_FOREACH(op, &tcg->ops, link) {
-    // TODO
-  }
-
-  // insert it
-  if (!qht_insert(&g_qce->cache, (void *)entry, qemu_xxhash2((uint64_t)tb),
-                  NULL)) {
-    qce_fatal("duplicate translation block: 0x%p", tb);
-  }
-
-  struct QCESession *session = g_qce->session;
-  if (session != NULL) {
-    QSLIST_INSERT_HEAD(&session->cache_entries, entry, next);
+  // insert or obtain the pointer
+  void *existing;
+  if (qht_insert(&g_qce->cache, (void *)entry, qemu_xxhash2((uint64_t)tb),
+                 &existing)) {
+    g_qce->cache_next_entry++;
+  } else {
+    entry = existing;
   }
 }
 
 void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
-  struct QCEContext *qce = (struct QCEContext *)cpu->kvm_state;
-  if (qce == NULL) {
-    return;
-  }
+  assert_qce_initialized();
 
   // find the cache entry
-  struct QCECache *entry = qht_lookup_custom(
+  struct QCECacheEntry *entry = qht_lookup_custom(
       &g_qce->cache, tb, qemu_xxhash2((uint64_t)tb), qce_cache_qht_lookup);
   if (entry == NULL) {
     qce_fatal("unable to find QCE entry for translation block: 0x%p", tb);
