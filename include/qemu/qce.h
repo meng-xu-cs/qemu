@@ -32,10 +32,12 @@ extern struct QCEContext *g_qce;
 void qce_init(void);
 void qce_destroy(void);
 
+// session management (a session is from save/load vm -> next load vm)
+void qce_session_init(void);
+void qce_session_reload(void);
+
 // tracing
-void qce_trace_start(CPUState *cpu, tcg_target_ulong addr,
-                     tcg_target_ulong len);
-void qce_trace_try_finish(void);
+void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len);
 
 // callback on TCG IR is first generated
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb);
