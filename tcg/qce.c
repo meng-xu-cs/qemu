@@ -150,6 +150,13 @@ void qce_trace_try_finish(void) {
     qce_fatal("QCE is not initialized yet");
   }
 
+  // nothing to destroy if we don't have a session yet
+  struct QCESession *session = g_qce->session;
+  if (unlikely(session == NULL)) {
+    return;
+  }
+
+  // ensure that all vCPUs are stopped
   CPUState *cpu;
   CPUState *mark = NULL;
   CPU_FOREACH(cpu) {
@@ -164,12 +171,6 @@ void qce_trace_try_finish(void) {
       }
       mark = cpu;
     }
-  }
-
-  // when all vCPUs are stopped, we should have a session
-  struct QCESession *session = g_qce->session;
-  if (unlikely(session == NULL)) {
-    qce_fatal("trying to stop a session without starting one");
   }
 
   // no vCPU found, session might have been cleared already
