@@ -208,7 +208,7 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   struct TranslationBlock *tb = tcg->gen_tb;
 #ifdef QCE_DEBUG_IR
   if (g_qce->trace_file != NULL) {
-    qce_debug("[TB: 0x%p]", tb);
+    fprintf(g_qce->trace_file, "[TB: 0x%p]\n", tb);
     tcg_dump_ops(tcg, g_qce->trace_file, false);
   }
 #endif
