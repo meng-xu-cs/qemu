@@ -57,8 +57,7 @@ static inline ptrdiff_t temp_index(const TCGContext *tcg, TCGTemp *t) {
   return n;
 }
 
-static inline void parse_var(const TCGContext *tcg, TCGTemp *t,
-                             struct QCEVar *v) {
+static inline void parse_var(TCGContext *tcg, TCGTemp *t, struct QCEVar *v) {
 #ifndef QCE_SUPPORTS_VEC
   // there should never be a variable in vector type
   switch (t->base_type) {
@@ -182,8 +181,40 @@ struct QCEInst {
   } inst;
 };
 
-static inline void parse_op(const TCGOp *op, struct QCEInst *inst) {
-  switch (op->opc) {
+static inline void parse_op(TCGContext *tcg, const TCGOp *op,
+                            struct QCEInst *inst) {
+  TCGOpcode c = op->opc;
+  const TCGOpDef *def = &tcg_op_defs[c];
+
+#ifndef QCE_SUPPORTS_VEC
+  // there should never be an op with vector operands
+  qce_debug_assert_op1(tcg, (def->flags & TCG_OPF_VECTOR) == 0, op);
+#endif
+
+  if (c == INDEX_op_insn_start) {
+    // TODO: special case
+    return;
+  }
+
+  if (c == INDEX_op_call) {
+    // TODO: special case
+    return;
+  }
+
+  // all other instructions
+  qce_debug_assert_op1(
+      tcg, op->nargs == def->nb_oargs + def->nb_iargs + def->nb_cargs, op);
+
+  // TODO: temporary check
+  struct QCEVar v;
+  for (int i = 0; i < def->nb_oargs; i++) {
+    parse_var(tcg, arg_temp(op->args[i]), &v);
+  }
+  for (int i = 0; i < def->nb_iargs; i++) {
+    parse_var(tcg, arg_temp(op->args[i + def->nb_oargs]), &v);
+  }
+
+  switch (c) {
   case INDEX_op_discard:
     return;
   default:

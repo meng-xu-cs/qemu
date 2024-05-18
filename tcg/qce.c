@@ -230,6 +230,24 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   } else {
     entry = existing;
   }
+
+  // parse the translation block
+  // TODO: change it to the actual logic
+#ifdef QCE_DEBUG_IR
+  int num_ops = 0;
+#endif
+  struct QCEInst inst;
+
+  TCGOp *op;
+  QTAILQ_FOREACH(op, &tcg->ops, link) {
+    parse_op(tcg, op, &inst);
+#ifdef QCE_DEBUG_IR
+    num_ops++;
+#endif
+  }
+#ifdef QCE_DEBUG_IR
+  g_assert(num_ops == tcg->nb_ops);
+#endif
 }
 
 void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
