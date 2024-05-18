@@ -5,6 +5,8 @@
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
 
+#define QCE_DEBUG_IR
+#include "qce-debug.h"
 #include "qce-ir.h"
 
 // session
