@@ -47,14 +47,13 @@ PATH_WKS_LINUX_HARNESS_BIN = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
-
+PATH_WKS_LINUX_TRACE = os.path.join(PATH_WKS_LINUX, "trace")
 
 # system constants
 NUM_CPUS = multiprocessing.cpu_count()
 KB_IN_BYTES = 1024
 MB_IN_BYTES = KB_IN_BYTES * 1024
 GB_IN_BYTES = MB_IN_BYTES * 1024
-
 
 # qemu constants
 VM_MEM_SIZE = 2 * GB_IN_BYTES
@@ -343,6 +342,7 @@ def _execute_linux(
     tmp: str,
     kvm: bool,
     loop: bool,
+    trace: bool,
     verbose: bool,
 ) -> None:
     # prepare the pipe
@@ -440,9 +440,10 @@ def _execute_linux(
         command.extend(["-append", " ".join(kernel_args)])
 
     # execute
-    subprocess.check_call(
-        command, env={"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
-    )
+    envs = {"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
+    if trace:
+        envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
+    subprocess.check_call(command, env=envs)
 
 
 def cmd_linux(
@@ -451,6 +452,7 @@ def cmd_linux(
     harness: Optional[str],
     blob: Optional[str],
     simulate_virtme: bool,
+    trace: bool,
     verbose: bool,
 ) -> None:
     mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose)
@@ -465,14 +467,16 @@ def cmd_linux(
             host = None
 
         # start the guest
-        _execute_linux(tmp, kvm, host is not None, verbose)
+        _execute_linux(tmp, kvm, host is not None, trace, verbose)
 
         # wait for host termination (if we have one)
         if host is not None:
             host.wait()
 
 
-def cmd_dev_sample(volumes: List[str], kvm: bool, virtme: bool, solution: bool) -> None:
+def cmd_dev_sample(
+    volumes: List[str], kvm: bool, virtme: bool, trace: bool, solution: bool
+) -> None:
     if len(volumes) != 1:
         sys.exit("Expect one and only one volume to attach")
 
@@ -481,6 +485,8 @@ def cmd_dev_sample(volumes: List[str], kvm: bool, virtme: bool, solution: bool) 
         passthrough_args.append("--kvm")
     if virtme:
         passthrough_args.append("--virtme")
+    if trace:
+        passthrough_args.append("--trace")
 
     passthrough_args.append("--verbose")
     passthrough_args.extend(
@@ -540,6 +546,7 @@ def main() -> None:
     parser_dev_sample = sub_dev.add_parser("sample")
     parser_dev_sample.add_argument("--kvm", action="store_true")
     parser_dev_sample.add_argument("--virtme", action="store_true")
+    parser_dev_sample.add_argument("--trace", action="store_true")
     parser_dev_sample.add_argument("--solution", action="store_true")
 
     #
@@ -559,6 +566,7 @@ def main() -> None:
     parser_linux.add_argument("--harness")
     parser_linux.add_argument("--blob")
     parser_linux.add_argument("--virtme", action="store_true")
+    parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
 
     # actions
@@ -578,7 +586,13 @@ def main() -> None:
             _docker_exec_self([], ["build", "--incremental"])
 
         if args.cmd_dev == "sample":
-            cmd_dev_sample(args.volume, args.kvm, args.virtme, args.solution)
+            cmd_dev_sample(
+                args.volume,
+                args.kvm,
+                args.virtme,
+                args.trace,
+                args.solution,
+            )
         else:
             parser_dev.print_help()
 
@@ -588,7 +602,13 @@ def main() -> None:
         cmd_build(args.incremental, args.release)
     elif args.command == "linux":
         cmd_linux(
-            args.kvm, args.kernel, args.harness, args.blob, args.virtme, args.verbose
+            args.kvm,
+            args.kernel,
+            args.harness,
+            args.blob,
+            args.virtme,
+            args.trace,
+            args.verbose,
         )
     else:
         parser.print_help()
