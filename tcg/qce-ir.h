@@ -47,6 +47,23 @@ struct QCEVar {
 
 static inline void parse_var(const TCGContext *tcg, TCGTemp *t,
                              struct QCEVar *v) {
+#ifndef QCE_SUPPORTS_VEC
+  // there should never be a variable in vector type
+  switch (t->base_type) {
+  case TCG_TYPE_I32:
+  case TCG_TYPE_I64:
+  case TCG_TYPE_I128:
+    break;
+  case TCG_TYPE_V64:
+  case TCG_TYPE_V128:
+  case TCG_TYPE_V256:
+    qce_debug_assert_ir1(tcg, false, t);
+    break;
+  default:
+    g_assert_not_reached();
+  }
+#endif
+
   switch (t->kind) {
   case TEMP_CONST: {
     // expected when emulating x86_64 guest on x86_64 host
