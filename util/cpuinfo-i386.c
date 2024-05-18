@@ -34,9 +34,14 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
     if (max >= 1) {
         __cpuid(1, a, b, c, d);
 
+#ifdef QCE_SUPPORTS_VEC
+        info |= (d & bit_SSE2 ? CPUINFO_SSE2 : 0);
+        info |= (c & bit_SSE4_1 ? CPUINFO_SSE4 : 0);
+#endif
         info |= (c & bit_MOVBE ? CPUINFO_MOVBE : 0);
         info |= (c & bit_PCLMUL ? CPUINFO_PCLMUL : 0);
 
+#ifdef QCE_SUPPORTS_VEC
         /* NOTE: our AES support requires SSSE3 (PSHUFB) as well. */
         info |= (c & bit_AES) ? CPUINFO_AES : 0;
 
@@ -84,6 +89,7 @@ unsigned __attribute__((constructor)) cpuinfo_init(void)
                 }
             }
         }
+#endif
     }
 
     max = __get_cpuid_max(0x8000000, 0);
