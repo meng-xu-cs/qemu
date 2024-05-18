@@ -203,7 +203,7 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op,
 
   // all other instructions
   qce_debug_assert_op1(
-      tcg, op->nargs == def->nb_oargs + def->nb_iargs + def->nb_cargs, op);
+      tcg, op->nargs >= def->nb_oargs + def->nb_iargs + def->nb_cargs, op);
 
   // TODO: temporary check
   struct QCEVar v;
