@@ -43,6 +43,11 @@ struct QCEContext {
 
   // current session (i.e., execution of one snapshot)
   struct QCESession *session;
+
+#ifdef QCE_DEBUG_IR
+  // file to dump information to
+  FILE *trace_file;
+#endif
 };
 
 // global variable
@@ -63,6 +68,19 @@ void qce_init(void) {
   qht_init(&g_qce->cache, qce_cache_qht_cmp, QCE_CTXT_CACHE_SIZE,
            QHT_MODE_AUTO_RESIZE);
   g_qce->session = NULL;
+
+#ifdef QCE_DEBUG_IR
+  const char *file_name = getenv("QCE_TRACE");
+  if (file_name == NULL) {
+    g_qce->trace_file = NULL;
+  } else {
+    FILE *handle = fopen(file_name, "w+");
+    if (handle == NULL) {
+      qce_fatal("unable to create the trace file");
+    }
+    g_qce->trace_file = handle;
+  }
+#endif
 
   // done
   qce_debug("initialized");
@@ -90,6 +108,13 @@ void qce_destroy(void) {
   if (session->tracing) {
     qce_fatal("trying to shutdown QCE while an active session is tracing");
   }
+
+#ifdef QCE_DEBUG_IR
+  // done with tracing
+  if (g_qce->trace_file != NULL) {
+    fclose(g_qce->trace_file);
+  }
+#endif
 
   // de-allocate resources
   g_free(session); // there is no need to free internal fields of session
@@ -136,6 +161,14 @@ void qce_session_reload(void) {
     qce_fatal("the current session is not tracing");
   }
 
+#ifdef QCE_DEBUG_IR
+  // flush the trace
+  if (g_qce->trace_file != NULL) {
+    fprintf(g_qce->trace_file, "\n-------- END OF SESSION --------\n\n");
+    fflush(g_qce->trace_file);
+  }
+#endif
+
   // reset the tracing states
   session->tracing = false;
   session->blob_addr = 0;
@@ -173,9 +206,11 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   assert_qce_initialized();
 
   struct TranslationBlock *tb = tcg->gen_tb;
-#ifdef QCE_DUMP
-  qce_debug("Translation block: 0x%p", tb);
-  tcg_dump_ops(tcg, stderr, false);
+#ifdef QCE_DEBUG_IR
+  if (g_qce->trace_file != NULL) {
+    qce_debug("[TB: 0x%p]", tb);
+    tcg_dump_ops(tcg, g_qce->trace_file, false);
+  }
 #endif
 
   // sanity check
