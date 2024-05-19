@@ -194,15 +194,41 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
     g_assert_not_reached();
   }
 }
+static inline void parse_arg_as_var(TCGContext *tcg, TCGArg arg, QCEVar *v) {
+  parse_var(tcg, arg_temp(arg), v);
+}
 
 typedef struct {
-  TCGOpcode opc;
+  uint16_t id;
+} QCELabel;
+
+static inline void parse_label(TCGContext *tcg, TCGLabel *l, QCELabel *v) {
+  qce_debug_assert_label_intact(tcg, l);
+  v->id = l->id;
+}
+static inline void parse_arg_as_label(TCGContext *tcg, TCGArg arg,
+                                      QCELabel *v) {
+  parse_label(tcg, arg_label(arg), v);
+}
+
+typedef enum {
+  QCE_INST_DISCARD,
+  QCE_INST_SET_LABEL,
+} QCEInstKind;
+
+typedef struct {
+  QCEInstKind kind;
   union {
     // opc: discard
     struct {
       QCEVar out;
-    } op_discard;
-  } inst;
+    } i_discard;
+
+    // opc: set_label
+    struct {
+      QCELabel label;
+    } i_set_label;
+  };
 } QCEInst;
 
 static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
@@ -231,16 +257,28 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   // TODO: temporary check (to be removed)
   QCEVar v;
   for (int i = 0; i < def->nb_oargs; i++) {
-    parse_var(tcg, arg_temp(op->args[i]), &v);
+    parse_arg_as_var(tcg, op->args[i], &v);
   }
   for (int i = 0; i < def->nb_iargs; i++) {
-    parse_var(tcg, arg_temp(op->args[i + def->nb_oargs]), &v);
+    parse_arg_as_var(tcg, op->args[i + def->nb_oargs], &v);
   }
 
+  // parse the instructions
   switch (c) {
-  case INDEX_op_discard:
-    return;
-  default:
-    return;
+  case INDEX_op_discard: {
+    inst->kind = QCE_INST_DISCARD;
+    parse_arg_as_var(tcg, op->args[0], &inst->i_discard.out);
+    break;
+  }
+  case INDEX_op_set_label: {
+    inst->kind = QCE_INST_SET_LABEL;
+    parse_arg_as_label(tcg, op->args[0], &inst->i_set_label.label);
+    break;
+  }
+  default: {
+    // TODO
+    // g_assert_not_reached();
+    break;
+  }
   }
 }
