@@ -349,6 +349,11 @@ MEMOP_MULTI_I1A1C1(ST8, st8, val, addr, offset)
 MEMOP_MULTI_I1A1C1(ST16, st16, val, addr, offset)
 MEMOP_SINGLE_I1A1C1(ST32, st32, val, addr, offset)
 
+X_INST_O1A1C1(GUEST_LD32, qemu_ld_a64_i32, res, I32, addr, flag)
+X_INST_O1A1C1(GUEST_LD64, qemu_ld_a64_i64, res, I64, addr, flag)
+X_INST_I1A1C1(GUEST_ST32, qemu_st_a64_i32, val, I32, addr, flag)
+X_INST_I1A1C1(GUEST_ST64, qemu_st_a64_i64, val, I64, addr, flag)
+
 X_INST_L1(SET_LABEL, set_label, label)
 X_INST_L1(BR, br, label)
 X_INST_MULTI_I2C1L1(BRCOND, brcond, v1, v2, cond, label)
