@@ -337,6 +337,17 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     qce_fatal("[op] mul[su]h opcode not supported");
     break;
 
+    // unsupported: setcond2
+  case INDEX_op_setcond2_i32:
+    qce_fatal("[op] setcond2 opcode not supported");
+    break;
+
+    // unsupported: qemu_st8_a[32|64]
+  case INDEX_op_qemu_st8_a32_i32:
+  case INDEX_op_qemu_st8_a64_i32:
+    qce_fatal("[op] qemu_st8_a[32|64] opcode not supported");
+    break;
+
     // unsupported: plugin
   case INDEX_op_plugin_cb:
   case INDEX_op_plugin_mem_cb:
