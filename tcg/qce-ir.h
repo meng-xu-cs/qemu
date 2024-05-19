@@ -223,10 +223,6 @@ static inline void parse_arg_as_label(TCGContext *tcg, TCGArg arg,
 typedef enum {
   // meta
   QCE_INST_DISCARD,
-  QCE_INST_SET_LABEL,
-
-  // control-flow
-  QCE_INST_BR,
 
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
 #include "qce-op.inc"
@@ -243,16 +239,6 @@ typedef struct {
     struct {
       QCEVar out;
     } i_discard;
-
-    // opc: set_label
-    struct {
-      QCELabel label;
-    } i_set_label;
-
-    // opc: br
-    struct {
-      QCELabel label;
-    } i_br;
 
 #define QCE_INST_TEMPLATE_IN_INST_UNION
 #include "qce-op.inc"
@@ -303,18 +289,6 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   case INDEX_op_discard: {
     inst->kind = QCE_INST_DISCARD;
     parse_arg_as_var(tcg, op->args[0], &inst->i_discard.out);
-    break;
-  }
-  case INDEX_op_set_label: {
-    inst->kind = QCE_INST_SET_LABEL;
-    parse_arg_as_label(tcg, op->args[0], &inst->i_set_label.label);
-    break;
-  }
-
-    // control-flow
-  case INDEX_op_br: {
-    inst->kind = QCE_INST_BR;
-    parse_arg_as_label(tcg, op->args[0], &inst->i_br.label);
     break;
   }
 

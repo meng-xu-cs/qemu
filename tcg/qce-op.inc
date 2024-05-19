@@ -8,6 +8,7 @@
 #define X_ARG_IN(qce_name, tcg_name, idx, name, type)
 #define X_ARG_ADDR(qce_name, tcg_name, idx, name)
 #define X_ARG_CONST(qce_name, tcg_name, idx, name)
+#define X_ARG_LABEL(qce_name, tcg_name, idx, name)
 #define X_TAIL(qce_name, tcg_name)
 #endif
 
@@ -17,6 +18,7 @@
 #define X_ARG_IN(qce_name, tcg_name, idx, name, type) QCEVar name;
 #define X_ARG_ADDR(qce_name, tcg_name, idx, name) QCEVar name;
 #define X_ARG_CONST(qce_name, tcg_name, idx, name) tcg_target_ulong name;
+#define X_ARG_LABEL(qce_name, tcg_name, idx, name) QCELabel name;
 #define X_TAIL(qce_name, tcg_name)                                             \
   }                                                                            \
   i_##tcg_name;
@@ -39,6 +41,9 @@
       tcg, op->args[idx], &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
 #define X_ARG_CONST(qce_name, tcg_name, idx, name)                             \
   UTIL_DOT_JOIN(inst->i_##tcg_name, name) = op->args[idx];
+#define X_ARG_LABEL(qce_name, tcg_name, idx, name)                             \
+  parse_arg_as_label(tcg, op->args[idx],                                       \
+                     &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
 #define X_TAIL(qce_name, tcg_name)                                             \
   break;                                                                       \
   }
@@ -155,6 +160,20 @@
   X_ARG_IN(qce_name, tcg_name, 5, i4_name, i4_type)                            \
   X_TAIL(qce_name, tcg_name)
 
+#define X_INST_L1(qce_name, tcg_name, l1_name)                                 \
+  X_HEAD(qce_name, tcg_name)                                                   \
+  X_ARG_LABEL(qce_name, tcg_name, 0, l1_name)                                  \
+  X_TAIL(qce_name, tcg_name)
+
+#define X_INST_I2C1L1(qce_name, tcg_name, i1_name, i1_type, i2_name, i2_type,  \
+                      c1_name, l1_name)                                        \
+  X_HEAD(qce_name, tcg_name)                                                   \
+  X_ARG_IN(qce_name, tcg_name, 0, i1_name, i1_type)                            \
+  X_ARG_IN(qce_name, tcg_name, 1, i2_name, i2_type)                            \
+  X_ARG_CONST(qce_name, tcg_name, 2, c1_name)                                  \
+  X_ARG_LABEL(qce_name, tcg_name, 3, l1_name)                                  \
+  X_TAIL(qce_name, tcg_name)
+
 #define X_INST_MULTI_O1I1(qce_name, tcg_name, o1_name, i1_name)                \
   X_INST_O1I1(qce_name##_I32, tcg_name##_i32, o1_name, I32, i1_name, I32)      \
   X_INST_O1I1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, I64)
@@ -226,6 +245,13 @@
               i1_name, I32, i2_name, I32, i3_name, I32, i4_name, I32)          \
   X_INST_O2I4(qce_name##_I64, tcg_name##_i64, o1_name, I64, o2_name, I64,      \
               i1_name, I64, i2_name, I64, i3_name, I64, i4_name, I64)
+
+#define X_INST_MULTI_I2C1L1(qce_name, tcg_name, i1_name, i2_name, c1_name,     \
+                            l1_name)                                           \
+  X_INST_I2C1L1(qce_name##_I32, tcg_name##_i32, i1_name, I32, i2_name, I32,    \
+                c1_name, l1_name)                                              \
+  X_INST_I2C1L1(qce_name##_I64, tcg_name##_i64, i1_name, I64, i2_name, I64,    \
+                c1_name, l1_name)
 
 #define MEMOP_MULTI_O1A1C1(qce_name, tcg_name, o1_name, i1_name, c1_name)      \
   X_INST_O1A1C1(qce_name##_I32, tcg_name##_i32, o1_name, I32, i1_name,         \
@@ -318,6 +344,10 @@ MEMOP_MULTI_I1A1C1(ST8, st8, val, addr, offset)
 MEMOP_MULTI_I1A1C1(ST16, st16, val, addr, offset)
 MEMOP_SINGLE_I1A1C1(ST32, st32, val, addr, offset)
 
+X_INST_L1(SET_LABEL, set_label, label)
+X_INST_L1(BR, br, label)
+X_INST_MULTI_I2C1L1(BRCOND, brcond, v1, v2, cond, label)
+
 /*
  * Template Teardown
  */
@@ -327,6 +357,7 @@ MEMOP_SINGLE_I1A1C1(ST32, st32, val, addr, offset)
 #undef X_ARG_IN
 #undef X_ARG_ADDR
 #undef X_ARG_CONST
+#undef X_ARG_LABEL
 #undef X_TAIL
 
 #undef X_INST_O1I1
@@ -359,3 +390,7 @@ MEMOP_SINGLE_I1A1C1(ST32, st32, val, addr, offset)
 #undef MEMOP_MULTI_I1A1C1
 #undef MEMOP_SINGLE_O1A1C1
 #undef MEMOP_SINGLE_I1A1C1
+
+#undef X_INST_L1
+#undef X_INST_I2C1L1
+#undef X_INST_MULTI_I2C1L1
