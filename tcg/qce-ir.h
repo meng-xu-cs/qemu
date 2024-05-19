@@ -129,10 +129,22 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, struct QCEVar *v) {
     // expected when emulating x86_64 guest on x86_64 host
     if (t->base_type == TCG_TYPE_I128) {
       qce_debug_assert_ir1(tcg, t->type == TCG_TYPE_I64, t);
-      qce_debug_assert_ir1(tcg, t->temp_subindex == 0, t);
-      TCGTemp *n = t + 1;
+      TCGTemp *n;
+      switch (t->temp_subindex) {
+      case 0:
+        n = t + 1;
+        qce_debug_assert_ir1(tcg, n->temp_subindex == 1, n);
+        break;
+      case 1:
+        n = t - 1;
+        qce_debug_assert_ir1(tcg, n->temp_subindex == 0, n);
+        break;
+      default:
+        g_assert_not_reached();
+        break;
+      }
       qce_debug_assert_ir1(tcg, n->type == TCG_TYPE_I64, n);
-      qce_debug_assert_ir1(tcg, n->temp_subindex == 1, t);
+      qce_debug_assert_ir1(tcg, n->kind == TEMP_TB, n);
     } else {
       // expected when emulating x86_64 guest on x86_64 host
       qce_debug_assert_ir1(tcg, t->type == t->base_type, t);
@@ -150,10 +162,22 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, struct QCEVar *v) {
     // expected when emulating x86_64 guest on x86_64 host
     if (t->base_type == TCG_TYPE_I128) {
       qce_debug_assert_ir1(tcg, t->type == TCG_TYPE_I64, t);
-      qce_debug_assert_ir1(tcg, t->temp_subindex == 0, t);
-      TCGTemp *n = t + 1;
+      TCGTemp *n;
+      switch (t->temp_subindex) {
+      case 0:
+        n = t + 1;
+        qce_debug_assert_ir1(tcg, n->temp_subindex == 1, n);
+        break;
+      case 1:
+        n = t - 1;
+        qce_debug_assert_ir1(tcg, n->temp_subindex == 0, n);
+        break;
+      default:
+        g_assert_not_reached();
+        break;
+      }
       qce_debug_assert_ir1(tcg, n->type == TCG_TYPE_I64, n);
-      qce_debug_assert_ir1(tcg, n->temp_subindex == 1, t);
+      qce_debug_assert_ir1(tcg, n->kind == TEMP_EBB, n);
     } else {
       // expected when emulating x86_64 guest on x86_64 host
       qce_debug_assert_ir1(tcg, t->type == t->base_type, t);

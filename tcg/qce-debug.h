@@ -38,6 +38,8 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
 #define qce_debug_assert_ir1(s, expr, t1)                                      \
   do {                                                                         \
     if (!(expr)) {                                                             \
+      qce_debug("[ir] context of assertion failure");                          \
+      tcg_dump_ops(s, stderr, false);                                          \
       qce_fatal("[ir] expect %s where %s := %s", #expr, #t1,                   \
                 qce_debug_tcg_temp_to_str(s, t1));                             \
     }                                                                          \
@@ -45,6 +47,8 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
 #define qce_debug_assert_ir2(s, expr, t1, t2)                                  \
   do {                                                                         \
     if (!(expr)) {                                                             \
+      qce_debug("[ir] context of assertion failure");                          \
+      tcg_dump_ops(s, stderr, false);                                          \
       qce_fatal("[ir] expect %s where %s := %s and %s := %s", #expr, #t1,      \
                 qce_debug_tcg_temp_to_str(s, t1), #t2,                         \
                 qce_debug_tcg_temp_to_str(s, t2));                             \
@@ -53,6 +57,8 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
 #define qce_debug_assert_ir3(s, expr, t1, t2, t3)                              \
   do {                                                                         \
     if (!(expr)) {                                                             \
+      qce_debug("[ir] context of assertion failure");                          \
+      tcg_dump_ops(s, stderr, false);                                          \
       qce_fatal("[ir] expect %s where %s := %s and %s := %s and %s := %s",     \
                 #expr, #t1, qce_debug_tcg_temp_to_str(s, t1), #t2,             \
                 qce_debug_tcg_temp_to_str(s, t2), #t3,                         \
