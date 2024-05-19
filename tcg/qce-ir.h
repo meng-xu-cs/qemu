@@ -212,8 +212,15 @@ static inline void parse_arg_as_label(TCGContext *tcg, TCGArg arg,
 }
 
 typedef enum {
+  // meta
   QCE_INST_DISCARD,
   QCE_INST_SET_LABEL,
+
+  // control-flow
+  QCE_INST_BR,
+
+  // memory barrier
+  QCE_INST_MEM_BARRIER,
 } QCEInstKind;
 
 typedef struct {
@@ -228,6 +235,16 @@ typedef struct {
     struct {
       QCELabel label;
     } i_set_label;
+
+    // opc: br
+    struct {
+      QCELabel label;
+    } i_br;
+
+    // opc: mb
+    struct {
+      TCGBar flag;
+    } i_mem_barrier;
   };
 } QCEInst;
 
@@ -265,6 +282,7 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
 
   // parse the instructions
   switch (c) {
+    // meta
   case INDEX_op_discard: {
     inst->kind = QCE_INST_DISCARD;
     parse_arg_as_var(tcg, op->args[0], &inst->i_discard.out);
@@ -275,6 +293,31 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     parse_arg_as_label(tcg, op->args[0], &inst->i_set_label.label);
     break;
   }
+
+    // control-flow
+  case INDEX_op_br: {
+    inst->kind = QCE_INST_BR;
+    parse_arg_as_label(tcg, op->args[0], &inst->i_br.label);
+    break;
+  }
+
+    // memory barrier
+  case INDEX_op_mb: {
+    inst->kind = QCE_INST_MEM_BARRIER;
+    inst->i_mem_barrier.flag = (TCGBar)op->args[0];
+    break;
+  }
+
+    // unsupported cases
+  case INDEX_op_plugin_cb:
+  case INDEX_op_plugin_mem_cb:
+    qce_fatal("[op] plugin opcode not supported");
+    break;
+
+    // unreachable
+  case INDEX_op_last_generic:
+    g_assert_not_reached();
+    break;
   default: {
     // TODO
     // g_assert_not_reached();
