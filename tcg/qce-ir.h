@@ -198,6 +198,16 @@ static inline void parse_arg_as_var_expect_type(TCGContext *tcg, TCGArg arg,
   parse_arg_as_var(tcg, arg, v);
   qce_debug_assert_ir1(tcg, v->type == ty, arg_temp(arg));
 }
+static inline void parse_arg_as_var_expect_host_addr(TCGContext *tcg,
+                                                     TCGArg arg, QCEVar *v) {
+  parse_arg_as_var(tcg, arg, v);
+  qce_debug_assert_ir1(tcg, v->type == TCG_TYPE_I64, arg_temp(arg));
+  qce_debug_assert_ir1(tcg,
+                       v->kind == QCE_VAR_FIXED ||
+                           v->kind == QCE_VAR_GLOBAL_DIRECT ||
+                           v->kind == QCE_VAR_GLOBAL_INDIRECT,
+                       arg_temp(arg));
+}
 #else
 #define parse_arg_as_var_expect_type(tcg, arg, v, ty)                          \
   parse_var((tcg), arg_temp(arg), (v))
