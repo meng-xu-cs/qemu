@@ -98,3 +98,9 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
 #define qce_debug_assert_op1(s, expr, op1)
 #define qce_debug_assert_label_intact(s, l)
 #endif
+
+/*
+ * Utilities
+ */
+
+#define UTIL_DOT_JOIN(a, b) a.b
