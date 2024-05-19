@@ -325,7 +325,15 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     break;
   }
 
-    // unsupported cases
+    // unsupported: mul[su]h
+  case INDEX_op_mulsh_i32:
+  case INDEX_op_mulsh_i64:
+  case INDEX_op_muluh_i32:
+  case INDEX_op_muluh_i64:
+    qce_fatal("[op] mul[su]h opcode not supported");
+    break;
+
+    // unsupported: plugin
   case INDEX_op_plugin_cb:
   case INDEX_op_plugin_mem_cb:
     qce_fatal("[op] plugin opcode not supported");
