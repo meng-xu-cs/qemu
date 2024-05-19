@@ -236,7 +236,7 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
 #ifdef QCE_DEBUG_IR
   int num_ops = 0;
 #endif
-  struct QCEInst inst;
+  QCEInst inst;
 
   TCGOp *op;
   QTAILQ_FOREACH(op, &tcg->ops, link) {

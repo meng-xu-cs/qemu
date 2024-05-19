@@ -7,7 +7,7 @@ typedef enum {
   QCE_VAR_EBB,
 } QCEVarKind;
 
-struct QCEVar {
+typedef struct {
   QCEVarKind kind;
   union {
     // kind: TEMP_CONST
@@ -47,7 +47,7 @@ struct QCEVar {
       ptrdiff_t index;
     } v_ebb;
   };
-};
+} QCEVar;
 
 static inline ptrdiff_t temp_index(const TCGContext *tcg, TCGTemp *t) {
   ptrdiff_t n = t - tcg->temps;
@@ -57,7 +57,7 @@ static inline ptrdiff_t temp_index(const TCGContext *tcg, TCGTemp *t) {
   return n;
 }
 
-static inline void parse_var(TCGContext *tcg, TCGTemp *t, struct QCEVar *v) {
+static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
 #ifndef QCE_SUPPORTS_VEC
   // there should never be a variable in vector type
   switch (t->base_type) {
@@ -195,18 +195,17 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, struct QCEVar *v) {
   }
 }
 
-struct QCEInst {
+typedef struct {
   TCGOpcode opc;
   union {
     // opc: discard
     struct {
-      TCGArg out;
+      QCEVar out;
     } op_discard;
   } inst;
-};
+} QCEInst;
 
-static inline void parse_op(TCGContext *tcg, const TCGOp *op,
-                            struct QCEInst *inst) {
+static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   TCGOpcode c = op->opc;
   const TCGOpDef *def = &tcg_op_defs[c];
 
@@ -229,8 +228,8 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op,
   qce_debug_assert_op1(
       tcg, op->nargs >= def->nb_oargs + def->nb_iargs + def->nb_cargs, op);
 
-  // TODO: temporary check
-  struct QCEVar v;
+  // TODO: temporary check (to be removed)
+  QCEVar v;
   for (int i = 0; i < def->nb_oargs; i++) {
     parse_var(tcg, arg_temp(op->args[i]), &v);
   }
