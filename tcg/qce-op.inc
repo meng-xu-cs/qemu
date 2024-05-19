@@ -112,6 +112,18 @@
   X_ARG_CONST(qce_name, tcg_name, 4, c2_name)                                  \
   X_TAIL(qce_name, tcg_name)
 
+#define X_INST_O1I4C1(qce_name, tcg_name, o1_name, o1_type, i1_name, i1_type,  \
+                      i2_name, i2_type, i3_name, i3_type, i4_name, i4_type,    \
+                      c1_name)                                                 \
+  X_HEAD(qce_name, tcg_name)                                                   \
+  X_ARG_OUT(qce_name, tcg_name, 0, o1_name, o1_type)                           \
+  X_ARG_IN(qce_name, tcg_name, 1, i1_name, i1_type)                            \
+  X_ARG_IN(qce_name, tcg_name, 2, i2_name, i2_type)                            \
+  X_ARG_IN(qce_name, tcg_name, 3, i3_name, i3_type)                            \
+  X_ARG_IN(qce_name, tcg_name, 4, i4_name, i4_type)                            \
+  X_ARG_CONST(qce_name, tcg_name, 5, c1_name)                                  \
+  X_TAIL(qce_name, tcg_name)
+
 #define X_INST_O2I2(qce_name, tcg_name, o1_name, o1_type, o2_name, o2_type,    \
                     i1_name, i1_type, i2_name, i2_type)                        \
   X_HEAD(qce_name, tcg_name)                                                   \
@@ -187,6 +199,13 @@
   X_INST_O1I2C2(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, I64,    \
                 i2_name, I64, c1_name, c2_name)
 
+#define X_INST_MULTI_O1I4C1(qce_name, tcg_name, o1_name, i1_name, i2_name,     \
+                            i3_name, i4_name, c1_name)                         \
+  X_INST_O1I4C1(qce_name##_I32, tcg_name##_i32, o1_name, I32, i1_name, I32,    \
+                i2_name, I32, i3_name, I32, i4_name, I32, c1_name)             \
+  X_INST_O1I4C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, I64,    \
+                i2_name, I64, i3_name, I64, i4_name, I64, c1_name)
+
 #define X_INST_MULTI_O2I2(qce_name, tcg_name, o1_name, o2_name, i1_name,       \
                           i2_name)                                             \
   X_INST_O2I2(qce_name##_I32, tcg_name##_i32, o1_name, I32, o2_name, I32,      \
@@ -230,21 +249,9 @@
 
 X_INST_MULTI_O1I1(MOV, mov, into, from)
 
-X_INST_MULTI_O1I1(EXT8S, ext8s, into, from)
-X_INST_MULTI_O1I1(EXT8U, ext8u, into, from)
-X_INST_MULTI_O1I1(EXT16S, ext16s, into, from)
-X_INST_MULTI_O1I1(EXT16U, ext16u, into, from)
-X_INST_SINGLE_O1I1(EXT32S, ext32s, into, from)
-X_INST_SINGLE_O1I1(EXT32U, ext32u, into, from)
-
-X_INST_MULTI_O1I1C1(BSWAP16, bswap16, res, v, flag)
-X_INST_MULTI_O1I1C1(BSWAP32, bswap32, res, v, flag)
-X_INST_SINGLE_O1I1C1(BSWAP64, bswap64, res, v, flag)
-
-X_INST_MULTI_O1I2C2(DEPOSIT, deposit, res, bits, into, pos, len)
-X_INST_MULTI_O1I1C2(EXTRACT, extract, res, from, pos, len)
-X_INST_MULTI_O1I1C2(SEXTRACT, sextract, res, from, pos, len)
-X_INST_MULTI_O1I2C1(EXTRACT2, extract2, res, v_b, v_t, pos)
+X_INST_MULTI_O1I2C1(SETCOND, setcond, res, v1, v2, cond)
+X_INST_MULTI_O1I2C1(NEGSETCOND, negsetcond, res, v1, v2, cond)
+X_INST_MULTI_O1I4C1(MOVCOND, movcond, res, c1, c2, v1, v2, cond)
 
 X_INST_MULTI_O1I1(NEG, neg, res, v)
 X_INST_MULTI_O1I2(ADD, add, res, v1, v2)
@@ -277,6 +284,22 @@ X_INST_MULTI_O1I2(SHR, shr, res, v1, v2)
 X_INST_MULTI_O1I2(SAR, sar, res, v1, v2)
 X_INST_MULTI_O1I2(ROTL, rotl, res, v1, v2)
 X_INST_MULTI_O1I2(ROTR, rotr, res, v1, v2)
+
+X_INST_MULTI_O1I1(EXT8S, ext8s, into, from)
+X_INST_MULTI_O1I1(EXT8U, ext8u, into, from)
+X_INST_MULTI_O1I1(EXT16S, ext16s, into, from)
+X_INST_MULTI_O1I1(EXT16U, ext16u, into, from)
+X_INST_SINGLE_O1I1(EXT32S, ext32s, into, from)
+X_INST_SINGLE_O1I1(EXT32U, ext32u, into, from)
+
+X_INST_MULTI_O1I1C1(BSWAP16, bswap16, res, v, flag)
+X_INST_MULTI_O1I1C1(BSWAP32, bswap32, res, v, flag)
+X_INST_SINGLE_O1I1C1(BSWAP64, bswap64, res, v, flag)
+
+X_INST_MULTI_O1I2C2(DEPOSIT, deposit, res, bits, into, pos, len)
+X_INST_MULTI_O1I1C2(EXTRACT, extract, res, from, pos, len)
+X_INST_MULTI_O1I1C2(SEXTRACT, sextract, res, from, pos, len)
+X_INST_MULTI_O1I2C1(EXTRACT2, extract2, res, v_b, v_t, pos)
 
 X_INST_MULTI_O1I2(CLZ, clz, res, v1, v2)
 X_INST_MULTI_O1I2(CTZ, ctz, res, v1, v2)
@@ -322,11 +345,13 @@ MEMOP_SINGLE_I1A1C1(ST32, st32, val, addr, offset)
 #undef X_INST_O1I1C2
 #undef X_INST_O1I2C1
 #undef X_INST_O1I2C2
+#undef X_INST_O1I4C1
 #undef X_INST_MULTI_O1I1C1
+#undef X_INST_SINGLE_O1I1C1
 #undef X_INST_MULTI_O1I1C2
 #undef X_INST_MULTI_O1I2C1
 #undef X_INST_MULTI_O1I2C2
-#undef X_INST_SINGLE_O1I1C1
+#undef X_INST_MULTI_O1I4C1
 
 #undef X_INST_O1A1C1
 #undef X_INST_I1A1C1
