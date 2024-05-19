@@ -69,14 +69,32 @@
  */
 
 // arithmetics
-ARITH_INST_O1I1(MOV_I32, mov_i32, into, I32, from, I32)
-ARITH_INST_O1I2(ADD_I32, add_i32, res, I32, v1, I32, v2, I32)
-ARITH_INST_O1I2(SUB_I32, sub_i32, res, I32, v1, I32, v2, I32)
-ARITH_INST_O1I2(MUL_I32, mul_i32, res, I32, v1, I32, v2, I32)
-ARITH_INST_O1I2(DIV_I32, div_i32, res, I32, v1, I32, v2, I32)
-ARITH_INST_O1I2(DIVU_I32, divu_i32, res, I32, v1, I32, v2, I32)
+ARITH_INST_MULTI_O1I1(MOV, mov, into, from)
 
+ARITH_INST_MULTI_O1I1(NEG, neg, res, v)
+ARITH_INST_MULTI_O1I2(ADD, add, res, v1, v2)
+ARITH_INST_MULTI_O1I2(SUB, sub, res, v1, v2)
+ARITH_INST_MULTI_O1I2(MUL, mul, res, v1, v2)
+ARITH_INST_MULTI_O1I2(DIV, div, res, v1, v2)
+ARITH_INST_MULTI_O1I2(DIVU, divu, res, v1, v2)
 ARITH_INST_MULTI_O1I2(REM, rem, res, v1, v2)
+ARITH_INST_MULTI_O1I2(REMU, remu, res, v1, v2)
+
+ARITH_INST_MULTI_O1I1(NOT, not, res, v)
+ARITH_INST_MULTI_O1I2(AND, and, res, v1, v2)
+ARITH_INST_MULTI_O1I2(OR, or, res, v1, v2)
+ARITH_INST_MULTI_O1I2(XOR, xor, res, v1, v2)
+ARITH_INST_MULTI_O1I2(ANDC, andc, res, v1, v2)
+ARITH_INST_MULTI_O1I2(ORC, orc, res, v1, v2)
+ARITH_INST_MULTI_O1I2(NAND, nand, res, v1, v2)
+ARITH_INST_MULTI_O1I2(NOR, nor, res, v1, v2)
+ARITH_INST_MULTI_O1I2(EQV, eqv, res, v1, v2)
+
+ARITH_INST_MULTI_O1I2(SHL, shl, res, v1, v2)
+ARITH_INST_MULTI_O1I2(SHR, shr, res, v1, v2)
+ARITH_INST_MULTI_O1I2(SAR, sar, res, v1, v2)
+ARITH_INST_MULTI_O1I2(ROTL, rotl, res, v1, v2)
+ARITH_INST_MULTI_O1I2(ROTR, rotr, res, v1, v2)
 
 /*
  * Template Teardown
