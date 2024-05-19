@@ -1,4 +1,5 @@
 #ifdef QCE_DEBUG_IR
+
 static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
   char *buf = NULL;
   int idx = temp_idx(t);
@@ -65,6 +66,7 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
                 qce_debug_tcg_temp_to_str(s, t3));                             \
     }                                                                          \
   } while (0);
+
 #define qce_debug_assert_op1(s, expr, op1)                                     \
   do {                                                                         \
     if (!(expr)) {                                                             \
@@ -74,9 +76,25 @@ static inline char *qce_debug_tcg_temp_to_str(const TCGContext *s, TCGTemp *t) {
       qce_fatal("[op] expect %s where %s := %s", #expr, #op1, def1->name);     \
     }                                                                          \
   } while (0);
+
+#define qce_debug_assert_label_intact(s, l)                                    \
+  do {                                                                         \
+    if (!l->present) {                                                         \
+      qce_debug("[op] context of assertion failure");                          \
+      tcg_dump_ops(s, stderr, false);                                          \
+      qce_fatal("[op] label not present: %d", l->id);                          \
+    }                                                                          \
+    if (!QSIMPLEQ_EMPTY(&l->relocs)) {                                         \
+      qce_debug("[op] context of assertion failure");                          \
+      tcg_dump_ops(s, stderr, false);                                          \
+      qce_fatal("[op] label has relocations: %d", l->id);                      \
+    }                                                                          \
+  } while (0);
+
 #else
 #define qce_debug_assert_ir1(s, expr, t1)
 #define qce_debug_assert_ir2(s, expr, t1, t2)
 #define qce_debug_assert_ir3(s, expr, t1, t2, t3)
 #define qce_debug_assert_op1(s, expr, op1)
+#define qce_debug_assert_label_intact(s, l)
 #endif
