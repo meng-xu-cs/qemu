@@ -205,6 +205,8 @@ static inline void parse_arg_as_var_expect_host_addr(TCGContext *tcg,
 #else
 #define parse_arg_as_var_expect_type(tcg, arg, v, ty)                          \
   parse_var((tcg), arg_temp(arg), (v))
+#define parse_arg_as_var_expect_host_addr(tcg, arg, v)                         \
+  parse_var((tcg), arg_temp(arg), (v))
 #endif
 
 typedef struct {
@@ -266,6 +268,12 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   }
 
   if (c == INDEX_op_call) {
+    // TODO: special case
+    return;
+  }
+
+  if (c == INDEX_op_exit_tb || c == INDEX_op_goto_tb ||
+      c == INDEX_op_goto_ptr) {
     // TODO: special case
     return;
   }

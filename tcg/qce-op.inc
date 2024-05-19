@@ -318,6 +318,11 @@ X_INST_MULTI_O1I1(EXT16U, ext16u, into, from)
 X_INST_SINGLE_O1I1(EXT32S, ext32s, into, from)
 X_INST_SINGLE_O1I1(EXT32U, ext32u, into, from)
 
+X_INST_O1I1(EXTS, ext_i32_i64, into, I64, from, I32)
+X_INST_O1I1(EXTU, extu_i32_i64, into, I64, from, I32)
+X_INST_O1I1(TRUNCL, extrl_i64_i32, into, I32, from, I64)
+X_INST_O1I1(TRUNCH, extrh_i64_i32, into, I32, from, I64)
+
 X_INST_MULTI_O1I1C1(BSWAP16, bswap16, res, v, flag)
 X_INST_MULTI_O1I1C1(BSWAP32, bswap32, res, v, flag)
 X_INST_SINGLE_O1I1C1(BSWAP64, bswap64, res, v, flag)
