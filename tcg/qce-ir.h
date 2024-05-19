@@ -357,8 +357,7 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     g_assert_not_reached();
     break;
   default: {
-    // TODO
-    // g_assert_not_reached();
+    qce_fatal("[op] unhandled opcode: %s", def->name);
     break;
   }
   }
