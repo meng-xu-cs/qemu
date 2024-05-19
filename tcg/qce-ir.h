@@ -330,6 +330,14 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     qce_fatal("[op] qemu_st8_a[32|64] opcode not supported");
     break;
 
+    // unsupported: vector
+  case INDEX_op_qemu_ld_a32_i128:
+  case INDEX_op_qemu_ld_a64_i128:
+  case INDEX_op_qemu_st_a32_i128:
+  case INDEX_op_qemu_st_a64_i128:
+    qce_fatal("[op] qemu_[ld|st]_a[32|64]_i128 opcode not supported");
+    break;
+
     // unsupported: plugin
   case INDEX_op_plugin_cb:
   case INDEX_op_plugin_mem_cb:
