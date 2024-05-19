@@ -9,27 +9,24 @@ typedef enum {
 
 typedef struct {
   QCEVarKind kind;
+  TCGType type;
   union {
     // kind: TEMP_CONST
     struct {
-      TCGType type;
       int64_t val;
     } v_const;
 
     // kind: TEMP_FIXED
     struct {
-      TCGType type;
       TCGReg reg;
     } v_fixed;
 
     // kind: TEMP_GLOBAL
     struct {
-      TCGType type;
       TCGReg base;
       intptr_t offset;
     } v_global_direct;
     struct {
-      TCGType type;
       TCGReg base;
       intptr_t offset1;
       intptr_t offset2;
@@ -37,13 +34,11 @@ typedef struct {
 
     // kind: TEMP_TB
     struct {
-      TCGType type;
       ptrdiff_t index;
     } v_tb;
 
     // kind: TEMP_EBB
     struct {
-      TCGType type;
       ptrdiff_t index;
     } v_ebb;
   };
@@ -82,7 +77,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
     qce_debug_assert_ir1(tcg, t->temp_subindex == 0, t);
 
     v->kind = QCE_VAR_CONST;
-    v->v_const.type = t->type;
+    v->type = t->type;
     v->v_const.val = t->val;
     break;
   }
@@ -92,7 +87,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
     qce_debug_assert_ir1(tcg, t->temp_subindex == 0, t);
 
     v->kind = QCE_VAR_FIXED;
-    v->v_fixed.type = t->type;
+    v->type = t->type;
     v->v_fixed.reg = t->reg;
     break;
   }
@@ -106,7 +101,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
       qce_debug_assert_ir2(tcg, base->kind == TEMP_FIXED, t, base);
 
       v->kind = QCE_VAR_GLOBAL_DIRECT;
-      v->v_global_direct.type = t->type;
+      v->type = t->type;
       v->v_global_direct.base = base->reg;
       v->v_global_direct.offset = t->mem_offset;
     } else {
@@ -117,7 +112,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
           offset, base);
 
       v->kind = QCE_VAR_GLOBAL_INDIRECT;
-      v->v_global_indirect.type = t->type;
+      v->type = t->type;
       v->v_global_indirect.base = base->reg;
       v->v_global_indirect.offset1 = offset->mem_offset;
       v->v_global_indirect.offset2 = t->mem_offset;
@@ -153,7 +148,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
 #endif
 
     v->kind = QCE_VAR_TB;
-    v->v_tb.type = t->base_type;
+    v->type = t->type;
     v->v_tb.index = temp_index(tcg, t);
     break;
   }
@@ -186,7 +181,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
 #endif
 
     v->kind = QCE_VAR_EBB;
-    v->v_ebb.type = t->base_type;
+    v->type = t->type;
     v->v_ebb.index = temp_index(tcg, t);
     break;
   }
@@ -197,6 +192,16 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
 static inline void parse_arg_as_var(TCGContext *tcg, TCGArg arg, QCEVar *v) {
   parse_var(tcg, arg_temp(arg), v);
 }
+#ifdef QCE_DEBUG_IR
+static inline void parse_arg_as_var_expect_type(TCGContext *tcg, TCGArg arg,
+                                                QCEVar *v, TCGType ty) {
+  parse_arg_as_var(tcg, arg, v);
+  qce_debug_assert_ir1(tcg, v->type == ty, arg_temp(arg));
+}
+#else
+#define parse_arg_as_var_expect_type(tcg, arg, v, ty)                          \
+  parse_var((tcg), arg_temp(arg), (v))
+#endif
 
 typedef struct {
   uint16_t id;
@@ -219,6 +224,10 @@ typedef enum {
   // control-flow
   QCE_INST_BR,
 
+#define QCE_INST_TEMPLATE_IN_KIND_ENUM
+#include "qce-op.inc"
+#undef QCE_INST_TEMPLATE_IN_KIND_ENUM
+
   // memory barrier
   QCE_INST_MEM_BARRIER,
 } QCEInstKind;
@@ -240,6 +249,10 @@ typedef struct {
     struct {
       QCELabel label;
     } i_br;
+
+#define QCE_INST_TEMPLATE_IN_INST_UNION
+#include "qce-op.inc"
+#undef QCE_INST_TEMPLATE_IN_INST_UNION
 
     // opc: mb
     struct {
@@ -300,6 +313,10 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     parse_arg_as_label(tcg, op->args[0], &inst->i_br.label);
     break;
   }
+
+#define QCE_INST_TEMPLATE_IN_PARSER
+#include "qce-op.inc"
+#undef QCE_INST_TEMPLATE_IN_PARSER
 
     // memory barrier
   case INDEX_op_mb: {
