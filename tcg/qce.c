@@ -324,17 +324,22 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       }
 
       if (inst->kind == QCE_INST_ADD_I64) {
-        qce_debug_print_var(stderr, &inst->i_add_i64.res);
-        qce_debug_print_var(stderr, &inst->i_add_i64.v1);
-        qce_debug_print_var(stderr, &inst->i_add_i64.v2);
-        qce_fatal("PANIC AT THE FIRST ADD");
+        const QCEVar *res = &inst->i_add_i64.res;
+        if (res->kind == QCE_VAR_GLOBAL_DIRECT &&
+            strcmp(res->v_global_direct.name, "rip") == 0) {
+          // found our confirmation
+          // TODO: also check the offset (can be pre-calculated via objdump)
+          session->mode = QCE_Tracing_Running;
+          qce_debug("about to jump to the target function");
+          break;
+        }
       }
     } while (i != 0);
 
-    // did not find anything
-    qce_fatal("DID NOT FIND THE BLOCK");
-
-    session->mode = QCE_Tracing_Running;
+    // in case we did not find anything, report an error instead of being fatal
+    if (session->mode != QCE_Tracing_Running) {
+      qce_error("failed to find the needle after kickstart");
+    }
     return;
   }
 
