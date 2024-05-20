@@ -226,6 +226,7 @@ typedef enum {
   // meta
   QCE_INST_START,
   QCE_INST_EXIT_TB,
+  QCE_INST_GOTO_TB,
   QCE_INST_DISCARD,
 
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
@@ -248,6 +249,11 @@ typedef struct {
     struct {
       uintptr_t idx;
     } i_exit_tb;
+
+    // opc: goto_tb
+    struct {
+      uintptr_t idx;
+    } i_goto_tb;
 
     // opc: discard
     struct {
@@ -307,7 +313,14 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     break;
   }
 
-  case INDEX_op_goto_tb:
+  case INDEX_op_goto_tb: {
+    uintptr_t idx = op->args[0];
+    qce_debug_assert_op1(tcg, idx <= TB_EXIT_IDXMAX, op);
+    inst->kind = QCE_INST_GOTO_TB;
+    inst->i_goto_tb.idx = idx;
+    break;
+  }
+
   case INDEX_op_goto_ptr:
     // TODO: implement it
     break;
