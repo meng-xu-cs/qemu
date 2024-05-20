@@ -7,6 +7,7 @@ typedef enum {
   QCE_VAR_EBB,
 } QCEVarKind;
 
+#define QCE_VAR_NAME_MAX 8
 typedef struct {
   QCEVarKind kind;
   TCGType type;
@@ -19,17 +20,20 @@ typedef struct {
     // kind: TEMP_FIXED
     struct {
       TCGReg reg;
+      char name[QCE_VAR_NAME_MAX];
     } v_fixed;
 
     // kind: TEMP_GLOBAL
     struct {
       TCGReg base;
       intptr_t offset;
+      char name[QCE_VAR_NAME_MAX];
     } v_global_direct;
     struct {
       TCGReg base;
       intptr_t offset1;
       intptr_t offset2;
+      char name[QCE_VAR_NAME_MAX];
     } v_global_indirect;
 
     // kind: TEMP_TB
@@ -72,15 +76,16 @@ static inline void qce_debug_print_var(FILE *f, const QCEVar *var) {
     fprintf(f, "$0x%lx", var->v_const.val);
     break;
   case QCE_VAR_FIXED:
-    fprintf(f, "#%u", var->v_fixed.reg);
+    fprintf(f, "%s(#%u)", var->v_fixed.name, var->v_fixed.reg);
     break;
   case QCE_VAR_GLOBAL_DIRECT:
-    fprintf(f, "#%u::0x%lx", var->v_global_direct.base,
-            var->v_global_direct.offset);
+    fprintf(f, "#%s(%u::0x%lx)", var->v_global_direct.name,
+            var->v_global_direct.base, var->v_global_direct.offset);
     break;
   case QCE_VAR_GLOBAL_INDIRECT:
-    fprintf(f, "#%u::0x%lx::%lx", var->v_global_indirect.base,
-            var->v_global_indirect.offset1, var->v_global_indirect.offset2);
+    fprintf(f, "#%s(%u::0x%lx::%lx)", var->v_global_indirect.name,
+            var->v_global_indirect.base, var->v_global_indirect.offset1,
+            var->v_global_indirect.offset2);
     break;
   case QCE_VAR_TB:
     fprintf(f, "%%v%lu", var->v_tb.index);
@@ -103,6 +108,13 @@ static inline ptrdiff_t temp_index(const TCGContext *tcg, TCGTemp *t) {
   g_assert(n >= 0 && n < tcg->nb_temps);
 #endif
   return n;
+}
+
+static inline void copy_var_name(char *dst, const char *src) {
+  strncpy(dst, src, QCE_VAR_NAME_MAX);
+  if (dst[0] == '\0' || dst[QCE_VAR_NAME_MAX - 1] != '\0') {
+    qce_fatal("Malformed name: %s", src);
+  }
 }
 
 static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
@@ -142,6 +154,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
     v->kind = QCE_VAR_FIXED;
     v->type = t->type;
     v->v_fixed.reg = t->reg;
+    copy_var_name(v->v_fixed.name, t->name);
     break;
   }
   case TEMP_GLOBAL: {
@@ -157,6 +170,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
       v->type = t->type;
       v->v_global_direct.base = base->reg;
       v->v_global_direct.offset = t->mem_offset;
+      copy_var_name(v->v_global_direct.name, t->name);
     } else {
       TCGTemp *offset = t->mem_base;
       TCGTemp *base = offset->mem_base;
@@ -169,6 +183,7 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
       v->v_global_indirect.base = base->reg;
       v->v_global_indirect.offset1 = offset->mem_offset;
       v->v_global_indirect.offset2 = t->mem_offset;
+      copy_var_name(v->v_global_indirect.name, t->name);
     }
     break;
   }
