@@ -9,7 +9,8 @@
 #ifndef QCE_RELEASE
 #include "qemu/error-report.h"
 #define qce_debug(fmt, ...) info_report("[QCE] " fmt, ##__VA_ARGS__)
-#define qce_error(fmt, ...) info_report("[!!!] " fmt, ##__VA_ARGS__)
+#define qce_error(fmt, ...)                                                    \
+  info_report("[!!!] " fmt " ... something wrong?", ##__VA_ARGS__)
 #define qce_fatal(fmt, ...)                                                    \
   do {                                                                         \
     error_report("[!!!] " fmt, ##__VA_ARGS__);                                 \
