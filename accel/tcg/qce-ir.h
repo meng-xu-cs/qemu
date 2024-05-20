@@ -291,20 +291,14 @@ static inline void parse_arg_as_label(TCGContext *tcg, TCGArg arg,
 }
 
 typedef enum {
-  // meta
   QCE_INST_START,
   QCE_INST_EXIT_TB,
   QCE_INST_GOTO_TB,
   QCE_INST_GOTO_PTR,
   QCE_INST_CALL,
-  QCE_INST_DISCARD,
-
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
 #include "qce-op.inc"
 #undef QCE_INST_TEMPLATE_IN_KIND_ENUM
-
-  // memory barrier
-  QCE_INST_MEM_BARRIER,
 } QCEInstKind;
 
 typedef struct {
@@ -330,19 +324,9 @@ typedef struct {
       QCEVar ptr;
     } i_goto_ptr;
 
-    // opc: discard
-    struct {
-      QCEVar out;
-    } i_discard;
-
 #define QCE_INST_TEMPLATE_IN_INST_UNION
 #include "qce-op.inc"
 #undef QCE_INST_TEMPLATE_IN_INST_UNION
-
-    // opc: mb
-    struct {
-      TCGBar flag;
-    } i_mem_barrier;
   };
 } QCEInst;
 
@@ -403,23 +387,9 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     break;
   }
 
-    // meta
-  case INDEX_op_discard: {
-    inst->kind = QCE_INST_DISCARD;
-    parse_arg_as_var(tcg, op->args[0], &inst->i_discard.out);
-    break;
-  }
-
 #define QCE_INST_TEMPLATE_IN_PARSER
 #include "qce-op.inc"
 #undef QCE_INST_TEMPLATE_IN_PARSER
-
-    // memory barrier
-  case INDEX_op_mb: {
-    inst->kind = QCE_INST_MEM_BARRIER;
-    inst->i_mem_barrier.flag = (TCGBar)op->args[0];
-    break;
-  }
 
     // unsupported: mul[su]h
   case INDEX_op_mulsh_i32:
