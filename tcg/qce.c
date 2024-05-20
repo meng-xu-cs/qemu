@@ -23,8 +23,8 @@ struct QCESession {
 struct QCECacheEntry {
   // key for hashtable
   const TranslationBlock *tb;
-  // pre-allocated buffer for instructions
-  QCEInst insts[TCG_MAX_INSNS + 64];
+  // sequence of instructions
+  QCEInst *insts;
   // count of the actual number of instructions
   size_t inst_count;
 };
@@ -34,6 +34,12 @@ static bool qce_cache_qht_cmp(const void *a, const void *b) {
 }
 static bool qce_cache_qht_lookup(const void *p, const void *userp) {
   return ((struct QCECacheEntry *)p)->tb == (const TranslationBlock *)userp;
+}
+static void qce_cache_qht_iter_to_free(void *p, uint32_t _h, void *_userp) {
+  struct QCECacheEntry *entry = p;
+  if (entry->inst_count != 0) {
+    g_free(entry->insts);
+  }
 }
 
 // context
@@ -123,6 +129,7 @@ void qce_destroy(void) {
 
   // de-allocate resources
   g_free(session); // there is no need to free internal fields of session
+  qht_iter(&g_qce->cache, qce_cache_qht_iter_to_free, NULL);
   qht_destroy(&g_qce->cache);
   g_free(g_qce);
   g_qce = NULL;
@@ -226,6 +233,7 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   // mark the translation block
   struct QCECacheEntry *entry = &g_qce->cache_pool[g_qce->cache_next_entry];
   entry->tb = tb;
+  entry->inst_count = 0;
 
   // insert or obtain the pointer
   void *existing;
@@ -236,9 +244,18 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
     entry = existing;
   }
 
-  // parse the translation block
+  // prepare buffer to host instructions
+  if (entry->inst_count != 0) {
+    g_free(entry->insts);
+  }
+
+  entry->insts = g_new0(QCEInst, tcg->nb_ops);
+  if (entry->insts == NULL) {
+    qce_fatal("fail to allocate memory for instructions");
+  }
   entry->inst_count = 0;
 
+  // parse the translation block
   TCGOp *op;
   QTAILQ_FOREACH(op, &tcg->ops, link) {
     parse_op(tcg, op, &entry->insts[entry->inst_count]);
