@@ -1,10 +1,12 @@
-#include "qemu/qce.h"
+#include "qemu/osdep.h"
 
-#include "exec/translation-block.h"
+#include "exec/exec-all.h"
 #include "qemu/qht.h"
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
-#include "target/i386/cpu.h"
+#include "tcg/tcg.h"
+
+#include "qemu/qce.h"
 
 #define QCE_DEBUG_IR
 #include "qce-debug.h"

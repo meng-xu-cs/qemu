@@ -32,5 +32,3 @@ TCGOpDef tcg_op_defs[] = {
 #undef DEF
 };
 const size_t tcg_op_defs_max = ARRAY_SIZE(tcg_op_defs);
-
-#include "tcg/qce.c"
