@@ -224,6 +224,8 @@ static inline void parse_arg_as_label(TCGContext *tcg, TCGArg arg,
 
 typedef enum {
   // meta
+  QCE_INST_START,
+  QCE_INST_EXIT_TB,
   QCE_INST_DISCARD,
 
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
@@ -237,6 +239,16 @@ typedef enum {
 typedef struct {
   QCEInstKind kind;
   union {
+    // opc: insn_start
+    struct {
+      vaddr pc;
+    } i_start;
+
+    // opc: exit_tb
+    struct {
+      uintptr_t idx;
+    } i_exit_tb;
+
     // opc: discard
     struct {
       QCEVar out;
@@ -262,18 +274,17 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   qce_debug_assert_op1(tcg, (def->flags & TCG_OPF_VECTOR) == 0, op);
 #endif
 
+  // special case 1: start marker
   if (c == INDEX_op_insn_start) {
-    // TODO: special case
+    inst->kind = QCE_INST_START;
+    inst->i_start.pc = op->args[0];
+    // TODO: there is a second operand (at least on x86_64) of type CCOp
+    // where CC stands for "condition code", it is currently ignored
     return;
   }
 
+  // special case 1: call instruction
   if (c == INDEX_op_call) {
-    // TODO: special case
-    return;
-  }
-
-  if (c == INDEX_op_exit_tb || c == INDEX_op_goto_tb ||
-      c == INDEX_op_goto_ptr) {
     // TODO: special case
     return;
   }
@@ -282,17 +293,25 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
   qce_debug_assert_op1(
       tcg, op->nargs >= def->nb_oargs + def->nb_iargs + def->nb_cargs, op);
 
-  // TODO: temporary check (to be removed)
-  QCEVar v;
-  for (int i = 0; i < def->nb_oargs; i++) {
-    parse_arg_as_var(tcg, op->args[i], &v);
-  }
-  for (int i = 0; i < def->nb_iargs; i++) {
-    parse_arg_as_var(tcg, op->args[i + def->nb_oargs], &v);
+  switch (c) {
+  case INDEX_op_exit_tb: {
+    uintptr_t addr = op->args[0];
+    if (addr == 0) {
+      addr = TB_EXIT_MASK + 1;
+    } else {
+      addr -= (uintptr_t)tcg_splitwx_to_rx((void *)tcg->gen_tb);
+      qce_debug_assert_op1(tcg, addr <= TB_EXIT_MASK, op);
+    }
+    inst->kind = QCE_INST_EXIT_TB;
+    inst->i_exit_tb.idx = addr;
+    break;
   }
 
-  // parse the instructions
-  switch (c) {
+  case INDEX_op_goto_tb:
+  case INDEX_op_goto_ptr:
+    // TODO: implement it
+    break;
+
     // meta
   case INDEX_op_discard: {
     inst->kind = QCE_INST_DISCARD;
