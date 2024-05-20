@@ -227,6 +227,7 @@ typedef enum {
   QCE_INST_START,
   QCE_INST_EXIT_TB,
   QCE_INST_GOTO_TB,
+  QCE_INST_GOTO_PTR,
   QCE_INST_DISCARD,
 
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
@@ -254,6 +255,11 @@ typedef struct {
     struct {
       uintptr_t idx;
     } i_goto_tb;
+
+    // opc: goto_ptr
+    struct {
+      QCEVar ptr;
+    } i_goto_ptr;
 
     // opc: discard
     struct {
@@ -321,9 +327,11 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
     break;
   }
 
-  case INDEX_op_goto_ptr:
-    // TODO: implement it
+  case INDEX_op_goto_ptr: {
+    inst->kind = QCE_INST_GOTO_PTR;
+    parse_arg_as_var_expect_host_addr(tcg, op->args[0], &inst->i_goto_ptr.ptr);
     break;
+  }
 
     // meta
   case INDEX_op_discard: {
