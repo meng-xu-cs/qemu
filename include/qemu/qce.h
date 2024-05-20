@@ -13,6 +13,7 @@
 #define qce_fatal(fmt, ...)                                                    \
   do {                                                                         \
     error_report("[!!!] " fmt, ##__VA_ARGS__);                                 \
+    qce_on_panic();                                                            \
     killpg(0, SIGKILL);                                                        \
   } while (0);
 #else
@@ -31,6 +32,10 @@ extern struct QCEContext *g_qce;
 // context management
 void qce_init(void);
 void qce_destroy(void);
+
+#ifndef QCE_RELEASE
+void qce_on_panic(void);
+#endif
 
 // session management (a session is from save/load vm -> next load vm)
 void qce_session_init(void);

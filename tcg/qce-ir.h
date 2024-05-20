@@ -44,6 +44,59 @@ typedef struct {
   };
 } QCEVar;
 
+#ifdef QCE_DEBUG_IR
+static inline void qce_debug_print_type(FILE *f, TCGType t) {
+  switch (t) {
+  case TCG_TYPE_I32:
+    fprintf(f, "i32");
+    break;
+  case TCG_TYPE_I64:
+    fprintf(f, "i64");
+    break;
+  case TCG_TYPE_I128:
+    fprintf(f, "i128");
+    break;
+  default:
+    g_assert_not_reached();
+    break;
+  }
+}
+
+static inline void qce_debug_print_var(FILE *f, const QCEVar *var) {
+  fprintf(f, "[");
+  qce_debug_print_type(f, var->type);
+  fprintf(f, "]");
+
+  switch (var->kind) {
+  case QCE_VAR_CONST:
+    fprintf(f, "$0x%lx", var->v_const.val);
+    break;
+  case QCE_VAR_FIXED:
+    fprintf(f, "#%u", var->v_fixed.reg);
+    break;
+  case QCE_VAR_GLOBAL_DIRECT:
+    fprintf(f, "#%u::0x%lx", var->v_global_direct.base,
+            var->v_global_direct.offset);
+    break;
+  case QCE_VAR_GLOBAL_INDIRECT:
+    fprintf(f, "#%u::0x%lx::%lx", var->v_global_indirect.base,
+            var->v_global_indirect.offset1, var->v_global_indirect.offset2);
+    break;
+  case QCE_VAR_TB:
+    fprintf(f, "%%v%lu", var->v_tb.index);
+    break;
+  case QCE_VAR_EBB:
+    fprintf(f, "%%t%lu", var->v_ebb.index);
+    break;
+  default:
+    g_assert_not_reached();
+    break;
+  }
+}
+#else
+#define qce_var_debug_print(f, var)
+#endif
+
 static inline ptrdiff_t temp_index(const TCGContext *tcg, TCGTemp *t) {
   ptrdiff_t n = t - tcg->temps;
 #ifdef QCE_DEBUG_IR
@@ -228,6 +281,7 @@ typedef enum {
   QCE_INST_EXIT_TB,
   QCE_INST_GOTO_TB,
   QCE_INST_GOTO_PTR,
+  QCE_INST_CALL,
   QCE_INST_DISCARD,
 
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
@@ -297,6 +351,7 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
 
   // special case 1: call instruction
   if (c == INDEX_op_call) {
+    inst->kind = QCE_INST_CALL;
     // TODO: special case
     return;
   }
