@@ -21,7 +21,12 @@ struct QCESession {
 
 // cache entry
 struct QCECacheEntry {
-  const TranslationBlock *tb; // key for hashtable
+  // key for hashtable
+  const TranslationBlock *tb;
+  // pre-allocated buffer for instructions
+  QCEInst insts[TCG_MAX_INSNS + 64];
+  // count of the actual number of instructions
+  size_t inst_count;
 };
 
 static bool qce_cache_qht_cmp(const void *a, const void *b) {
@@ -208,7 +213,7 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   struct TranslationBlock *tb = tcg->gen_tb;
 #ifdef QCE_DEBUG_IR
   if (g_qce->trace_file != NULL) {
-    fprintf(g_qce->trace_file, "[TB: 0x%p]\n", tb);
+    fprintf(g_qce->trace_file, "\n[TB: 0x%p]\n", tb);
     tcg_dump_ops(tcg, g_qce->trace_file, false);
   }
 #endif
@@ -232,21 +237,15 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg) {
   }
 
   // parse the translation block
-  // TODO: change it to the actual logic
-#ifdef QCE_DEBUG_IR
-  int num_ops = 0;
-#endif
-  QCEInst inst;
+  entry->inst_count = 0;
 
   TCGOp *op;
   QTAILQ_FOREACH(op, &tcg->ops, link) {
-    parse_op(tcg, op, &inst);
-#ifdef QCE_DEBUG_IR
-    num_ops++;
-#endif
+    parse_op(tcg, op, &entry->insts[entry->inst_count]);
+    entry->inst_count++;
   }
 #ifdef QCE_DEBUG_IR
-  g_assert(num_ops == tcg->nb_ops);
+  g_assert(entry->inst_count == tcg->nb_ops);
 #endif
 }
 
@@ -259,6 +258,13 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   if (entry == NULL) {
     qce_fatal("unable to find QCE entry for translation block: 0x%p", tb);
   }
+
+#ifdef QCE_DEBUG_IR
+  // mark that this TB is executed
+  if (g_qce->trace_file != NULL) {
+    fprintf(g_qce->trace_file, "=> TB: 0x%p\n", tb);
+  }
+#endif
 
   // TODO
   // CPUArchState *arch = cpu_env(cpu);

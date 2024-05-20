@@ -2572,7 +2572,7 @@ void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs)
 
         if (c == INDEX_op_insn_start) {
             nb_oargs = 0;
-            col += ne_fprintf(f, "\n ----");
+            col += ne_fprintf(f, "----");
 
             for (i = 0, k = s->insn_start_words; i < k; ++i) {
                 col += ne_fprintf(f, " %016" PRIx64,
