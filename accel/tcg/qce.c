@@ -163,7 +163,13 @@ void qce_on_panic(void) {
 #endif
 
 void qce_session_init(void) {
+#ifdef QCE_RELEASE
   assert_qce_initialized();
+#else
+  if (g_qce == NULL) {
+    return;
+  }
+#endif
 
   if (g_qce->session != NULL) {
     qce_fatal("re-creating a session");
@@ -178,7 +184,13 @@ void qce_session_init(void) {
 }
 
 void qce_session_reload(void) {
+#ifdef QCE_RELEASE
   assert_qce_initialized();
+#else
+  if (g_qce == NULL) {
+    return;
+  }
+#endif
 
   // sanity check
   QCESession *session = g_qce->session;
