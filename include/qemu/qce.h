@@ -43,7 +43,7 @@ void qce_session_init(void);
 void qce_session_reload(void);
 
 // tracing
-void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len);
+void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size);
 
 // callback on TCG IR is first generated
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb);

@@ -4,6 +4,7 @@
 #include "qemu/qht.h"
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
+#include "target/i386/cpu.h"
 
 #define QCE_DEBUG_IR
 #include "qce-debug.h"
@@ -12,6 +13,7 @@
 typedef enum {
   QCE_Tracing_NotStarted,
   QCE_Tracing_Kicked,
+  QCE_Tracking_Capturing,
   QCE_Tracing_Running,
 } QCETracingMode;
 
@@ -19,6 +21,10 @@ typedef enum {
 typedef struct {
   // mark whether the session is in tracing mode
   QCETracingMode mode;
+
+  // information about the blob
+  tcg_target_ulong blob_addr;
+  tcg_target_ulong blob_size;
 } QCESession;
 
 // cache entry
@@ -194,7 +200,7 @@ void qce_session_reload(void) {
   qce_debug("session reloaded");
 }
 
-void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
+void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size) {
   assert_qce_initialized();
 
   // sanity check
@@ -208,16 +214,18 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
 
   // mark that tracing should be started now
   session->mode = QCE_Tracing_Kicked;
+  session->blob_addr = addr;
+  session->blob_size = size;
 
   // log it
 #ifdef QCE_DEBUG_IR
   if (g_qce->trace_file != NULL) {
     fprintf(g_qce->trace_file,
-            "==== tracing started with addr 0x%lx and len %ld ====\n", addr,
-            len);
+            "==== tracing started with addr 0x%lx and size %ld ====\n", addr,
+            size);
   }
 #endif
-  qce_debug("tracing started with addr 0x%lx and len %ld", addr, len);
+  qce_debug("tracing started with addr 0x%lx and size %ld", addr, size);
 }
 
 void qce_on_tcg_ir_generated(TCGContext *tcg, TranslationBlock *tb) {
@@ -301,6 +309,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   if (session == NULL) {
     return;
   }
+
   if (session->mode == QCE_Tracing_NotStarted) {
     return;
   }
@@ -327,9 +336,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
         const QCEVar *res = &inst->i_add_i64.res;
         if (res->kind == QCE_VAR_GLOBAL_DIRECT &&
             strcmp(res->v_global_direct.name, "rip") == 0) {
-          // found our confirmation
+          // found our confirmation, enter the capturing mode
           // TODO: also check the offset (can be pre-calculated via objdump)
-          session->mode = QCE_Tracing_Running;
+          session->mode = QCE_Tracking_Capturing;
           qce_debug("about to jump to the target function");
           break;
         }
@@ -337,8 +346,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     } while (i != 0);
 
     // in case we did not find anything, report an error instead of being fatal
-    if (session->mode != QCE_Tracing_Running) {
-      qce_error("failed to find the needle after kickstart");
+    if (session->mode != QCE_Tracking_Capturing) {
+      qce_error("failed to find the needle at TB 0x%p after kickstart", tb);
+    }
+    return;
+  }
+
+  // validate that we have caught the right values
+  if (session->mode == QCE_Tracking_Capturing) {
+    CPUArchState *arch = cpu_env(cpu);
+    if (session->blob_addr != arch->regs[R_EDI] ||
+        session->blob_size != arch->regs[R_ESI]) {
+      qce_error("session value mismatch at TB 0x%p", tb);
+    } else {
+      session->mode = QCE_Tracing_Running;
+      qce_debug("target function confirmed, start tracing");
     }
     return;
   }
@@ -347,6 +369,5 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   g_assert(session->mode == QCE_Tracing_Running);
 #endif
 
-  // TODO
-  // CPUArchState *arch = cpu_env(cpu);
+  // TODO: symbolic logic
 }
