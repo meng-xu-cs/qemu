@@ -15,7 +15,7 @@
 typedef enum {
   QCE_Tracing_NotStarted,
   QCE_Tracing_Kicked,
-  QCE_Tracking_Capturing,
+  QCE_Tracing_Capturing,
   QCE_Tracing_Running,
 } QCETracingMode;
 
@@ -352,7 +352,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
             strcmp(res->v_global_direct.name, "rip") == 0) {
           // found our confirmation, enter the capturing mode
           // TODO: also check the offset (can be pre-calculated via objdump)
-          session->mode = QCE_Tracking_Capturing;
+          session->mode = QCE_Tracing_Capturing;
           qce_debug("about to jump to the target function");
           break;
         }
@@ -360,14 +360,14 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     } while (i != 0);
 
     // in case we did not find anything, report an error instead of being fatal
-    if (session->mode != QCE_Tracking_Capturing) {
+    if (session->mode != QCE_Tracing_Capturing) {
       qce_error("failed to find the needle at TB 0x%p after kickstart", tb);
     }
     return;
   }
 
   // validate that we have caught the right values
-  if (session->mode == QCE_Tracking_Capturing) {
+  if (session->mode == QCE_Tracing_Capturing) {
     CPUArchState *arch = cpu_env(cpu);
     if (session->blob_addr != arch->regs[R_EDI] ||
         session->blob_size != arch->regs[R_ESI]) {
