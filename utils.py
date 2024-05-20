@@ -337,7 +337,7 @@ def patch_harness(src: str, dst: str) -> None:
 
     # enrich with the marker
     repl = """
-{{
+({{
 long __r = 1;
 {}* __blob = {};
 {} __size = {};
@@ -346,8 +346,8 @@ asm volatile ("encls"
     : "a"(0x5), "b"(__size), "c"(__blob)
     : "memory");
 if (__r) {{ exit(1); }}
-harness(__blob, __size)
-}};
+harness(__blob, __size);
+}});
 """.format(
         blob_type, match_call["blob_arg"], size_type, match_call["size_arg"]
     )
