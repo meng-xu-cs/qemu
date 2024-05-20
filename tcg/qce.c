@@ -202,7 +202,14 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong len) {
   session->size_val = len;
   session->tracing = true;
 
-  // done
+  // log it
+#ifdef QCE_DEBUG_IR
+  if (g_qce->trace_file != NULL) {
+    fprintf(g_qce->trace_file,
+            "==== tracing started with addr 0x%lx and len %ld ====\n", addr,
+            len);
+  }
+#endif
   qce_debug("tracing started with addr 0x%lx and len %ld", addr, len);
 }
 

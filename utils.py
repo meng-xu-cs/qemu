@@ -286,7 +286,7 @@ def mk_initramfs(out: str) -> None:
 
 
 def patch_harness(src: str, dst: str) -> None:
-    pattern = re.compile(
+    pattern_decl = re.compile(
         r"(?P<ret_type>\w+)\s+"
         r"harness\s*\(\s*"
         r"(?P<blob_type>\w+)\s*\*\s*(?P<blob_name>\w+)"
@@ -295,27 +295,63 @@ def patch_harness(src: str, dst: str) -> None:
         r"\s*\)\s*\{",
         re.MULTILINE,
     )
+    pattern_call = re.compile(
+        r"\s+harness\s*\(\s*"
+        r"(?P<blob_arg>.+?)"
+        r"\s*,\s*"
+        r"(?P<size_arg>.+?)"
+        r"\s*\)\s*;",
+        re.MULTILINE,
+    )
 
     with open(src) as f:
         content = f.read()
 
     # locate the harness function
-    match = pattern.search(content)
-    if match is None:
-        sys.exit("Unable to find the harness function")
+    match_decl = pattern_decl.search(content)
+    if match_decl is None:
+        sys.exit("Unable to find the harness function decl")
+
+    match_call = pattern_call.search(content)
+    if match_call is None:
+        sys.exit("Unable to find the harness function call")
+
+    # check types
+    blob_type = match_decl["blob_type"]
+    if blob_type not in ["char", "uint8_t", "int8_t"]:
+        sys.exit("Unrecognized blob type: {}*".format(blob_type))
+
+    size_type = match_decl["size_type"]
+    if size_type not in [
+        "int",
+        "long",
+        "unsigned",
+        "size_t",
+        "ssize_t",
+        "int32_t",
+        "uint32_t",
+        "int64_t",
+        "uint64_t",
+    ]:
+        sys.exit("Unrecognized size type: {}*".format(size_type))
 
     # enrich with the marker
-    repl = """{}
+    repl = """
+{{
 long __r = 1;
+{}* __blob = {};
+{} __size = {};
 asm volatile ("encls"
     : "=a"(__r)
-    : "a"(0x5), "b"({}), "c"({})
+    : "a"(0x5), "b"(__size), "c"(__blob)
     : "memory");
 if (__r) {{ exit(1); }}
+harness(__blob, __size)
+}};
 """.format(
-        match.group(0), match["size_name"], match["blob_name"]
+        blob_type, match_call["blob_arg"], size_type, match_call["size_arg"]
     )
-    replaced = pattern.sub(repl, content)
+    replaced = pattern_call.sub(repl, content)
 
     # dump the updated content
     with open(dst, "w") as f:
