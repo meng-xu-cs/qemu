@@ -4,6 +4,7 @@
 
 #ifdef QCE_INST_TEMPLATE_IN_KIND_ENUM
 #define X_HEAD(qce_name, tcg_name) QCE_INST_##qce_name,
+#define X_ARG_VAR(qce_name, tcg_name, idx, name)
 #define X_ARG_OUT(qce_name, tcg_name, idx, name, type)
 #define X_ARG_IN(qce_name, tcg_name, idx, name, type)
 #define X_ARG_ADDR(qce_name, tcg_name, idx, name)
@@ -14,6 +15,7 @@
 
 #ifdef QCE_INST_TEMPLATE_IN_INST_UNION
 #define X_HEAD(qce_name, tcg_name) struct {
+#define X_ARG_VAR(qce_name, tcg_name, idx, name) QCEVar name;
 #define X_ARG_OUT(qce_name, tcg_name, idx, name, type) QCEVar name;
 #define X_ARG_IN(qce_name, tcg_name, idx, name, type) QCEVar name;
 #define X_ARG_ADDR(qce_name, tcg_name, idx, name) QCEVar name;
@@ -28,6 +30,9 @@
 #define X_HEAD(qce_name, tcg_name)                                             \
   case INDEX_op_##tcg_name: {                                                  \
     inst->kind = QCE_INST_##qce_name;
+#define X_ARG_VAR(qce_name, tcg_name, idx, name)                               \
+  parse_arg_as_var(tcg, op->args[idx],                                         \
+                   &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
 #define X_ARG_OUT(qce_name, tcg_name, idx, name, type)                         \
   parse_arg_as_var_expect_type(tcg, op->args[idx],                             \
                                &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)),     \
@@ -158,6 +163,16 @@
   X_ARG_IN(qce_name, tcg_name, 3, i2_name, i2_type)                            \
   X_ARG_IN(qce_name, tcg_name, 4, i3_name, i3_type)                            \
   X_ARG_IN(qce_name, tcg_name, 5, i4_name, i4_type)                            \
+  X_TAIL(qce_name, tcg_name)
+
+#define X_INST_V1(qce_name, tcg_name, v1_name)                                 \
+  X_HEAD(qce_name, tcg_name)                                                   \
+  X_ARG_VAR(qce_name, tcg_name, 0, v1_name)                                    \
+  X_TAIL(qce_name, tcg_name)
+
+#define X_INST_C1(qce_name, tcg_name, c1_name)                                 \
+  X_HEAD(qce_name, tcg_name)                                                   \
+  X_ARG_CONST(qce_name, tcg_name, 0, c1_name)                                  \
   X_TAIL(qce_name, tcg_name)
 
 #define X_INST_L1(qce_name, tcg_name, l1_name)                                 \
@@ -354,6 +369,9 @@ X_INST_O1A1C1(GUEST_LD64, qemu_ld_a64_i64, res, I64, addr, flag)
 X_INST_I1A1C1(GUEST_ST32, qemu_st_a64_i32, val, I32, addr, flag)
 X_INST_I1A1C1(GUEST_ST64, qemu_st_a64_i64, val, I64, addr, flag)
 
+X_INST_V1(DISCARD, discard, var)
+X_INST_C1(MB, mb, flag)
+
 X_INST_L1(SET_LABEL, set_label, label)
 X_INST_L1(BR, br, label)
 X_INST_MULTI_I2C1L1(BRCOND, brcond, v1, v2, cond, label)
@@ -363,6 +381,7 @@ X_INST_MULTI_I2C1L1(BRCOND, brcond, v1, v2, cond, label)
  */
 
 #undef X_HEAD
+#undef X_ARG_VAR
 #undef X_ARG_OUT
 #undef X_ARG_IN
 #undef X_ARG_ADDR
@@ -401,6 +420,8 @@ X_INST_MULTI_I2C1L1(BRCOND, brcond, v1, v2, cond, label)
 #undef MEMOP_SINGLE_O1A1C1
 #undef MEMOP_SINGLE_I1A1C1
 
+#undef X_INST_V1
+#undef X_INST_C1
 #undef X_INST_L1
 #undef X_INST_I2C1L1
 #undef X_INST_MULTI_I2C1L1
