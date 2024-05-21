@@ -301,6 +301,7 @@ typedef enum {
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
 #include "qce-call.inc"
 #undef QCE_INST_TEMPLATE_IN_KIND_ENUM
+  QCE_INST_UNKNOWN,
 } QCEInstKind;
 
 typedef struct {
@@ -372,8 +373,9 @@ static inline void parse_op(TCGContext *tcg, TCGOp *op, QCEInst *inst) {
 #undef QCE_INST_TEMPLATE_IN_PARSER
 
     else {
-      qce_fatal("unhandled call: %s, oargs: %u, iargs: %u, type: %o, flag: %x",
+      qce_error("unhandled call: %s, oargs: %u, iargs: %u, type: %o, flag: %x",
                 info->name, nb_oargs, nb_iargs, info->typemask, info->flags);
+      inst->kind = QCE_INST_UNKNOWN;
     }
 
     // short-circuit

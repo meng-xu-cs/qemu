@@ -89,6 +89,9 @@ X_INST_O1I1(lookup_tb_ptr, res, I64, env, I64)
 X_INST_O1I2(inb, res, I64, env, I64, port, I32)
 X_INST_O0I3(outb, env, I64, port, I32, val, I32)
 
+X_INST_O1I2(read_crN, res, I64, env, I64, n, I32)
+X_INST_O1I2(write_crN, env, I64, n, I32, val, I64)
+
 /*
  * Template Teardown
  */
