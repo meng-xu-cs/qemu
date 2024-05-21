@@ -5,6 +5,7 @@
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
 #include "tcg/tcg.h"
+#include "tcg/tcg-internal.h"
 
 #include "qemu/qce.h"
 
