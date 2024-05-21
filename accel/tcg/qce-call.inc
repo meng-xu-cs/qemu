@@ -80,6 +80,25 @@
   X_ARG_IN(func, 2, i2_name, i2_type)                                          \
   X_TAIL(func)
 
+#define X_INST_O1I3(func, o1_name, o1_type, i1_name, i1_type, i2_name,         \
+                    i2_type, i3_name, i3_type)                                 \
+  X_HEAD(func, 1, 3)                                                           \
+  X_ARG_OUT(func, 0, o1_name, o1_type)                                         \
+  X_ARG_IN(func, 1, i1_name, i1_type)                                          \
+  X_ARG_IN(func, 2, i2_name, i2_type)                                          \
+  X_ARG_IN(func, 3, i3_name, i3_type)                                          \
+  X_TAIL(func)
+
+#define X_INST_O1I4(func, o1_name, o1_type, i1_name, i1_type, i2_name,         \
+                    i2_type, i3_name, i3_type, i4_name, i4_type)               \
+  X_HEAD(func, 1, 4)                                                           \
+  X_ARG_OUT(func, 0, o1_name, o1_type)                                         \
+  X_ARG_IN(func, 1, i1_name, i1_type)                                          \
+  X_ARG_IN(func, 2, i2_name, i2_type)                                          \
+  X_ARG_IN(func, 3, i3_name, i3_type)                                          \
+  X_ARG_IN(func, 4, i4_name, i4_type)                                          \
+  X_TAIL(func)
+
 /*
  * Template Instantiations
  */
@@ -87,10 +106,17 @@
 X_INST_O1I1(lookup_tb_ptr, res, I64, env, I64)
 
 X_INST_O1I2(inb, res, I64, env, I64, port, I32)
+X_INST_O1I2(inw, res, I64, env, I64, port, I32)
+X_INST_O1I2(inl, res, I64, env, I64, port, I32)
 X_INST_O0I3(outb, env, I64, port, I32, val, I32)
+X_INST_O0I3(outw, env, I64, port, I32, val, I32)
+X_INST_O0I3(outl, env, I64, port, I32, val, I32)
 
 X_INST_O1I2(read_crN, res, I64, env, I64, n, I32)
-X_INST_O1I2(write_crN, env, I64, n, I32, val, I64)
+X_INST_O0I3(write_crN, env, I64, n, I32, val, I64)
+
+X_INST_O1I4(cc_compute_all, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
+X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 
 /*
  * Template Teardown
@@ -108,3 +134,5 @@ X_INST_O1I2(write_crN, env, I64, n, I32, val, I64)
 #undef X_INST_O0I3
 #undef X_INST_O1I1
 #undef X_INST_O1I2
+#undef X_INST_O1I3
+#undef X_INST_O1I4
