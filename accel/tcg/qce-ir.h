@@ -295,9 +295,11 @@ typedef enum {
   QCE_INST_EXIT_TB,
   QCE_INST_GOTO_TB,
   QCE_INST_GOTO_PTR,
-  QCE_INST_CALL,
 #define QCE_INST_TEMPLATE_IN_KIND_ENUM
 #include "qce-op.inc"
+#undef QCE_INST_TEMPLATE_IN_KIND_ENUM
+#define QCE_INST_TEMPLATE_IN_KIND_ENUM
+#include "qce-call.inc"
 #undef QCE_INST_TEMPLATE_IN_KIND_ENUM
 } QCEInstKind;
 
@@ -327,6 +329,9 @@ typedef struct {
 #define QCE_INST_TEMPLATE_IN_INST_UNION
 #include "qce-op.inc"
 #undef QCE_INST_TEMPLATE_IN_INST_UNION
+#define QCE_INST_TEMPLATE_IN_INST_UNION
+#include "qce-call.inc"
+#undef QCE_INST_TEMPLATE_IN_INST_UNION
   };
 } QCEInst;
 
@@ -339,7 +344,7 @@ static inline void parse_op(TCGContext *tcg, TCGOp *op, QCEInst *inst) {
   qce_debug_assert_op1(tcg, (def->flags & TCG_OPF_VECTOR) == 0, op);
 #endif
 
-  // special case 1: start marker
+  // special case: start marker
   if (c == INDEX_op_insn_start) {
     inst->kind = QCE_INST_START;
     inst->i_start.pc = op->args[0];
@@ -348,21 +353,30 @@ static inline void parse_op(TCGContext *tcg, TCGOp *op, QCEInst *inst) {
     return;
   }
 
-  // special case 1: call instruction
+  // special case: call instruction
   if (c == INDEX_op_call) {
     const TCGHelperInfo *info = tcg_call_info(op);
     void *func = tcg_call_func(op);
     qce_debug_assert_op1(tcg, func == info->func, op);
 
-    /* variable number of arguments */
+    // variable number of arguments
     unsigned nb_oargs = TCGOP_CALLO(op);
     unsigned nb_iargs = TCGOP_CALLI(op);
 
-    qce_fatal("unhandled call: %s, oargs: %u, iargs: %u, type: %o, flag: %x",
-              info->name, nb_oargs, nb_iargs, info->typemask, info->flags);
+    if (unlikely(false)) {
+      g_assert_not_reached();
+    }
 
-    inst->kind = QCE_INST_CALL;
-    // TODO: special case
+#define QCE_INST_TEMPLATE_IN_PARSER
+#include "qce-call.inc"
+#undef QCE_INST_TEMPLATE_IN_PARSER
+
+    else {
+      qce_fatal("unhandled call: %s, oargs: %u, iargs: %u, type: %o, flag: %x",
+                info->name, nb_oargs, nb_iargs, info->typemask, info->flags);
+    }
+
+    // short-circuit
     return;
   }
 
