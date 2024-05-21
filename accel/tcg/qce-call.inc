@@ -63,12 +63,28 @@
   X_ARG_IN(func, 0, i1_name, i1_type)                                          \
   X_TAIL(func)
 
+#define X_INST_O0I2(func, i1_name, i1_type, i2_name, i2_type)                  \
+  X_HEAD(func, 0, 2)                                                           \
+  X_ARG_IN(func, 0, i1_name, i1_type)                                          \
+  X_ARG_IN(func, 1, i2_name, i2_type)                                          \
+  X_TAIL(func)
+
 #define X_INST_O0I3(func, i1_name, i1_type, i2_name, i2_type, i3_name,         \
                     i3_type)                                                   \
   X_HEAD(func, 0, 3)                                                           \
   X_ARG_IN(func, 0, i1_name, i1_type)                                          \
   X_ARG_IN(func, 1, i2_name, i2_type)                                          \
   X_ARG_IN(func, 2, i3_name, i3_type)                                          \
+  X_TAIL(func)
+
+#define X_INST_O0I5(func, i1_name, i1_type, i2_name, i2_type, i3_name,         \
+                    i3_type, i4_name, i4_type, i5_name, i5_type)               \
+  X_HEAD(func, 0, 5)                                                           \
+  X_ARG_IN(func, 0, i1_name, i1_type)                                          \
+  X_ARG_IN(func, 1, i2_name, i2_type)                                          \
+  X_ARG_IN(func, 2, i3_name, i3_type)                                          \
+  X_ARG_IN(func, 3, i4_name, i4_type)                                          \
+  X_ARG_IN(func, 4, i5_name, i5_type)                                          \
   X_TAIL(func)
 
 #define X_INST_O1I1(func, o1_name, o1_type, i1_name, i1_type)                  \
@@ -104,6 +120,16 @@
   X_ARG_IN(func, 4, i4_name, i4_type)                                          \
   X_TAIL(func)
 
+#define X_INST_O2I3(func, o1_name, o1_type, o2_name, o2_type, i1_name,         \
+                    i1_type, i2_name, i2_type, i3_name, i3_type)               \
+  X_HEAD(func, 2, 3)                                                           \
+  X_ARG_OUT(func, 0, o1_name, o1_type)                                         \
+  X_ARG_OUT(func, 1, o2_name, o2_type)                                         \
+  X_ARG_IN(func, 2, i1_name, i1_type)                                          \
+  X_ARG_IN(func, 3, i2_name, i2_type)                                          \
+  X_ARG_IN(func, 4, i3_name, i3_type)                                          \
+  X_TAIL(func)
+
 /*
  * Template Instantiations
  */
@@ -129,6 +155,14 @@ X_INST_O0I3(write_eflags, env, I64, val, I64, mask, I32)
 X_INST_O1I4(cc_compute_all, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 
+X_INST_O0I2(divl_EAX, env, I64, val, I64)
+X_INST_O0I2(divq_EAX, env, I64, val, I64)
+X_INST_O0I2(idivl_EAX, env, I64, val, I64)
+X_INST_O0I2(idivq_EAX, env, I64, val, I64)
+
+X_INST_O2I3(ld_i128, out_t, I64, out_b, I64, env, I64, base, I64, offset, I32)
+X_INST_O0I5(st_i128, env, I64, base, I64, in_t, I64, in_b, I64, offset, I32)
+
 /*
  * Template Teardown
  */
@@ -143,8 +177,11 @@ X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 #undef X_TAIL
 
 #undef X_INST_O0I1
+#undef X_INST_O0I2
 #undef X_INST_O0I3
+#undef X_INST_O0I5
 #undef X_INST_O1I1
 #undef X_INST_O1I2
 #undef X_INST_O1I3
 #undef X_INST_O1I4
+#undef X_INST_O2I3
