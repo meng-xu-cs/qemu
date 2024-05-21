@@ -330,7 +330,7 @@ typedef struct {
   };
 } QCEInst;
 
-static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
+static inline void parse_op(TCGContext *tcg, TCGOp *op, QCEInst *inst) {
   TCGOpcode c = op->opc;
   const TCGOpDef *def = &tcg_op_defs[c];
 
@@ -350,6 +350,17 @@ static inline void parse_op(TCGContext *tcg, const TCGOp *op, QCEInst *inst) {
 
   // special case 1: call instruction
   if (c == INDEX_op_call) {
+    const TCGHelperInfo *info = tcg_call_info(op);
+    void *func = tcg_call_func(op);
+    qce_debug_assert_op1(tcg, func == info->func, op);
+
+    /* variable number of arguments */
+    unsigned nb_oargs = TCGOP_CALLO(op);
+    unsigned nb_iargs = TCGOP_CALLI(op);
+
+    qce_fatal("unhandled call: %s, oargs: %u, iargs: %u, type: %o, flag: %x",
+              info->name, nb_oargs, nb_iargs, info->typemask, info->flags);
+
     inst->kind = QCE_INST_CALL;
     // TODO: special case
     return;
