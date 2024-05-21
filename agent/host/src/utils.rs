@@ -53,7 +53,13 @@ pub fn inotify_watch_for_deletion(dir: &Path, name: &str) -> io::Result<()> {
 
 /// block until a specific file is deleted in the watched directory
 pub fn inotify_watch_for_addition(dir: &Path, name: &str) -> io::Result<()> {
-    inotify_watch(dir, name, true)
+    loop {
+        // if the file exists, return immediately
+        if dir.join(name).exists() {
+            return Ok(());
+        }
+    } 
+    // inotify_watch(dir, name, true)
 }
 
 pub struct Ivshmem {

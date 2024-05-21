@@ -38,6 +38,7 @@ pub fn entrypoint() {
         .init();
 
     // wait for ivshmem to be created
+    info!("ivshmem file will create on {}", args.path_tmp.display());
     inotify_watch_for_addition(&args.path_tmp, VM_IVSHMEM_FILE)
         .unwrap_or_else(|e| panic!("error waiting for creation of ivshmem: {}", e));
     info!("QEMU is up and running");
