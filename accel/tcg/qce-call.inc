@@ -58,6 +58,11 @@
  * Templates Structures
  */
 
+#define X_INST_O0I1(func, i1_name, i1_type)                                    \
+  X_HEAD(func, 0, 1)                                                           \
+  X_ARG_IN(func, 0, i1_name, i1_type)                                          \
+  X_TAIL(func)
+
 #define X_INST_O0I3(func, i1_name, i1_type, i2_name, i2_type, i3_name,         \
                     i3_type)                                                   \
   X_HEAD(func, 0, 3)                                                           \
@@ -112,8 +117,14 @@ X_INST_O0I3(outb, env, I64, port, I32, val, I32)
 X_INST_O0I3(outw, env, I64, port, I32, val, I32)
 X_INST_O0I3(outl, env, I64, port, I32, val, I32)
 
+X_INST_O0I1(cpuid, env, I64)
+X_INST_O0I1(rdmsr, env, I64)
+X_INST_O0I1(wrmsr, env, I64)
+X_INST_O0I1(rdtsc, env, I64)
 X_INST_O1I2(read_crN, res, I64, env, I64, n, I32)
 X_INST_O0I3(write_crN, env, I64, n, I32, val, I64)
+X_INST_O1I1(read_eflags, res, I64, env, I64)
+X_INST_O0I3(write_eflags, env, I64, val, I64, mask, I32)
 
 X_INST_O1I4(cc_compute_all, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
@@ -131,6 +142,7 @@ X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 #undef X_ARG_LABEL
 #undef X_TAIL
 
+#undef X_INST_O0I1
 #undef X_INST_O0I3
 #undef X_INST_O1I1
 #undef X_INST_O1I2
