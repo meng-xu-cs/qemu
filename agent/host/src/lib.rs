@@ -7,9 +7,9 @@ use structopt::StructOpt;
 use crate::qemu::{QemuProxy, VMExitMode};
 use crate::utils::{inotify_watch_for_addition, Ivshmem};
 
-mod config;
-mod qemu;
-mod utils;
+pub mod config;
+pub mod qemu;
+pub mod utils;
 
 const VM_MONITOR_SOCKET: &str = "monitor";
 const VM_IVSHMEM_FILE: &str = "ivshmem";

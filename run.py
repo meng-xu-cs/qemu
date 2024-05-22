@@ -9,6 +9,7 @@ import sys
 from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import time
 from typing import List, Optional, Union
 
 import utils
@@ -472,6 +473,28 @@ def cmd_linux(
         # wait for host termination (if we have one)
         if host is not None:
             host.wait()
+            
+def cmd_linux_debug(
+    kvm: bool,
+    kernel: str,
+    harness: Optional[str],
+    blob: Optional[str],
+    simulate_virtme: bool,
+    trace: bool,
+    verbose: bool,
+) -> None:
+    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose)
+    with TemporaryDirectory() as tmp:
+        print("Temp Directory: ", tmp)
+        os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
+        os.environ["AIXCC_KERNEL_FUZZ_TMP"] = tmp
+        # start the host only in fuzzing mode
+        host = None
+        # start the guest
+        _execute_linux(tmp, kvm, True, trace, verbose)
+
+        # wait for host termination (if we have one)
+        time.sleep(1000)
 
 
 def cmd_dev_sample(
@@ -569,6 +592,15 @@ def main() -> None:
     parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
 
+    parser_linux_dbg = subparsers.add_parser("linux_debug")
+    parser_linux_dbg.add_argument("--kernel", required=True)
+    parser_linux_dbg.add_argument("--kvm", action="store_true")
+    parser_linux_dbg.add_argument("--harness")
+    parser_linux_dbg.add_argument("--blob")
+    parser_linux_dbg.add_argument("--virtme", action="store_true")
+    parser_linux_dbg.add_argument("--trace", action="store_true")
+    parser_linux_dbg.add_argument("--verbose", action="store_true")
+
     # actions
     args = parser.parse_args()
     if args.command == "docker":
@@ -602,6 +634,16 @@ def main() -> None:
         cmd_build(args.incremental, args.release)
     elif args.command == "linux":
         cmd_linux(
+            args.kvm,
+            args.kernel,
+            args.harness,
+            args.blob,
+            args.virtme,
+            args.trace,
+            args.verbose,
+        )
+    elif args.command == "linux_debug":
+        cmd_linux_debug(
             args.kvm,
             args.kernel,
             args.harness,
