@@ -494,7 +494,7 @@ def cmd_linux_debug(
         _execute_linux(tmp, kvm, True, trace, verbose)
 
         # wait for host termination (if we have one)
-        time.sleep(1000)
+        time.sleep(100000)
 
 
 def cmd_dev_sample(

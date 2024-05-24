@@ -203,7 +203,7 @@ struct vmio {
   atomic_uintptr_t spin_guest;
   atomic_uintptr_t __pad;
   uint64_t size;
-  char buf[0];
+  unsigned char buf[1048576];
 };
 
 static inline bool __check_pci_ident(int dirfd, const char *kind,

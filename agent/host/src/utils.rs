@@ -120,6 +120,7 @@ pub struct Vmio {
     spin_guest: AtomicU64,
     __pad: AtomicU64,
     size: u64,
+    data: [u8; 1048000],
 }
 
 impl Vmio {
@@ -144,5 +145,30 @@ impl Vmio {
 
     pub fn post_to_guest(&mut self) {
         self.spin_guest.store(0, atomic::Ordering::SeqCst);
+    }
+
+    pub fn send_fuzz_input(&mut self, data: &[u8], size: usize) {
+        // set size
+        self.size = size as u64;
+
+        // copy data
+        self.data[..size].copy_from_slice(data);
+
+        // notify guest
+        self.spin_guest.store(0, atomic::Ordering::SeqCst);
+    }
+
+    pub fn get_kcov_info(&self) -> Vec<u64>{
+        let mut result = Vec::new();
+        let size = self.size as usize;
+        // get a u64 ptr of data
+        let data = self.data.as_ptr() as *const u64;
+        // iterate over data
+        for i in 0..size / 8 {
+            let value = unsafe { *data.add(i) };
+            // copy value to a vector
+            result.push(value);
+        }
+        result
     }
 }

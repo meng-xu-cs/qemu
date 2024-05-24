@@ -83,10 +83,15 @@ fuzz_target!(|data: &[u8]| {
     // release the guest
     let vmio = VMIO.as_deref_mut().unwrap();
 
-    // TODO: send data to guest
+    // send data to guest
+    vmio.send_fuzz_input(data, data.len());
+
+    // debug 
+    info!("fuzz input sent to guest: {:?}", data);
+
     // TODO: use FFI to convert proto data -> raw data
 
-    vmio.post_to_guest();
+    // vmio.post_to_guest();
     info!("notified guest agent to continue");
 
     // wait for guest to stop
@@ -99,6 +104,13 @@ fuzz_target!(|data: &[u8]| {
         VMExitMode::Hard | VMExitMode::Host => panic!("guest vm stopped"),
     }
     info!("guest vm stopped");
+
+    // get kcov info from vm 
+    let kcov_info = vmio
+        .get_kcov_info();
+
+    // debug: output kcov array, as hex array
+    info!("kcov info: {:?}", kcov_info);
 
     // always refresh from a new snapshot
     qemu.snapshot_load()
