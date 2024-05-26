@@ -21,7 +21,10 @@ PATH_BUILD = os.path.join(PATH_REPO, "build")
 PATH_WKS = os.path.join(PATH_REPO, "workspace")
 
 PATH_AGENT_HOST_SRC = os.path.join(PATH_REPO, "agent", "host")
-PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest", "guest.c")
+PATH_AGENT_GUEST = os.path.join(PATH_REPO, "agent", "guest")
+PATH_AGENT_GUEST_SRC = os.path.join(PATH_AGENT_GUEST, "guest.c")
+PATH_AGENT_GUEST_UTILS_H = os.path.join(PATH_AGENT_GUEST, "utils.h")
+PATH_AGENT_GUEST_INIT_C = os.path.join(PATH_AGENT_GUEST, "init.c")
 
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
@@ -305,9 +308,15 @@ def _prepare_linux(
     # prepare harness
     if mode != AgentMode.Shell:
         assert harness is not None  # to keep mypy happy
-        if kvm or mode == AgentMode.Test:
+        if mode == AgentMode.Test:
             shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
         else:
+            shutil.copy2(
+                PATH_AGENT_GUEST_UTILS_H, os.path.join(PATH_WKS_LINUX, "utils.h")
+            )
+            shutil.copy2(
+                PATH_AGENT_GUEST_INIT_C, os.path.join(PATH_WKS_LINUX, "init.c")
+            )
             utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
 
         subprocess.check_call(
@@ -473,7 +482,8 @@ def cmd_linux(
         # wait for host termination (if we have one)
         if host is not None:
             host.wait()
-            
+
+
 def cmd_linux_debug(
     kvm: bool,
     kernel: str,

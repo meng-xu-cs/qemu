@@ -500,4 +500,15 @@ exception:
   return -1;
 }
 
+/*
+ * Configs
+ */
+
+#define IVSHMEM_SIZE (16 * 1024 * 1024)
+
+#define KCOV_COVER_SIZE (256 << 10)
+#define KCOV_TRACE_PC 0
+#define KCOV_INIT_TRACE64 _IOR('c', 1, uint64_t)
+#define KCOV_ENABLE _IO('c', 100)
+
 #endif // GUEST_UTILS_H
