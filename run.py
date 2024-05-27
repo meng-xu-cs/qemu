@@ -24,9 +24,12 @@ PATH_Z3_SRC = os.path.join(PATH_REPO, "contrib", "smt", "z3")
 PATH_AGENT_HOST_SRC = os.path.join(PATH_REPO, "agent", "host")
 PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest", "guest.c")
 
-PATH_DEPS = os.path.join(PATH_WKS, "deps")
-PATH_DEPS_Z3 = os.path.join(PATH_DEPS, "z3")
-PATH_DEPS_Z3_LIB = os.path.join(PATH_DEPS_Z3, "lib")
+PATH_WKS_DEPS = os.path.join(PATH_WKS, "deps")
+PATH_WKS_DEPS_Z3 = os.path.join(PATH_WKS_DEPS, "z3")
+PATH_WKS_DEPS_Z3_LIB = os.path.join(PATH_WKS_DEPS_Z3, "lib")
+
+PATH_WKS_HOST = os.path.join(PATH_WKS, "host")
+PATH_WKS_HOST_Z3 = os.path.join(PATH_WKS_HOST, "z3")
 
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
@@ -140,7 +143,7 @@ def _docker_exec_self(volumes: List[str], args: List[str]) -> None:
 
 
 def __build_deps_z3(path_src: Union[str, Path], path_install: Union[str, Path]):
-    # clear up
+    # clear up (in case of unsuccessful build)
     deps_z3_build = os.path.join(path_src, "build")
     if os.path.exists(deps_z3_build):
         shutil.rmtree(deps_z3_build)
@@ -164,6 +167,9 @@ def __build_deps_z3(path_src: Union[str, Path], path_install: Union[str, Path]):
         ["make", "install"],
         cwd=deps_z3_build,
     )
+
+    # clean up
+    shutil.rmtree(deps_z3_build)
 
 
 def _qemu_config(
@@ -212,18 +218,23 @@ def cmd_init(force: bool) -> None:
     # prepare directory
     if os.path.exists(PATH_BUILD):
         if not force:
-            sys.exit("Build directory not empty: {}".format(PATH_BUILD))
+            sys.exit("Build directory exists: {}".format(PATH_BUILD))
         shutil.rmtree(PATH_BUILD)
 
-    # deps
-    path_deps = os.path.join(PATH_BUILD, "deps")
-    os.mkdir(path_deps)
+    if os.path.exists(PATH_WKS_HOST):
+        if not force:
+            sys.exit("WKS-host directory exists: {}".format(PATH_WKS_HOST))
+        shutil.rmtree(PATH_WKS_HOST)
 
-    path_deps_z3 = os.path.join(path_deps, "z3")
-    __build_deps_z3(PATH_Z3_SRC, path_deps_z3)
+    os.mkdir(PATH_BUILD)
+    os.makedirs(PATH_WKS, exist_ok=True)
+    os.mkdir(PATH_WKS_HOST)
+
+    # deps
+    __build_deps_z3(PATH_Z3_SRC, PATH_WKS_HOST_Z3)
 
     # build
-    _qemu_config(PATH_REPO, os.devnull, path_deps_z3, False)
+    _qemu_config(PATH_REPO, os.devnull, PATH_WKS_HOST_Z3, False)
     subprocess.check_call(["make", "-j{}".format(NUM_CPUS)], cwd=PATH_BUILD)
 
     # connect the compilation database
@@ -233,27 +244,31 @@ def cmd_init(force: bool) -> None:
     )
 
 
-def cmd_build(incremental: bool, release: bool) -> None:
+def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
     # config
     if incremental:
         if not os.path.exists(PATH_WKS_ARTIFACT_BUILD):
             sys.exit("cannot run incremental build without a build directory")
         if release:
             sys.exit("cannot run build in both incremental and release mode")
+        if deps_z3:
+            sys.exit("cannot run incremental build with dependencies building")
+
     else:
         if os.path.exists(PATH_WKS_ARTIFACT):
             shutil.rmtree(PATH_WKS_ARTIFACT)
             os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
 
         # deps
-        __build_deps_z3(PATH_Z3_SRC, PATH_DEPS_Z3)
+        if deps_z3:
+            __build_deps_z3(PATH_Z3_SRC, PATH_WKS_DEPS_Z3)
 
         # qemu
         os.mkdir(PATH_WKS_ARTIFACT_BUILD)
         _qemu_config(
             PATH_WKS_ARTIFACT_BUILD,
             PATH_WKS_ARTIFACT_INSTALL,
-            PATH_DEPS_Z3,
+            PATH_WKS_DEPS_Z3,
             release,
         )
 
@@ -496,7 +511,9 @@ def _execute_linux(
 
     # execute
     envs = {
-        "LD_LIBRARY_PATH": ":".join([PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_DEPS_Z3_LIB])
+        "LD_LIBRARY_PATH": ":".join(
+            [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_DEPS_Z3_LIB]
+        )
     }
     if trace:
         envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
@@ -616,6 +633,7 @@ def main() -> None:
     parser_build = subparsers.add_parser("build")
     parser_build.add_argument("--incremental", action="store_true")
     parser_build.add_argument("--release", action="store_true")
+    parser_build.add_argument("--deps-z3", action="store_true")
 
     parser_linux = subparsers.add_parser("linux")
     parser_linux.add_argument("--kernel", required=True)
@@ -656,7 +674,7 @@ def main() -> None:
     elif args.command == "init":
         cmd_init(args.force)
     elif args.command == "build":
-        cmd_build(args.incremental, args.release)
+        cmd_build(args.incremental, args.release, args.deps_z3)
     elif args.command == "linux":
         cmd_linux(
             args.kvm,
