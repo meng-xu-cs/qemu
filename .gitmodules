@@ -43,3 +43,6 @@
 [submodule "tests/lcitool/libvirt-ci"]
 	path = tests/lcitool/libvirt-ci
 	url = https://gitlab.com/libvirt/libvirt-ci.git
+[submodule "contrib/smt/z3"]
+	path = contrib/smt/z3
+	url = https://github.com/Z3Prover/z3.git

@@ -19,4 +19,4 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
 
 RUN git clone --recurse-submodules \
     https://github.com/arighi/virtme-ng.git
-RUN cd virtme-ng && git checkout v1.24 && make
+RUN cd virtme-ng && git checkout v1.25 && make
