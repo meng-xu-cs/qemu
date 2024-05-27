@@ -82,6 +82,7 @@ meson_options_help() {
   printf "%s\n" '  --with-suffix=VALUE      Suffix for QEMU data/modules/config directories'
   printf "%s\n" '                           (can be empty) [qemu]'
   printf "%s\n" '  --with-trace-file=VALUE  Trace file prefix for simple backend [trace]'
+  printf "%s\n" '  --z3=VALUE               path to Z3 installation directory'
   printf "%s\n" ''
   printf "%s\n" 'Optional features, enabled with --enable-FEATURE and'
   printf "%s\n" 'disabled with --disable-FEATURE, default is enabled if available'
@@ -556,6 +557,7 @@ _meson_option_parse() {
     --disable-xen-pci-passthrough) printf "%s" -Dxen_pci_passthrough=disabled ;;
     --enable-xkbcommon) printf "%s" -Dxkbcommon=enabled ;;
     --disable-xkbcommon) printf "%s" -Dxkbcommon=disabled ;;
+    --z3=*) quote_sh "-Dz3=$2" ;;
     --enable-zstd) printf "%s" -Dzstd=enabled ;;
     --disable-zstd) printf "%s" -Dzstd=disabled ;;
     *) return 1 ;;

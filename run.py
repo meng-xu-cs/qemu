@@ -19,12 +19,19 @@ PATH_AGENT = os.path.join(PATH_REPO, "agent")
 PATH_BUILD = os.path.join(PATH_REPO, "build")
 PATH_WKS = os.path.join(PATH_REPO, "workspace")
 
+PATH_Z3_SRC = os.path.join(PATH_REPO, "contrib", "smt", "z3")
+
 PATH_AGENT_HOST_SRC = os.path.join(PATH_REPO, "agent", "host")
 PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest", "guest.c")
 
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
 PATH_WKS_ARTIFACT_INSTALL = os.path.join(PATH_WKS_ARTIFACT, "install")
+PATH_WKS_ARTIFACT_INSTALL_DEPS = os.path.join(PATH_WKS_ARTIFACT_INSTALL, "deps")
+PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3 = os.path.join(PATH_WKS_ARTIFACT_INSTALL_DEPS, "z3")
+PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3_LIB = os.path.join(
+    PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3, "lib"
+)
 PATH_WKS_ARTIFACT_INSTALL_LIB = os.path.join(
     PATH_WKS_ARTIFACT_INSTALL, "lib", "x86_64-linux-gnu"
 )
@@ -133,8 +140,32 @@ def _docker_exec_self(volumes: List[str], args: List[str]) -> None:
     )
 
 
+def __build_deps_z3(path_src: Union[str, Path], path_install: Union[str, Path]):
+    subprocess.check_call(
+        [
+            "python3",
+            "scripts/mk_make.py",
+            "--prefix={}".format(path_install),
+        ],
+        cwd=path_src,
+    )
+    deps_z3_build = os.path.join(path_src, "build")
+
+    subprocess.check_call(
+        ["make", "-j{}".format(NUM_CPUS)],
+        cwd=deps_z3_build,
+    )
+    subprocess.check_call(
+        ["make", "install"],
+        cwd=deps_z3_build,
+    )
+
+
 def _qemu_config(
-    path_build: Union[str, Path], path_install: Union[str, Path], release: bool
+    path_build: Union[str, Path],
+    path_install: Union[str, Path],
+    path_deps_z3: str,
+    release: bool,
 ) -> None:
     command = [
         os.path.join(PATH_REPO, "configure"),
@@ -152,6 +183,8 @@ def _qemu_config(
         "--enable-kvm",
         "--enable-slirp",
         "--disable-multiprocess",
+        # deps
+        "--z3={}".format(path_deps_z3),
     ]
 
     if release:
@@ -167,7 +200,7 @@ def _qemu_config(
             ]
         )
 
-    subprocess.run(command, cwd=path_build, check=True)
+    subprocess.check_call(command, cwd=path_build)
 
 
 def cmd_init(force: bool) -> None:
@@ -177,9 +210,16 @@ def cmd_init(force: bool) -> None:
             sys.exit("Build directory not empty: {}".format(PATH_BUILD))
         shutil.rmtree(PATH_BUILD)
 
+    # deps
+    path_deps = os.path.join(PATH_BUILD, "deps")
+    os.mkdir(path_deps)
+
+    path_deps_z3 = os.path.join(path_deps, "z3")
+    __build_deps_z3(PATH_Z3_SRC, path_deps_z3)
+
     # build
-    _qemu_config(PATH_REPO, os.devnull, False)
-    subprocess.run(["make", "-j{}".format(NUM_CPUS)], cwd=PATH_BUILD, check=True)
+    _qemu_config(PATH_REPO, os.devnull, path_deps_z3, False)
+    subprocess.check_call(["make", "-j{}".format(NUM_CPUS)], cwd=PATH_BUILD)
 
     # connect the compilation database
     shutil.copy2(
@@ -199,14 +239,24 @@ def cmd_build(incremental: bool, release: bool) -> None:
         if os.path.exists(PATH_WKS_ARTIFACT):
             shutil.rmtree(PATH_WKS_ARTIFACT)
             os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
+
+        # deps
+        __build_deps_z3(PATH_Z3_SRC, PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3)
+
+        # qemu
         os.mkdir(PATH_WKS_ARTIFACT_BUILD)
-        _qemu_config(PATH_WKS_ARTIFACT_BUILD, PATH_WKS_ARTIFACT_INSTALL, release)
+        _qemu_config(
+            PATH_WKS_ARTIFACT_BUILD,
+            PATH_WKS_ARTIFACT_INSTALL,
+            PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3,
+            release,
+        )
 
     # build
-    subprocess.run(
-        ["make", "-j{}".format(NUM_CPUS)], cwd=PATH_WKS_ARTIFACT_BUILD, check=True
+    subprocess.check_call(
+        ["make", "-j{}".format(NUM_CPUS)], cwd=PATH_WKS_ARTIFACT_BUILD
     )
-    subprocess.run(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD, check=True)
+    subprocess.check_call(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD)
 
 
 class AgentMode(Enum):
@@ -440,7 +490,11 @@ def _execute_linux(
         command.extend(["-append", " ".join(kernel_args)])
 
     # execute
-    envs = {"LD_LIBRARY_PATH": PATH_WKS_ARTIFACT_INSTALL_LIB}
+    envs = {
+        "LD_LIBRARY_PATH": ":".join(
+            [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3_LIB]
+        )
+    }
     if trace:
         envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
     subprocess.check_call(command, env=envs)
