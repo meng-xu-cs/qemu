@@ -160,6 +160,11 @@ X_INST_O1I2(read_crN, res, I64, env, I64, n, I32)
 X_INST_O0I3(write_crN, env, I64, n, I32, val, I64)
 X_INST_O1I1(read_eflags, res, I64, env, I64)
 X_INST_O0I3(write_eflags, env, I64, val, I64, mask, I32)
+X_INST_O0I3(set_dr, env, I64, reg, I32, val, I64)
+
+X_INST_O0I1(das, env, I64)
+X_INST_O0I1(emms, env, I64)
+X_INST_O0I1(rsm, env, I64)
 
 X_INST_O1I4(cc_compute_all, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
 X_INST_O1I4(cc_compute_c, res, I64, dst, I64, src1, I64, src2, I64, opc, I32)
@@ -175,12 +180,33 @@ X_INST_O0I5(st_i128, env, I64, base, I64, in_t, I64, in_b, I64, offset, I32)
 X_INST_O0I3(pshufd_xmm, d, I64, s, I64, encodig, I32)
 X_INST_O0I4(pslldq_xmm, env, I64, d, I64, s, I64, c, I64)
 X_INST_O0I4(psrldq_xmm, env, I64, d, I64, s, I64, c, I64)
-
 X_INST_O0I4(punpckhdq_xmm, env, I64, d, I64, v, I64, s, I64)
 X_INST_O0I4(punpckldq_xmm, env, I64, d, I64, v, I64, s, I64)
 X_INST_O0I4(punpcklqdq_xmm, env, I64, d, I64, v, I64, s, I64)
 X_INST_O0I4(punpcklbw_xmm, env, I64, d, I64, v, I64, s, I64)
 X_INST_O0I4(punpcklwd_xmm, env, I64, d, I64, v, I64, s, I64)
+X_INST_O0I4(shufpd_xmm, d, I64, v, I64, s, I64, order, I32)
+
+X_INST_O0I1(fninit, env, I64)
+X_INST_O1I1(fnstcw, res, I32, env, I64)
+X_INST_O1I1(fnstsw, res, I32, env, I64)
+
+X_INST_O0I1(fwait, env, I64)
+X_INST_O0I1(fclex, env, I64)
+
+X_INST_O0I2(fxsave, env, I64, val, I64)
+X_INST_O0I2(fxrstor, env, I64, val, I64)
+
+X_INST_O0I4(gvec_eq8, d, I64, a, I64, b, I64, desc, I32)
+X_INST_O0I4(gvec_lt8, d, I64, a, I64, b, I64, desc, I32)
+
+X_INST_O0I2(fildl_ST0, env, I64, val, I32)
+
+X_INST_O0I2(lldt, env, I64, selector, I32)
+X_INST_O0I2(ltr, env, I64, selector, I32)
+X_INST_O0I3(load_seg, env, I64, segment, I32, selector, I32)
+
+X_INST_O0I2(flush_page, env, I64, addr, I64)
 
 /*
  * Template Teardown
