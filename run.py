@@ -24,14 +24,13 @@ PATH_Z3_SRC = os.path.join(PATH_REPO, "contrib", "smt", "z3")
 PATH_AGENT_HOST_SRC = os.path.join(PATH_REPO, "agent", "host")
 PATH_AGENT_GUEST_SRC = os.path.join(PATH_REPO, "agent", "guest", "guest.c")
 
+PATH_DEPS = os.path.join(PATH_WKS, "deps")
+PATH_DEPS_Z3 = os.path.join(PATH_DEPS, "z3")
+PATH_DEPS_Z3_LIB = os.path.join(PATH_DEPS_Z3, "lib")
+
 PATH_WKS_ARTIFACT = os.path.join(PATH_WKS, "artifact")
 PATH_WKS_ARTIFACT_BUILD = os.path.join(PATH_WKS_ARTIFACT, "build")
 PATH_WKS_ARTIFACT_INSTALL = os.path.join(PATH_WKS_ARTIFACT, "install")
-PATH_WKS_ARTIFACT_INSTALL_DEPS = os.path.join(PATH_WKS_ARTIFACT_INSTALL, "deps")
-PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3 = os.path.join(PATH_WKS_ARTIFACT_INSTALL_DEPS, "z3")
-PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3_LIB = os.path.join(
-    PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3, "lib"
-)
 PATH_WKS_ARTIFACT_INSTALL_LIB = os.path.join(
     PATH_WKS_ARTIFACT_INSTALL, "lib", "x86_64-linux-gnu"
 )
@@ -141,6 +140,12 @@ def _docker_exec_self(volumes: List[str], args: List[str]) -> None:
 
 
 def __build_deps_z3(path_src: Union[str, Path], path_install: Union[str, Path]):
+    # clear up
+    deps_z3_build = os.path.join(path_src, "build")
+    if os.path.exists(deps_z3_build):
+        shutil.rmtree(deps_z3_build)
+
+    # config
     subprocess.check_call(
         [
             "python3",
@@ -149,8 +154,8 @@ def __build_deps_z3(path_src: Union[str, Path], path_install: Union[str, Path]):
         ],
         cwd=path_src,
     )
-    deps_z3_build = os.path.join(path_src, "build")
 
+    # build and install
     subprocess.check_call(
         ["make", "-j{}".format(NUM_CPUS)],
         cwd=deps_z3_build,
@@ -241,14 +246,14 @@ def cmd_build(incremental: bool, release: bool) -> None:
             os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
 
         # deps
-        __build_deps_z3(PATH_Z3_SRC, PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3)
+        __build_deps_z3(PATH_Z3_SRC, PATH_DEPS_Z3)
 
         # qemu
         os.mkdir(PATH_WKS_ARTIFACT_BUILD)
         _qemu_config(
             PATH_WKS_ARTIFACT_BUILD,
             PATH_WKS_ARTIFACT_INSTALL,
-            PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3,
+            PATH_DEPS_Z3,
             release,
         )
 
@@ -491,9 +496,7 @@ def _execute_linux(
 
     # execute
     envs = {
-        "LD_LIBRARY_PATH": ":".join(
-            [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_ARTIFACT_INSTALL_DEPS_Z3_LIB]
-        )
+        "LD_LIBRARY_PATH": ":".join([PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_DEPS_Z3_LIB])
     }
     if trace:
         envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
