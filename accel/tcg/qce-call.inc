@@ -144,6 +144,8 @@
  */
 
 X_INST_O1I1(lookup_tb_ptr, res, I64, env, I64)
+X_INST_O0I1(rechecking_single_step, env, I64)
+X_INST_O0I1(sgx, env, I64)
 
 X_INST_O1I2(inb, res, I64, env, I64, port, I32)
 X_INST_O1I2(inw, res, I64, env, I64, port, I32)
@@ -207,6 +209,19 @@ X_INST_O0I2(ltr, env, I64, selector, I32)
 X_INST_O0I3(load_seg, env, I64, segment, I32, selector, I32)
 
 X_INST_O0I2(flush_page, env, I64, addr, I64)
+X_INST_O0I2(hlt, env, I64, val, I32)
+
+X_INST_O0I2(iret_real, env, I64, shift, I32)
+X_INST_O0I3(iret_protected, env, I64, shift, I32, next_eip, I32)
+X_INST_O0I5(lcall_real, env, I64, new_cs, I32, new_eip, I32, shift, I32,
+            next_eip, I32)
+X_INST_O0I4(ljmp_protected, env, I64, new_cs, I32, new_eip, I64, next_eip, I64)
+X_INST_O0I3(lret_protected, env, I64, shift, I32, next_eip, I32)
+X_INST_O0I3(raise_interrupt, env, I64, intno, I32, next_eip, I32)
+X_INST_O0I2(pause, env, I64, next_eip, I32)
+
+X_INST_O0I2(syscall, env, I64, next_eip, I32)
+X_INST_O0I2(sysret, env, I64, dflag, I32)
 
 /*
  * Template Teardown
