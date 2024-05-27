@@ -193,7 +193,7 @@ def mk_rootfs(
         )
 
         # TODO: probe for an available /dev/nbdX device
-        dev_node = "/dev/nbd0"
+        dev_node = "/dev/nbd1"
         subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
         subprocess.check_call(
             [

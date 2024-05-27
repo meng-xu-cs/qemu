@@ -38,7 +38,7 @@ void __attribute__((constructor)) guest_agent_init(void) {
     // debug
     LOG_INFO("blob size: %lu", vmio->size);
     for (int i = 0; i < vmio->size; i++) {
-      LOG_INFO("blob[%d]: %c", i, vmio->buf[i]);
+      // LOG_INFO("blob[%d]: %c", i, vmio->buf[i]);
     }
   }
   LOG_INFO("blob ready");
@@ -82,7 +82,7 @@ void __attribute__((destructor)) guest_agent_fini(void) {
   LOG_INFO("store kcov data");
   for (uint64_t i = 0; i < ncov; i++) {
     uint64_t pc = __atomic_load_n(&kcov_data[i + 1], __ATOMIC_RELAXED);
-    atomic_store(&vmio->buf[i * 8], pc);
+    atomic_store((uint64_t*)(&vmio->buf[i * 8]), pc);
     // LOG_INFO("kcov data[%llu]: %llu", i, pc);
   }
 

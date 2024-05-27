@@ -21,6 +21,11 @@ static mut VMIO: Option<&mut Vmio> = None;
 static mut QEMU: Option<QemuProxy> = None;
 static mut IVSHMEM: Option<Ivshmem> = None;
 
+extern "C" { pub fn SubmitLibfuzzerCoverage(pc: u64); } 
+extern "C" { pub fn ProtoFuzzerInputOne(data: *const u8, size: usize, out: *mut u8, max_out_size: usize) -> usize; }
+extern "C" { pub fn ProtoFuzzerCustomMutator(data: *mut u8, size: usize, max_size: usize, seed: u32) -> usize; }
+extern "C" { pub fn ProtoFuzzerCustomCrossover(data1: *const u8, size1: usize, data2: *const u8, size2: usize, out: *mut u8, max_out_size: usize, seed: u32) -> usize; }
+
 fuzz_target!(|data: &[u8]| {
 
     unsafe {
@@ -77,17 +82,28 @@ fuzz_target!(|data: &[u8]| {
             info!("live snapshot is taken");
             INITED = true;
         }
+
+    // invoke data feeder 
+    let mut out = vec![0u8; 1048576];
+    let out_size = ProtoFuzzerInputOne(data.as_ptr(), data.len(), out.as_mut_ptr(), out.len());
+    // println!("out_size: {}", out_size);
+    // println!("out: {:?}", &out[..out_size]);
+    if out_size == 0 {
+        return;
+    }
     
 
     // fuzzing loop
     // release the guest
     let vmio = VMIO.as_deref_mut().unwrap();
 
+
     // send data to guest
-    vmio.send_fuzz_input(data, data.len());
+    out.truncate(out_size);
+    vmio.send_fuzz_input(&out, out_size);
 
     // debug 
-    info!("fuzz input sent to guest: {:?}", data);
+    // info!("fuzz input sent to guest: {:?}", out);
 
     // TODO: use FFI to convert proto data -> raw data
 
@@ -109,8 +125,13 @@ fuzz_target!(|data: &[u8]| {
     let kcov_info = vmio
         .get_kcov_info();
 
+    for i in 0..kcov_info.len() {
+        // submit kcov to libfuzzer
+        SubmitLibfuzzerCoverage(kcov_info[i] as u64); 
+    }
+
     // debug: output kcov array, as hex array
-    info!("kcov info: {:?}", kcov_info);
+    // info!("kcov info: {:?}", kcov_info);
 
     // always refresh from a new snapshot
     qemu.snapshot_load()
@@ -128,8 +149,18 @@ fuzz_target!(|data: &[u8]| {
 });
 
 
-// fuzz_mutator!(
-//     |data: &mut [u8], size: usize, max_size: usize, _seed: u32| {
-            // TODO: use FFI to call libprotobuf-mutator
+fuzz_mutator!(
+    |data: &mut [u8], size: usize, max_size: usize, _seed: u32| {
+        //    TODO: use FFI to call libprotobuf-mutator
+        unsafe {
+            return ProtoFuzzerCustomMutator(data.as_mut_ptr(), size, max_size, _seed);
+        }
+    }
+);
+
+// fuzz_crossover!(|data1: &[u8], data2: &[u8], out: &mut [u8], seed: u32| {
+//     unsafe {
+//         return ProtoFuzzerCustomCrossover(data1.as_ptr(), data1.len(), data2.as_ptr(), data2.len(), out.as_mut_ptr(), out.len(), seed);
 //     }
-// );
+// });
+

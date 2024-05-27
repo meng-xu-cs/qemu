@@ -8,7 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "0.4.7"
 env_logger = "0.11.3"
 inotify = "0.10.2"
 libc = "0.2.154"
@@ -29,5 +29,11 @@ debug = 1
 [[bin]]
 name = "fuzz_target_1"
 path = "fuzz_targets/fuzz_target_1.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "data_test"
+path = "fuzz_targets/data_test.rs"
 test = false
 doc = false
