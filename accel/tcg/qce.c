@@ -4,9 +4,10 @@
 #include "qemu/qht.h"
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
-#include "tcg/tcg.h"
 #include "tcg/tcg-internal.h"
+#include "tcg/tcg.h"
 
+#include "qce_z3.h"
 #include "qemu/qce.h"
 
 #define QCE_DEBUG_IR
@@ -28,6 +29,9 @@ typedef struct {
   // information about the blob
   tcg_target_ulong blob_addr;
   tcg_target_ulong blob_size;
+
+  // z3 context
+  SolverZ3 solver_z3;
 } QCESession;
 
 // cache entry
@@ -210,6 +214,9 @@ void qce_session_reload(void) {
   }
 #endif
 
+  // finish up the symbolic context
+  fini_z3(&session->solver_z3);
+
   // reset the tracing states
   session->mode = QCE_Tracing_NotStarted;
   qce_debug("session reloaded");
@@ -231,6 +238,7 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size) {
   session->mode = QCE_Tracing_Kicked;
   session->blob_addr = addr;
   session->blob_size = size;
+  init_z3(&session->solver_z3);
 
   // log it
 #ifdef QCE_DEBUG_IR
