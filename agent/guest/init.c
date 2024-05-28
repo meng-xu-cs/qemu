@@ -14,6 +14,27 @@ void __attribute__((constructor)) guest_agent_init(void) {
   probe_ivshmem(&pack, IVSHMEM_SIZE);
   LOG_INFO("ivshmem ready");
 
+  // check and enable kcov
+  int kcov = open("/sys/kernel/debug/kcov", O_RDWR);
+  if (kcov == -1) {
+    ABORT_WITH_ERRNO("open kcov");
+  }
+  if (ioctl(kcov, KCOV_INIT_TRACE64, KCOV_COVER_SIZE)) {
+    ABORT_WITH_ERRNO("ioctl init kcov");
+  }
+
+  kcov_data = mmap(NULL, KCOV_COVER_SIZE * sizeof(kcov_data[0]),
+                   PROT_READ | PROT_WRITE, MAP_SHARED, kcov, 0);
+  if (kcov_data == MAP_FAILED) {
+    ABORT_WITH_ERRNO("mmap kcov");
+  }
+
+  if (ioctl(kcov, KCOV_ENABLE, KCOV_TRACE_PC)) {
+    ABORT_WITH_ERRNO("ioctl enable kcov");
+  }
+  close(kcov);
+  LOG_INFO("kcov ready");
+
   // wait for host to be ready
   struct vmio *vmio = pack.addr;
   while (atomic_load(&vmio->flag) == 0) {
@@ -43,25 +64,7 @@ void __attribute__((constructor)) guest_agent_init(void) {
   }
   LOG_INFO("blob ready");
 
-  // check and enable kcov
-  int kcov = open("/sys/kernel/debug/kcov", O_RDWR);
-  if (kcov == -1) {
-    ABORT_WITH_ERRNO("open kcov");
-  }
-  if (ioctl(kcov, KCOV_INIT_TRACE64, KCOV_COVER_SIZE)) {
-    ABORT_WITH_ERRNO("ioctl init kcov");
-  }
-
-  kcov_data = mmap(NULL, KCOV_COVER_SIZE * sizeof(kcov_data[0]),
-                   PROT_READ | PROT_WRITE, MAP_SHARED, kcov, 0);
-  if (kcov_data == MAP_FAILED) {
-    ABORT_WITH_ERRNO("mmap kcov");
-  }
-
-  if (ioctl(kcov, KCOV_ENABLE, KCOV_TRACE_PC)) {
-    ABORT_WITH_ERRNO("ioctl enable kcov");
-  }
-  close(kcov);
+  
 
   // start kcov
   __atomic_store_n(&kcov_data[0], 0, __ATOMIC_RELAXED);
