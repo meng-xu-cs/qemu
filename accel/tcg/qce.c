@@ -2,17 +2,21 @@
 
 #include "exec/exec-all.h"
 #include "qemu/qht.h"
+#include "qemu/qtree.h"
 #include "qemu/queue.h"
 #include "qemu/xxhash.h"
 #include "tcg/tcg-internal.h"
 #include "tcg/tcg.h"
 
-#include "qce_z3.h"
 #include "qemu/qce.h"
 
 #define QCE_DEBUG_IR
 #include "qce-debug.h"
 #include "qce-ir.h"
+
+#include "qce_z3.h"
+
+#include "qce-state.h"
 
 typedef enum {
   QCE_Tracing_NotStarted,
@@ -30,8 +34,8 @@ typedef struct {
   tcg_target_ulong blob_addr;
   tcg_target_ulong blob_size;
 
-  // z3 context
-  SolverZ3 solver_z3;
+  // state
+  QCEState state;
 } QCESession;
 
 // cache entry
@@ -214,8 +218,10 @@ void qce_session_reload(void) {
   }
 #endif
 
-  // finish up the symbolic context
-  fini_z3(&session->solver_z3);
+  // finish up the symbolic state
+  qce_fini_state(&session->state);
+  session->blob_addr = 0;
+  session->blob_size = 0;
 
   // reset the tracing states
   session->mode = QCE_Tracing_NotStarted;
@@ -238,7 +244,7 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size) {
   session->mode = QCE_Tracing_Kicked;
   session->blob_addr = addr;
   session->blob_size = size;
-  init_z3(&session->solver_z3);
+  qce_init_state(&session->state);
 
   // log it
 #ifdef QCE_DEBUG_IR
@@ -323,7 +329,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifdef QCE_DEBUG_IR
   // mark that this TB is executed
   if (g_qce->trace_file != NULL) {
-    fprintf(g_qce->trace_file, "\n=> TB: 0x%p\n", tb);
+    fprintf(g_qce->trace_file, "-> TB: 0x%p\n", tb);
   }
 #endif
 
@@ -399,6 +405,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifdef QCE_DEBUG_IR
   // dump the IR to be emulated
   if (g_qce->trace_file != NULL) {
+    fprintf(g_qce->trace_file, "=> TB: 0x%p\n", tb);
     for (size_t i = 0; i < entry->inst_count; i++) {
       qce_debug_print_inst(g_qce->trace_file, &entry->insts[i]);
     }
