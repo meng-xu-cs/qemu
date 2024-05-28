@@ -265,11 +265,11 @@ def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
             __build_deps_z3(PATH_Z3_SRC, PATH_WKS_DEPS_Z3)
 
         # qemu
-        os.mkdir(PATH_WKS_ARTIFACT_BUILD)
+        os.makedirs(PATH_WKS_ARTIFACT_BUILD, exist_ok=True)
         _qemu_config(
             PATH_WKS_ARTIFACT_BUILD,
             PATH_WKS_ARTIFACT_INSTALL,
-            PATH_WKS_DEPS_Z3,
+            os.path.relpath(PATH_WKS_DEPS_Z3, PATH_REPO),
             release,
         )
 
