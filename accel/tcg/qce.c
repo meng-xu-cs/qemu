@@ -219,7 +219,7 @@ void qce_session_reload(void) {
 #endif
 
   // finish up the symbolic state
-  qce_fini_state(&session->state);
+  qce_state_fini(&session->state);
   session->blob_addr = 0;
   session->blob_size = 0;
 
@@ -244,7 +244,7 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size) {
   session->mode = QCE_Tracing_Kicked;
   session->blob_addr = addr;
   session->blob_size = size;
-  qce_init_state(&session->state);
+  qce_state_init(&session->state);
 
   // log it
 #ifdef QCE_DEBUG_IR
@@ -391,8 +391,11 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     }
 
     // initialize symbolic states
-    // TODO
-
+    QCEState *state = &session->state;
+    qce_state_env_put_symbolic_i64(state, offsetof(CPUArchState, regs[R_EDI]),
+                                   state->solver_z3.blob_addr);
+    qce_state_env_put_symbolic_i64(state, offsetof(CPUArchState, regs[R_ESI]),
+                                   state->solver_z3.blob_size);
     session->mode = QCE_Tracing_Running;
     qce_debug("target function confirmed, start tracing");
   }
