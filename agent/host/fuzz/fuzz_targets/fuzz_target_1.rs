@@ -1,6 +1,6 @@
 #![no_main]
 
-use libfuzzer_sys::{fuzz_mutator, fuzz_target};
+use libfuzzer_sys::{fuzz_mutator, fuzz_target, fuzz_crossover};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
@@ -158,9 +158,9 @@ fuzz_mutator!(
     }
 );
 
-// fuzz_crossover!(|data1: &[u8], data2: &[u8], out: &mut [u8], seed: u32| {
-//     unsafe {
-//         return ProtoFuzzerCustomCrossover(data1.as_ptr(), data1.len(), data2.as_ptr(), data2.len(), out.as_mut_ptr(), out.len(), seed);
-//     }
-// });
+fuzz_crossover!(|data1: &[u8], data2: &[u8], out: &mut [u8], seed: u32| {
+    unsafe {
+        return ProtoFuzzerCustomCrossover(data1.as_ptr(), data1.len(), data2.as_ptr(), data2.len(), out.as_mut_ptr(), out.len(), seed);
+    }
+});
 
