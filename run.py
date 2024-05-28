@@ -226,7 +226,6 @@ def cmd_init(force: bool) -> None:
             sys.exit("WKS-host directory exists: {}".format(PATH_WKS_HOST))
         shutil.rmtree(PATH_WKS_HOST)
 
-    os.mkdir(PATH_BUILD)
     os.makedirs(PATH_WKS, exist_ok=True)
     os.mkdir(PATH_WKS_HOST)
 
@@ -234,7 +233,9 @@ def cmd_init(force: bool) -> None:
     __build_deps_z3(PATH_Z3_SRC, PATH_WKS_HOST_Z3)
 
     # build
-    _qemu_config(PATH_REPO, os.devnull, PATH_WKS_HOST_Z3, False)
+    _qemu_config(
+        PATH_REPO, os.devnull, os.path.relpath(PATH_WKS_HOST_Z3, PATH_REPO), False
+    )
     subprocess.check_call(["make", "-j{}".format(NUM_CPUS)], cwd=PATH_BUILD)
 
     # connect the compilation database

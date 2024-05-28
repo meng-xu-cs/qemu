@@ -2072,7 +2072,9 @@ if not get_option('libdw').auto() or \
 endif
 
 # z3
-z3 = cc.find_library('z3', dirs: [get_option('z3') / 'lib'], required: true)
+z3 = cc.find_library('z3',
+                     dirs: [meson.current_source_dir() / get_option('z3') / 'lib'],
+                     required: true)
 
 #################
 # config-host.h #
