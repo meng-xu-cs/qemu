@@ -336,6 +336,38 @@ typedef struct {
   };
 } QCEInst;
 
+#ifdef QCE_DEBUG_IR
+static inline void qce_debug_print_inst(FILE *f, const QCEInst *inst) {
+  switch (inst->kind) {
+  case QCE_INST_START:
+    fprintf(f, "---- 0x%lx ----", inst->i_start.pc);
+    break;
+  case QCE_INST_EXIT_TB:
+    fprintf(f, "exit_tb: %ld", inst->i_exit_tb.idx);
+    break;
+  case QCE_INST_GOTO_TB:
+    fprintf(f, "goto_tb: %ld", inst->i_goto_tb.idx);
+    break;
+  case QCE_INST_GOTO_PTR:
+    fprintf(f, "goto_ptr: ");
+    qce_debug_print_var(f, &inst->i_goto_ptr.ptr);
+    break;
+#define QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+#include "qce-op.inc"
+#undef QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+#define QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+#include "qce-call.inc"
+#undef QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+  case QCE_INST_UNKNOWN:
+    fprintf(f, "[!!!] unknown instruction");
+    break;
+  }
+  fprintf(f, "\n");
+}
+#else
+#define qce_debug_print_inst(f, inst)
+#endif
+
 static inline void parse_op(TCGContext *tcg, TCGOp *op, QCEInst *inst) {
   TCGOpcode c = op->opc;
   const TCGOpDef *def = &tcg_op_defs[c];

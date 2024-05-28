@@ -4,23 +4,15 @@
 
 #ifdef QCE_INST_TEMPLATE_IN_KIND_ENUM
 #define X_HEAD(func, args_i, args_o) QCE_INST_CALL_##func,
-#define X_ARG_VAR(func, idx, name)
 #define X_ARG_OUT(func, idx, name, type)
 #define X_ARG_IN(func, idx, name, type)
-#define X_ARG_ADDR(func, idx, name)
-#define X_ARG_CONST(func, idx, name)
-#define X_ARG_LABEL(func, idx, name)
 #define X_TAIL(func)
 #endif
 
 #ifdef QCE_INST_TEMPLATE_IN_INST_UNION
 #define X_HEAD(func, args_i, args_o) struct {
-#define X_ARG_VAR(func, idx, name) QCEVar name;
 #define X_ARG_OUT(func, idx, name, type) QCEVar name;
 #define X_ARG_IN(func, idx, name, type) QCEVar name;
-#define X_ARG_ADDR(func, idx, name) QCEVar name;
-#define X_ARG_CONST(func, idx, name) tcg_target_ulong name;
-#define X_ARG_LABEL(func, idx, name) QCELabel name;
 #define X_TAIL(func)                                                           \
   }                                                                            \
   i_call_##func;
@@ -32,9 +24,6 @@
     qce_debug_assert_op1(tcg, nb_oargs == args_i, op);                         \
     qce_debug_assert_op1(tcg, nb_iargs == args_o, op);                         \
     inst->kind = QCE_INST_CALL_##func;
-#define X_ARG_VAR(func, idx, name)                                             \
-  parse_arg_as_var(tcg, op->args[idx],                                         \
-                   &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
 #define X_ARG_OUT(func, idx, name, type)                                       \
   parse_arg_as_var_expect_type(tcg, op->args[idx],                             \
                                &(UTIL_DOT_JOIN(inst->i_call_##func, name)),    \
@@ -43,15 +32,23 @@
   parse_arg_as_var_expect_type(tcg, op->args[idx],                             \
                                &(UTIL_DOT_JOIN(inst->i_call_##func, name)),    \
                                TCG_TYPE_##type);
-#define X_ARG_ADDR(func, idx, name)                                            \
-  parse_arg_as_var_expect_host_addr(                                           \
-      tcg, op->args[idx], &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
-#define X_ARG_CONST(func, idx, name)                                           \
-  UTIL_DOT_JOIN(inst->i_call_##func, name) = op->args[idx];
-#define X_ARG_LABEL(func, idx, name)                                           \
-  parse_arg_as_label(tcg, op->args[idx],                                       \
-                     &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
 #define X_TAIL(func) }
+#endif
+
+#ifdef QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+#define X_HEAD(func, args_i, args_o)                                           \
+  case QCE_INST_CALL_##func: {                                                 \
+    fprintf(f, #func "(");
+#define X_ARG_OUT(func, idx, name, type)                                       \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
+#define X_ARG_IN(func, idx, name, type)                                        \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
+#define X_TAIL(func)                                                           \
+  fprintf(f, ")");                                                             \
+  break;                                                                       \
+  }
 #endif
 
 /*
@@ -228,12 +225,8 @@ X_INST_O0I2(sysret, env, I64, dflag, I32)
  */
 
 #undef X_HEAD
-#undef X_ARG_VAR
 #undef X_ARG_OUT
 #undef X_ARG_IN
-#undef X_ARG_ADDR
-#undef X_ARG_CONST
-#undef X_ARG_LABEL
 #undef X_TAIL
 
 #undef X_INST_O0I1

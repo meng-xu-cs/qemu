@@ -323,7 +323,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifdef QCE_DEBUG_IR
   // mark that this TB is executed
   if (g_qce->trace_file != NULL) {
-    fprintf(g_qce->trace_file, "=> TB: 0x%p\n", tb);
+    fprintf(g_qce->trace_file, "\n=> TB: 0x%p\n", tb);
   }
 #endif
 
@@ -393,6 +393,15 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifdef QCE_DEBUG_IR
   else {
     g_assert(session->mode == QCE_Tracing_Running);
+  }
+#endif
+
+#ifdef QCE_DEBUG_IR
+  // dump the IR to be emulated
+  if (g_qce->trace_file != NULL) {
+    for (size_t i = 0; i < entry->inst_count; i++) {
+      qce_debug_print_inst(g_qce->trace_file, &entry->insts[i]);
+    }
   }
 #endif
 

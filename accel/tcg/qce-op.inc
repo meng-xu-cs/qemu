@@ -54,6 +54,32 @@
   }
 #endif
 
+#ifdef QCE_INST_TEMPLATE_IN_DEBUG_PRINT
+#define X_HEAD(qce_name, tcg_name)                                             \
+  case QCE_INST_##qce_name: {                                                  \
+    fprintf(f, #tcg_name "{");
+#define X_ARG_VAR(qce_name, tcg_name, idx, name)                               \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
+#define X_ARG_OUT(qce_name, tcg_name, idx, name, type)                         \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
+#define X_ARG_IN(qce_name, tcg_name, idx, name, type)                          \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
+#define X_ARG_ADDR(qce_name, tcg_name, idx, name)                              \
+  fprintf(f, #name ":");                                                       \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_##tcg_name, name)));
+#define X_ARG_CONST(qce_name, tcg_name, idx, name)                             \
+  fprintf(f, #name ":0x%lx", UTIL_DOT_JOIN(inst->i_##tcg_name, name));
+#define X_ARG_LABEL(qce_name, tcg_name, idx, name)                             \
+  fprintf(f, #name ":L%u", UTIL_DOT_JOIN(inst->i_##tcg_name, name).id);
+#define X_TAIL(qce_name, tcg_name)                                             \
+  fprintf(f, "}");                                                             \
+  break;                                                                       \
+  }
+#endif
+
 /*
  * Templates Structures
  */
