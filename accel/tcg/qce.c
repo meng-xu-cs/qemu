@@ -381,15 +381,19 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     if (session->blob_addr != arch->regs[R_EDI] ||
         session->blob_size != arch->regs[R_ESI]) {
       qce_error("session value mismatch at TB 0x%p", tb);
-    } else {
-      session->mode = QCE_Tracing_Running;
-      qce_debug("target function confirmed, start tracing");
+      return;
     }
-    return;
-  }
 
+    // initialize symbolic states
+    // TODO
+
+    session->mode = QCE_Tracing_Running;
+    qce_debug("target function confirmed, start tracing");
+  }
 #ifdef QCE_DEBUG_IR
-  g_assert(session->mode == QCE_Tracing_Running);
+  else {
+    g_assert(session->mode == QCE_Tracing_Running);
+  }
 #endif
 
   // TODO: symbolic logic
