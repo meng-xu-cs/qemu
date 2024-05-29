@@ -38,13 +38,15 @@
 #ifdef QCE_INST_TEMPLATE_IN_DEBUG_PRINT
 #define X_HEAD(func, args_i, args_o)                                           \
   case QCE_INST_CALL_##func: {                                                 \
-    fprintf(f, #func "(");
+    fprintf(f, #func " (\n");
 #define X_ARG_OUT(func, idx, name, type)                                       \
-  fprintf(f, #name ":");                                                       \
-  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
+  fprintf(f, "\t" #name ": ");                                                 \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));         \
+  fprintf(f, ",\n");
 #define X_ARG_IN(func, idx, name, type)                                        \
-  fprintf(f, #name ":");                                                       \
-  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));
+  fprintf(f, "\t" #name ": ");                                                 \
+  qce_debug_print_var(f, &(UTIL_DOT_JOIN(inst->i_call_##func, name)));         \
+  fprintf(f, ",\n");
 #define X_TAIL(func)                                                           \
   fprintf(f, ")");                                                             \
   break;                                                                       \

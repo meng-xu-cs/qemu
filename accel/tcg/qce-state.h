@@ -8,8 +8,10 @@
 #define QCE_EXPR_BASE_SIZE sizeof(uint32_t)
 
 typedef enum {
-  QCE_EXPR_CONCRETE,
-  QCE_EXPR_SYMBOLIC,
+  QCE_EXPR_NONE = 0ul,
+  QCE_EXPR_CONCRETE = 1ul,
+  QCE_EXPR_SYMBOLIC = 2ul,
+  __QCE_EXPR_FORCE_LONG__ = 0xffffffffffffffff,
 } QCEExprMode;
 
 // dual-mode holder for expressions
@@ -37,10 +39,14 @@ static inline void qce_expr_holder_fini(QCEExprHolder *holder) {
 }
 
 static inline void qce_expr_holder_put_symbolic(QCEExprHolder *holder,
-                                                uintptr_t offset, Z3_ast expr) {
-  gpointer key = (gpointer)offset;
+                                                gpointer key, Z3_ast expr) {
   g_tree_insert(holder->dispatch, key, (gpointer)QCE_EXPR_SYMBOLIC);
   g_tree_insert(holder->symbolic, key, expr);
+}
+
+static inline QCEExprMode qce_expr_holder_get(QCEExprHolder *holder,
+                                              gpointer key) {
+  return (QCEExprMode)g_tree_lookup(holder->dispatch, key);
 }
 
 // dual-mode representation of the machine state
@@ -73,7 +79,7 @@ qce_state_env_put_symbolic_i32(QCEState *state, uintptr_t offset, Z3_ast expr) {
   if (offset % QCE_EXPR_BASE_SIZE != 0) {
     qce_fatal("misaligned symbolic mark");
   }
-  qce_expr_holder_put_symbolic(&state->env, offset, expr);
+  qce_expr_holder_put_symbolic(&state->env, (gpointer)offset, expr);
 }
 
 static inline void
@@ -82,13 +88,13 @@ qce_state_env_put_symbolic_i64(QCEState *state, uintptr_t offset, Z3_ast expr) {
     qce_fatal("misaligned symbolic mark");
   }
 
-  uintptr_t offset_t = offset;
+  gpointer key_t = (gpointer)offset;
   Z3_ast expr_t = qce_smt_z3_bv64_extract_t(&state->solver_z3, expr);
-  qce_expr_holder_put_symbolic(&state->env, offset_t, expr_t);
+  qce_expr_holder_put_symbolic(&state->env, key_t, expr_t);
 
-  uintptr_t offset_b = offset + QCE_EXPR_BASE_SIZE;
+  gpointer key_b = (gpointer)(offset + QCE_EXPR_BASE_SIZE);
   Z3_ast expr_b = qce_smt_z3_bv64_extract_b(&state->solver_z3, expr);
-  qce_expr_holder_put_symbolic(&state->env, offset_b, expr_b);
+  qce_expr_holder_put_symbolic(&state->env, key_b, expr_b);
 }
 
 #endif // QEMU_QCE_STATE_H
