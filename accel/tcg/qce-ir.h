@@ -57,9 +57,6 @@ static inline void qce_debug_print_type(FILE *f, TCGType t) {
   case TCG_TYPE_I64:
     fprintf(f, "i64");
     break;
-  case TCG_TYPE_I128:
-    fprintf(f, "i128");
-    break;
   default:
     g_assert_not_reached();
     break;
@@ -118,7 +115,6 @@ static inline void copy_var_name(char *dst, const char *src) {
 }
 
 static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
-#ifndef QCE_SUPPORTS_VEC
   // there should never be a variable in vector type
   switch (t->base_type) {
   case TCG_TYPE_I32:
@@ -128,12 +124,13 @@ static inline void parse_var(TCGContext *tcg, TCGTemp *t, QCEVar *v) {
   case TCG_TYPE_V64:
   case TCG_TYPE_V128:
   case TCG_TYPE_V256:
+#ifndef QCE_SUPPORTS_VEC
     qce_debug_assert_ir1(tcg, false, t);
+#endif
     break;
   default:
     g_assert_not_reached();
   }
-#endif
 
   switch (t->kind) {
   case TEMP_CONST: {

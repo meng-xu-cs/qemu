@@ -405,15 +405,25 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   }
 #endif
 
+  // dual-mode (symbolic + concrete) emulation
+  for (size_t i = 0; i < entry->inst_count; i++) {
+    QCEInst *inst = &entry->insts[i];
+
+    // dump the IR to be emulated
 #ifdef QCE_DEBUG_IR
-  // dump the IR to be emulated
-  if (g_qce->trace_file != NULL) {
-    fprintf(g_qce->trace_file, "=> TB: 0x%p\n", tb);
-    for (size_t i = 0; i < entry->inst_count; i++) {
-      qce_debug_print_inst(g_qce->trace_file, &entry->insts[i]);
+    if (g_qce->trace_file != NULL) {
+      qce_debug_print_inst(g_qce->trace_file, inst);
     }
-  }
 #endif
 
-  // TODO: symbolic logic
+    switch (inst->kind) {
+    default:
+#ifdef QCE_DEBUG_IR
+      qce_debug_print_inst(stderr, inst);
+#endif
+      // TODO: change to fatal
+      qce_error("emulation not supported yet");
+      break;
+    }
+  }
 }

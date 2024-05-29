@@ -97,4 +97,23 @@ qce_state_env_put_symbolic_i64(QCEState *state, uintptr_t offset, Z3_ast expr) {
   qce_expr_holder_put_symbolic(&state->env, key_b, expr_b);
 }
 
+static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
+                                     QCEVar *var) {
+  // TODO
+  switch (var->kind) {
+  case QCE_VAR_CONST:
+    break;
+  case QCE_VAR_FIXED:
+    break;
+  case QCE_VAR_GLOBAL_DIRECT:
+    break;
+  case QCE_VAR_GLOBAL_INDIRECT:
+    break;
+  case QCE_VAR_TB:
+    break;
+  case QCE_VAR_EBB:
+    break;
+  }
+}
+
 #endif // QEMU_QCE_STATE_H
