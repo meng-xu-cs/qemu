@@ -77,10 +77,23 @@ static inline Z3_ast qce_smt_z3_simplify(SolverZ3 *solver, Z3_ast expr) {
  * Bit-vector
  */
 
+static inline Z3_ast qce_smt_z3_bv32_value(SolverZ3 *solver, int32_t val) {
+  return Z3_mk_int(solver->ctx, val, solver->sort_bv32);
+}
+
+static inline Z3_ast qce_smt_z3_bv64_value(SolverZ3 *solver, int64_t val) {
+  return Z3_mk_int64(solver->ctx, val, solver->sort_bv64);
+}
+
 static inline Z3_ast qce_smt_z3_bv64_extract_t(SolverZ3 *solver, Z3_ast expr) {
   return qce_smt_z3_simplify(solver, Z3_mk_extract(solver->ctx, 63, 32, expr));
 }
 
 static inline Z3_ast qce_smt_z3_bv64_extract_b(SolverZ3 *solver, Z3_ast expr) {
   return qce_smt_z3_simplify(solver, Z3_mk_extract(solver->ctx, 31, 0, expr));
+}
+
+static inline Z3_ast qce_smt_z3_bv64_concat(SolverZ3 *solver, Z3_ast expr_t,
+                                            Z3_ast expr_b) {
+  return qce_smt_z3_simplify(solver, Z3_mk_concat(solver->ctx, expr_t, expr_b));
 }

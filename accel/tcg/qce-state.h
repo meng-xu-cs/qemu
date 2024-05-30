@@ -17,6 +17,16 @@ typedef union {
 } QCECell;
 static_assert(sizeof(QCECell) == sizeof(gpointer));
 
+static inline bool qce_cell_is_concrete(const QCECell cell) {
+  const uint8_t v = cell.mask & 0xff;
+  if (v == 0xff) {
+    return true;
+  } else {
+    assert(v == 0);
+    return false;
+  }
+}
+
 // dual-mode holder for expressions
 typedef struct {
   GTree *tree;
@@ -51,6 +61,23 @@ static inline QCECell qce_cell_holder_get(QCECellHolder *holder, gpointer key) {
   gpointer res = g_tree_lookup(holder->tree, key);
   return *(QCECell *)&res;
 }
+
+// dual-mode representation of an expression
+typedef struct {
+  enum {
+    QCE_EXPR_CONCRETE,
+    QCE_EXPR_SYMBOLIC,
+  } mode;
+  enum {
+    QCE_EXPR_I32,
+    QCE_EXPR_I64,
+  } type;
+  union {
+    int32_t v_i32;
+    int64_t v_i64;
+    Z3_ast symbolic;
+  };
+} QCEExpr;
 
 // dual-mode representation of the machine state
 typedef struct {
@@ -119,29 +146,83 @@ qce_state_env_put_symbolic_i64(QCEState *state, uintptr_t offset, Z3_ast expr) {
   qce_cell_holder_put_symbolic(&state->env, key_b, expr_b);
 }
 
-typedef struct {
-  enum {
-    QCE_EXPR_CONCRETE,
-    QCE_EXPR_SYMBOLIC,
-  } mode;
-  union {
-    int64_t concrete;
-    Z3_ast symbolic;
-  };
-} QCEExpr;
+static inline void qce_state_env_get_i32(QCEState *state, uintptr_t offset,
+                                         QCEExpr *expr) {
+  if (offset % QCE_CELL_SIZE != 0) {
+    qce_fatal("misaligned offset for env location");
+  }
 
+  const QCECell cell = qce_cell_holder_get(&state->env, (gpointer)offset);
+  if (qce_cell_is_concrete(cell)) {
+    expr->mode = QCE_EXPR_CONCRETE;
+    expr->v_i32 = cell.concrete;
+  } else {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    expr->symbolic = cell.symbolic;
+  }
+  expr->type = QCE_EXPR_I32;
+}
+
+static inline void qce_state_env_get_i64(QCEState *state, uintptr_t offset,
+                                         QCEExpr *expr) {
+  if (offset % QCE_CELL_SIZE != 0) {
+    qce_fatal("misaligned offset for env location");
+  }
+
+  gpointer key_t = (gpointer)offset;
+  const QCECell cell_t = qce_cell_holder_get(&state->env, key_t);
+
+  gpointer key_b = (gpointer)(offset + QCE_CELL_SIZE);
+  const QCECell cell_b = qce_cell_holder_get(&state->env, key_b);
+
+  if (qce_cell_is_concrete(cell_t)) {
+    if (qce_cell_is_concrete(cell_b)) {
+      expr->mode = QCE_EXPR_CONCRETE;
+      expr->v_i64 = (int64_t)cell_t.concrete << 32 | cell_b.concrete;
+    } else {
+      expr->mode = QCE_EXPR_SYMBOLIC;
+      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, cell_t.concrete);
+      expr->symbolic =
+          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, cell_b.symbolic);
+    }
+  } else {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    Z3_ast expr_b;
+    if (qce_cell_is_concrete(cell_b)) {
+      expr_b = qce_smt_z3_bv32_value(&state->solver_z3, cell_b.concrete);
+    } else {
+      expr_b = cell_b.symbolic;
+    }
+    expr->symbolic =
+        qce_smt_z3_bv64_concat(&state->solver_z3, cell_t.symbolic, expr_b);
+  }
+  expr->type = QCE_EXPR_I64;
+}
 static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
                                      QCEVar *var, QCEExpr *expr) {
   // TODO
   switch (var->kind) {
   case QCE_VAR_CONST: {
     expr->mode = QCE_EXPR_CONCRETE;
-    expr->concrete = var->v_const.val;
+    switch (var->type) {
+    case TCG_TYPE_I32:
+      expr->type = QCE_EXPR_I32;
+      expr->v_i32 = var->v_const.val;
+      break;
+    case TCG_TYPE_I64:
+      expr->type = QCE_EXPR_I64;
+      expr->v_i64 = var->v_const.val;
+      break;
+    default:
+      qce_fatal("invalid QCE variable type");
+      break;
+    }
     break;
   }
   case QCE_VAR_FIXED: {
     expr->mode = QCE_EXPR_CONCRETE;
-    expr->concrete = (int64_t)env;
+    expr->type = QCE_EXPR_I64;
+    expr->v_i64 = (int64_t)env;
     break;
   }
   case QCE_VAR_GLOBAL_DIRECT: {
