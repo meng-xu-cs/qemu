@@ -49,6 +49,7 @@ PATH_WKS_LINUX_DISK = os.path.join(PATH_WKS_LINUX, "disk.qcow2")
 PATH_WKS_LINUX_HARNESS_SRC = os.path.join(PATH_WKS_LINUX, "harness.c")
 PATH_WKS_LINUX_HARNESS_BIN = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
+PATH_WKS_LINUX_AGENT_HOST_FUZZ = os.path.join(PATH_WKS_LINUX, "fuzz_target_1")
 PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
 PATH_WKS_LINUX_TRACE = os.path.join(PATH_WKS_LINUX, "trace")
@@ -264,6 +265,40 @@ def __compile_agent_host(verbose: bool):
             os.path.join(tmp, "release", agent_host_name),
             PATH_WKS_LINUX_AGENT_HOST,
         )
+        
+def __compile_agent_host_fuzz(verbose: bool, libfuzzer: Optional[str]):
+    agent_host_name = "fuzz_target_1"
+
+    # re-use the debug build of the host agent
+    if libfuzzer is not None:
+        os.environ["CUSTOM_LIBFUZZER_PATH"] = os.path.abspath(libfuzzer)
+    
+    if verbose:
+        subprocess.check_call(["cargo", "fuzz", "build", agent_host_name], cwd=PATH_AGENT_HOST_SRC)
+        shutil.copy2(
+            os.path.join(PATH_AGENT_HOST_SRC, "fuzz", "target", "debug", agent_host_name),
+            PATH_WKS_LINUX_AGENT_HOST_FUZZ,
+        )
+        return
+
+    # build a fresh host agent (in non-verbose mode)
+    with TemporaryDirectory() as tmp:
+        subprocess.check_call(
+            [
+                "cargo",
+                "fuzz",
+                "build",
+                agent_host_name,
+                "--release",
+                "--target-dir",
+                tmp,
+            ],
+            cwd=PATH_AGENT_HOST_SRC,
+        )
+        shutil.copy2(
+            os.path.join(tmp, "x86_64-unknown-linux-gnu", "release", agent_host_name),
+            PATH_WKS_LINUX_AGENT_HOST_FUZZ,
+        )
 
 
 def _prepare_linux(
@@ -273,6 +308,7 @@ def _prepare_linux(
     blob: Optional[str],
     simulate_virtme: bool,
     verbose: bool,
+    libfuzzer: Optional[str]
 ) -> AgentMode:
     # infer mode
     if harness is None:
@@ -302,7 +338,7 @@ def _prepare_linux(
 
     # compile the agents
     if mode == AgentMode.Fuzz:
-        __compile_agent_host(verbose)
+        __compile_agent_host_fuzz(verbose, libfuzzer)
     __compile_agent_guest(mode, simulate_virtme)
 
     # prepare harness
@@ -464,14 +500,18 @@ def cmd_linux(
     simulate_virtme: bool,
     trace: bool,
     verbose: bool,
+    libfuzzer: Optional[str]
 ) -> None:
-    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose)
+    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
-            command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
+            os.environ["AIXCC_KERNEL_FUZZ_TMP"] = tmp
             if verbose:
-                command.append("--verbose")
+                os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
+            command = [PATH_WKS_LINUX_AGENT_HOST_FUZZ, tmp]
+            # if verbose:
+            #    command.append("--verbose")
             host = subprocess.Popen(command)
         else:
             host = None
@@ -493,7 +533,7 @@ def cmd_linux_debug(
     trace: bool,
     verbose: bool,
 ) -> None:
-    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose)
+    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
     with TemporaryDirectory() as tmp:
         print("Temp Directory: ", tmp)
         os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
@@ -601,6 +641,7 @@ def main() -> None:
     parser_linux.add_argument("--virtme", action="store_true")
     parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
+    parser_linux.add_argument("--libfuzzer")
 
     parser_linux_dbg = subparsers.add_parser("linux_debug")
     parser_linux_dbg.add_argument("--kernel", required=True)
@@ -651,6 +692,7 @@ def main() -> None:
             args.virtme,
             args.trace,
             args.verbose,
+            args.libfuzzer
         )
     elif args.command == "linux_debug":
         cmd_linux_debug(
