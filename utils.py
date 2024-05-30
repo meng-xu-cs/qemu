@@ -184,26 +184,45 @@ def mk_rootfs(
         subprocess.check_call(
             [
                 qemu_img,
-                "create",
-                "-f",
+                "convert",
+                "-O",
                 "qcow2",
+                fs_img,
+                qcow_disk,
+            ]
+        )
+        
+        subprocess.check_call(
+            [
+                qemu_img,
+                "resize",
                 qcow_disk,
                 qcow_size,
             ]
         )
+        # subprocess.check_call(
+        #     [
+        #         qemu_img,
+        #         "create",
+        #         "-f",
+        #         "qcow2",
+        #         qcow_disk,
+        #         qcow_size,
+        #     ]
+        # )
 
         # TODO: probe for an available /dev/nbdX device
-        dev_node = "/dev/nbd1"
-        subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
-        subprocess.check_call(
-            [
-                qemu_img,
-                "dd",
-                "if={}".format(fs_img),
-                "of={}".format(dev_node),
-            ]
-        )
-        subprocess.check_call([qemu_nbd, "-d", dev_node])
+        # dev_node = "/dev/nbd1"
+        # subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
+        # subprocess.check_call(
+        #     [
+        #         qemu_img,
+        #         "dd",
+        #         "if={}".format(fs_img),
+        #         "of={}".format(dev_node),
+        #     ]
+        # )
+        # subprocess.check_call([qemu_nbd, "-d", dev_node])
 
 
 class CpioWriter(object):
