@@ -1,6 +1,3 @@
-#ifndef QEMU_QCE_Z3_H
-#define QEMU_QCE_Z3_H
-
 #include "z3.h"
 
 #define QCE_SMT_Z3_EAGER_SIMPLIFY
@@ -87,5 +84,3 @@ static inline Z3_ast qce_smt_z3_bv64_extract_t(SolverZ3 *solver, Z3_ast expr) {
 static inline Z3_ast qce_smt_z3_bv64_extract_b(SolverZ3 *solver, Z3_ast expr) {
   return qce_smt_z3_simplify(solver, Z3_mk_extract(solver->ctx, 31, 0, expr));
 }
-
-#endif // QEMU_QCE_Z3_H
