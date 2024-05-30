@@ -37,18 +37,19 @@ static inline void qce_cell_holder_fini(QCECellHolder *holder) {
 
 static inline void qce_cell_holder_put_concrete(QCECellHolder *holder,
                                                 gpointer key, int32_t val) {
-  QCECell cell{.mask = 0xff, .concrete = val};
-  g_tree_insert(holder->tree, key, (gpointer)cell);
+  QCECell cell = {.mask = 0xff, .concrete = val};
+  g_tree_insert(holder->tree, key, *(gpointer *)&cell);
 }
 
 static inline void qce_cell_holder_put_symbolic(QCECellHolder *holder,
                                                 gpointer key, Z3_ast expr) {
-  QCECell cell{.symbolic = expr};
-  g_tree_insert(holder->tree, key, (gpointer)cell);
+  QCECell cell = {.symbolic = expr};
+  g_tree_insert(holder->tree, key, *(gpointer *)&cell);
 }
 
 static inline QCECell qce_cell_holder_get(QCECellHolder *holder, gpointer key) {
-  return (QCECell)g_tree_lookup(holder->tree, key);
+  gpointer res = g_tree_lookup(holder->tree, key);
+  return *(QCECell *)&res;
 }
 
 // dual-mode representation of the machine state
