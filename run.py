@@ -276,7 +276,7 @@ def __compile_agent_host_fuzz(verbose: bool, libfuzzer: Optional[str]):
     if verbose:
         subprocess.check_call(["cargo", "fuzz", "build", agent_host_name], cwd=PATH_AGENT_HOST_SRC)
         shutil.copy2(
-            os.path.join(PATH_AGENT_HOST_SRC, "fuzz", "target", "debug", agent_host_name),
+            os.path.join(PATH_AGENT_HOST_SRC, "fuzz", "target", "x86_64-unknown-linux-gnu", "release", agent_host_name),
             PATH_WKS_LINUX_AGENT_HOST_FUZZ,
         )
         return
@@ -506,10 +506,11 @@ def cmd_linux(
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
+            os.mkdir(os.path.join(tmp, "corpus"))
             os.environ["AIXCC_KERNEL_FUZZ_TMP"] = tmp
             if verbose:
                 os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
-            command = [PATH_WKS_LINUX_AGENT_HOST_FUZZ, tmp]
+            command = [PATH_WKS_LINUX_AGENT_HOST_FUZZ, os.path.join(tmp, "corpus")]
             # if verbose:
             #    command.append("--verbose")
             host = subprocess.Popen(command)
@@ -532,6 +533,7 @@ def cmd_linux_debug(
     simulate_virtme: bool,
     trace: bool,
     verbose: bool,
+    libfuzzer: Optional[str]
 ) -> None:
     mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
     with TemporaryDirectory() as tmp:
@@ -651,6 +653,7 @@ def main() -> None:
     parser_linux_dbg.add_argument("--virtme", action="store_true")
     parser_linux_dbg.add_argument("--trace", action="store_true")
     parser_linux_dbg.add_argument("--verbose", action="store_true")
+    parser_linux_dbg.add_argument("--libfuzzer")
 
     # actions
     args = parser.parse_args()
@@ -703,6 +706,7 @@ def main() -> None:
             args.virtme,
             args.trace,
             args.verbose,
+            args.libfuzzer
         )
     else:
         parser.print_help()
