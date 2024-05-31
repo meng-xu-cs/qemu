@@ -182,7 +182,6 @@ static inline void qce_state_env_get_i32(CPUArchState *env, QCEState *state,
     break;
   }
   }
-
   expr->type = QCE_EXPR_I32;
 }
 
@@ -275,13 +274,32 @@ static inline void qce_state_env_get_i64(CPUArchState *env, QCEState *state,
     break;
   }
   }
-
   expr->type = QCE_EXPR_I64;
+}
+
+static inline void qce_state_tmp_get_i32(QCEState *state, ptrdiff_t index,
+                                         QCEExpr *expr) {
+  const QCECell cell = qce_cell_holder_get(&state->tmp, (gpointer)index);
+  switch (qce_cell_mode(cell)) {
+  case QCE_CELL_NULL: {
+    qce_fatal("undefined tmp variable: %ld", index);
+  }
+  case QCE_CELL_CONCRETE: {
+    expr->mode = QCE_EXPR_CONCRETE;
+    expr->v_i32 = cell.concrete;
+    break;
+  }
+  case QCE_CELL_SYMBOLIC: {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    expr->symbolic = cell.symbolic;
+    break;
+  }
+  }
+  expr->type = QCE_EXPR_I32;
 }
 
 static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
                                      QCEVar *var, QCEExpr *expr) {
-  // TODO
   switch (var->kind) {
   case QCE_VAR_CONST: {
     expr->mode = QCE_EXPR_CONCRETE;
