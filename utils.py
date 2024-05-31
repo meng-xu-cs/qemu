@@ -158,8 +158,9 @@ def mk_rootfs(
         # mount the filesystem
         fs_mnt = os.path.join(tmp, "mnt")
         os.mkdir(fs_mnt)
-        subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
-
+        # subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
+        subprocess.check_call(["fuse-ext2", fs_img, fs_mnt, "-o", "rw+"])
+        
         # fill content in the image
         cw = RootfsWriter(Path(fs_mnt))
 
@@ -178,8 +179,9 @@ def mk_rootfs(
             cw.copy_file("root/blob", Path(blob))
 
         # umount the filesystem
-        subprocess.check_call(["umount", fs_mnt])
-
+        # subprocess.check_call(["umount", fs_mnt])
+        subprocess.check_call(["fusermount", "-u", fs_mnt])
+        
         # output as qcow2
         subprocess.check_call(
             [
