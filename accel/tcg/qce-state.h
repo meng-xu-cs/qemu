@@ -2,43 +2,44 @@
 #error "only little endian supported by QCE"
 #endif
 
-#define QCE_CELL_SIZE sizeof(int32_t)
-
-// if symbolic == NULL (which means mask == 0x00), the expr is null
-// if mask == 0x00, the expr is symbolic
-// if mask == 0xff, the expr is concrete
-// invalid in all other cases
-typedef union {
-  struct __attribute__((__packed__)) {
-    uint8_t mask;
-    uint8_t __pad[3];
-    int32_t concrete;
-  };
-  Z3_ast symbolic;
-} QCECell;
-static_assert(sizeof(QCECell) == sizeof(gpointer));
+#define QCE_CONCOLIC_REGISTER_SIZE sizeof(int32_t)
+static_assert(sizeof(intptr_t) == 2 * QCE_CONCOLIC_REGISTER_SIZE);
 
 typedef enum {
-  QCE_CELL_NULL,
-  QCE_CELL_CONCRETE,
-  QCE_CELL_SYMBOLIC,
+  QCE_CELL_MODE_NULL = 0, // must be 0 here
+  QCE_CELL_MODE_CONCRETE = 1,
+  QCE_CELL_MODE_SYMBOLIC = 2,
 } QCECellMode;
 
-static inline QCECellMode qce_cell_mode(const QCECell cell) {
-  if (cell.symbolic == NULL) {
-    return QCE_CELL_NULL;
-  }
-  const uint8_t v = cell.mask & 0xff;
-  if (v == 0xff) {
-    return QCE_CELL_CONCRETE;
-  }
-  assert(v == 0);
-  return QCE_CELL_SYMBOLIC;
-}
+typedef enum {
+  QCE_CELL_TYPE_VOID = 0, // should not be used
+  QCE_CELL_TYPE_I32 = 1,
+  QCE_CELL_TYPE_I64 = 2,
+} QCECellType;
 
-// dual-mode holder for expressions
+typedef struct __attribute__((__packed__)) {
+  QCECellMode mode;
+  QCECellType type;
+} QCECellMeta;
+static_assert(sizeof(QCECellMeta) == sizeof(gpointer));
+
+// dual-mode representation of a cell
 typedef struct {
-  GTree *tree;
+  QCECellMode mode;
+  QCECellType type;
+  union {
+    int32_t v_i32;
+    int64_t v_i64;
+    Z3_ast symbolic;
+  };
+} QCECellValue;
+
+// dual-mode holder for expression units
+// (i.e., a unit maybe only part of an expression)
+typedef struct {
+  GTree *meta;
+  GTree *concrete;
+  GTree *symbolic;
 } QCECellHolder;
 
 gint qce_gtree_addr_key_cmp(gconstpointer a, gconstpointer b);
@@ -47,28 +48,107 @@ gint qce_gtree_addr_key_cmp(gconstpointer a, gconstpointer b) {
 }
 
 static inline void qce_cell_holder_init(QCECellHolder *holder) {
-  holder->tree = g_tree_new(qce_gtree_addr_key_cmp);
+  holder->meta = g_tree_new(qce_gtree_addr_key_cmp);
+  holder->concrete = g_tree_new(qce_gtree_addr_key_cmp);
+  holder->symbolic = g_tree_new(qce_gtree_addr_key_cmp);
 }
 
 static inline void qce_cell_holder_fini(QCECellHolder *holder) {
-  g_tree_destroy(holder->tree);
+  g_tree_destroy(holder->meta);
+  g_tree_destroy(holder->concrete);
+  g_tree_destroy(holder->symbolic);
 }
 
-static inline void qce_cell_holder_put_concrete(QCECellHolder *holder,
-                                                gpointer key, int32_t val) {
-  QCECell cell = {.mask = 0xff, .concrete = val};
-  g_tree_insert(holder->tree, key, *(gpointer *)&cell);
+static inline void qce_cell_holder_put_concrete_i32(QCECellHolder *holder,
+                                                    gpointer key, int32_t val) {
+  QCECellMeta cell = {.mode = QCE_CELL_MODE_CONCRETE,
+                      .type = QCE_CELL_TYPE_I32};
+  g_tree_insert(holder->meta, key, *(gpointer *)&cell);
+  g_tree_insert(holder->concrete, key, (gpointer)((intptr_t)val));
 }
 
-static inline void qce_cell_holder_put_symbolic(QCECellHolder *holder,
-                                                gpointer key, Z3_ast expr) {
-  QCECell cell = {.symbolic = expr};
-  g_tree_insert(holder->tree, key, *(gpointer *)&cell);
+static inline void qce_cell_holder_put_concrete_i64(QCECellHolder *holder,
+                                                    gpointer key, int64_t val) {
+  QCECellMeta cell = {.mode = QCE_CELL_MODE_CONCRETE,
+                      .type = QCE_CELL_TYPE_I64};
+  g_tree_insert(holder->meta, key, *(gpointer *)&cell);
+  g_tree_insert(holder->concrete, key, (gpointer)((intptr_t)val));
 }
 
-static inline QCECell qce_cell_holder_get(QCECellHolder *holder, gpointer key) {
-  gpointer res = g_tree_lookup(holder->tree, key);
-  return *(QCECell *)&res;
+static inline void qce_cell_holder_put_symbolic_i32(QCECellHolder *holder,
+                                                    gpointer key, Z3_ast ast) {
+  QCECellMeta cell = {.mode = QCE_CELL_MODE_SYMBOLIC,
+                      .type = QCE_CELL_TYPE_I32};
+  g_tree_insert(holder->meta, key, *(gpointer *)&cell);
+  g_tree_insert(holder->symbolic, key, ast);
+}
+
+static inline void qce_cell_holder_put_symbolic_i64(QCECellHolder *holder,
+                                                    gpointer key, Z3_ast ast) {
+  QCECellMeta cell = {.mode = QCE_CELL_MODE_SYMBOLIC,
+                      .type = QCE_CELL_TYPE_I64};
+  g_tree_insert(holder->meta, key, *(gpointer *)&cell);
+  g_tree_insert(holder->symbolic, key, ast);
+}
+
+static inline void qce_cell_holder_get_i32(QCECellHolder *holder, gpointer key,
+                                           QCECellValue *val) {
+  gpointer gptr = g_tree_lookup(holder->meta, key);
+  QCECellMeta cell = *(QCECellMeta *)&gptr;
+
+  switch (cell.mode) {
+  case QCE_CELL_MODE_NULL: {
+    val->mode = QCE_CELL_MODE_NULL;
+    val->type = QCE_CELL_TYPE_I32;
+    break;
+  }
+  case QCE_CELL_MODE_CONCRETE: {
+    val->type = cell.type;
+    val->v_i32 = (int32_t)((intptr_t)g_tree_lookup(holder->concrete, key));
+    break;
+  }
+  case QCE_CELL_MODE_SYMBOLIC: {
+    val->type = cell.type;
+    val->symbolic = g_tree_lookup(holder->symbolic, key);
+    break;
+  }
+  }
+
+#ifdef QCE_DEBUG_IR
+  if (val->type != QCE_CELL_TYPE_I32) {
+    qce_fatal("cell type mismatch: expect I32, found %d", cell.type);
+  }
+#endif
+}
+
+static inline void qce_cell_holder_get_i64(QCECellHolder *holder, gpointer key,
+                                           QCECellValue *val) {
+  gpointer gptr = g_tree_lookup(holder->meta, key);
+  QCECellMeta cell = *(QCECellMeta *)&gptr;
+
+  switch (cell.mode) {
+  case QCE_CELL_MODE_NULL: {
+    val->mode = QCE_CELL_MODE_NULL;
+    val->type = QCE_CELL_TYPE_I64;
+    break;
+  }
+  case QCE_CELL_MODE_CONCRETE: {
+    val->type = cell.type;
+    val->v_i64 = (int64_t)((intptr_t)g_tree_lookup(holder->concrete, key));
+    break;
+  }
+  case QCE_CELL_MODE_SYMBOLIC: {
+    val->type = cell.type;
+    val->symbolic = g_tree_lookup(holder->symbolic, key);
+    break;
+  }
+  }
+
+#ifdef QCE_DEBUG_IR
+  if (val->type != QCE_CELL_TYPE_I64) {
+    qce_fatal("cell type mismatch: expect I64, found %d", cell.type);
+  }
+#endif
 }
 
 // dual-mode representation of an expression
@@ -115,70 +195,72 @@ static inline void qce_state_fini(QCEState *state) {
 
 static inline void
 qce_state_env_put_concrete_i32(QCEState *state, intptr_t offset, int32_t val) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
-  qce_cell_holder_put_concrete(&state->env, (gpointer)offset, val);
+  qce_cell_holder_put_concrete_i32(&state->env, (gpointer)offset, val);
 }
 
 static inline void
 qce_state_env_put_concrete_i64(QCEState *state, intptr_t offset, int64_t val) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
   int32_t *cell = (int32_t *)&val;
 
   gpointer key_t = (gpointer)offset;
-  qce_cell_holder_put_concrete(&state->env, key_t, cell[0]);
+  qce_cell_holder_put_concrete_i32(&state->env, key_t, cell[0]);
 
-  gpointer key_b = (gpointer)(offset + QCE_CELL_SIZE);
-  qce_cell_holder_put_concrete(&state->env, key_b, cell[1]);
+  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
+  qce_cell_holder_put_concrete_i32(&state->env, key_b, cell[1]);
 }
 
 static inline void
 qce_state_env_put_symbolic_i32(QCEState *state, intptr_t offset, Z3_ast expr) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
-  qce_cell_holder_put_symbolic(&state->env, (gpointer)offset, expr);
+  qce_cell_holder_put_symbolic_i32(&state->env, (gpointer)offset, expr);
 }
 
 static inline void
 qce_state_env_put_symbolic_i64(QCEState *state, intptr_t offset, Z3_ast expr) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
 
   gpointer key_t = (gpointer)offset;
   Z3_ast expr_t = qce_smt_z3_bv64_extract_t(&state->solver_z3, expr);
-  qce_cell_holder_put_symbolic(&state->env, key_t, expr_t);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_t, expr_t);
 
-  gpointer key_b = (gpointer)(offset + QCE_CELL_SIZE);
+  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
   Z3_ast expr_b = qce_smt_z3_bv64_extract_b(&state->solver_z3, expr);
-  qce_cell_holder_put_symbolic(&state->env, key_b, expr_b);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_b, expr_b);
 }
 
 static inline void qce_state_env_get_i32(CPUArchState *env, QCEState *state,
                                          intptr_t offset, QCEExpr *expr) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
 
-  const QCECell cell = qce_cell_holder_get(&state->env, (gpointer)offset);
-  switch (qce_cell_mode(cell)) {
-  case QCE_CELL_NULL: {
+  QCECellValue val;
+  qce_cell_holder_get_i32(&state->env, (gpointer)offset, &val);
+
+  switch (val.mode) {
+  case QCE_CELL_MODE_NULL: {
     expr->mode = QCE_EXPR_CONCRETE;
     expr->v_i32 = *(int32_t *)((intptr_t)env + offset);
     break;
   }
-  case QCE_CELL_CONCRETE: {
+  case QCE_CELL_MODE_CONCRETE: {
     expr->mode = QCE_EXPR_CONCRETE;
-    expr->v_i32 = cell.concrete;
+    expr->v_i32 = val.v_i32;
     break;
   }
-  case QCE_CELL_SYMBOLIC: {
+  case QCE_CELL_MODE_SYMBOLIC: {
     expr->mode = QCE_EXPR_SYMBOLIC;
-    expr->symbolic = cell.symbolic;
+    expr->symbolic = val.symbolic;
     break;
   }
   }
@@ -187,87 +269,89 @@ static inline void qce_state_env_get_i32(CPUArchState *env, QCEState *state,
 
 static inline void qce_state_env_get_i64(CPUArchState *env, QCEState *state,
                                          intptr_t offset, QCEExpr *expr) {
-  if (offset % QCE_CELL_SIZE != 0) {
+  if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
 
   gpointer key_t = (gpointer)offset;
-  const QCECell cell_t = qce_cell_holder_get(&state->env, key_t);
-  const QCECellMode mode_t = qce_cell_mode(cell_t);
+  QCECellValue val_t;
+  qce_cell_holder_get_i32(&state->env, key_t, &val_t);
 
-  gpointer key_b = (gpointer)(offset + QCE_CELL_SIZE);
-  const QCECell cell_b = qce_cell_holder_get(&state->env, key_b);
-  const QCECellMode mode_b = qce_cell_mode(cell_b);
+  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
+  QCECellValue val_b;
+  qce_cell_holder_get_i32(&state->env, key_b, &val_b);
 
-  switch (mode_t) {
-  case QCE_CELL_NULL: {
-    switch (mode_b) {
-    case QCE_CELL_NULL: {
+  switch (val_t.mode) {
+  case QCE_CELL_MODE_NULL: {
+    switch (val_b.mode) {
+    case QCE_CELL_MODE_NULL: {
       expr->mode = QCE_EXPR_CONCRETE;
       expr->v_i64 = *(int64_t *)((intptr_t)env + offset);
       break;
     }
-    case QCE_CELL_CONCRETE: {
-      int32_t val_t = *(int32_t *)((intptr_t)env + offset);
+    case QCE_CELL_MODE_CONCRETE: {
+      int32_t tmp_t = *(int32_t *)((intptr_t)env + offset);
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)val_t << 32 | cell_b.concrete;
+      expr->v_i64 = (int64_t)tmp_t << 32 | val_b.v_i32;
       break;
     }
-    case QCE_CELL_SYMBOLIC: {
-      int32_t val_t = *(int32_t *)((intptr_t)env + offset);
-      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, val_t);
+    case QCE_CELL_MODE_SYMBOLIC: {
+      int32_t tmp_t = *(int32_t *)((intptr_t)env + offset);
+      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, tmp_t);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, cell_b.symbolic);
+          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, val_b.symbolic);
       break;
     }
     }
     break;
   }
-  case QCE_CELL_CONCRETE: {
-    switch (mode_b) {
-    case QCE_CELL_NULL: {
-      int32_t val_b = *(int32_t *)((intptr_t)env + offset + QCE_CELL_SIZE);
+  case QCE_CELL_MODE_CONCRETE: {
+    switch (val_b.mode) {
+    case QCE_CELL_MODE_NULL: {
+      int32_t tmp_b =
+          *(int32_t *)((intptr_t)env + offset + QCE_CONCOLIC_REGISTER_SIZE);
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)cell_t.concrete << 32 | val_b;
+      expr->v_i64 = (int64_t)val_t.v_i32 << 32 | tmp_b;
       break;
     }
-    case QCE_CELL_CONCRETE: {
+    case QCE_CELL_MODE_CONCRETE: {
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)cell_t.concrete << 32 | cell_b.concrete;
+      expr->v_i64 = (int64_t)val_t.v_i32 << 32 | val_b.v_i32;
       break;
     }
-    case QCE_CELL_SYMBOLIC: {
-      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, cell_t.concrete);
+    case QCE_CELL_MODE_SYMBOLIC: {
+      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, val_t.v_i32);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, cell_b.symbolic);
+          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, val_b.symbolic);
       break;
     }
     }
     break;
   }
-  case QCE_CELL_SYMBOLIC: {
-    switch (mode_b) {
-    case QCE_CELL_NULL: {
-      int32_t val_b = *(int32_t *)((intptr_t)env + offset + QCE_CELL_SIZE);
-      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, val_b);
+  case QCE_CELL_MODE_SYMBOLIC: {
+    switch (val_b.mode) {
+    case QCE_CELL_MODE_NULL: {
+      int32_t tmp_b =
+          *(int32_t *)((intptr_t)env + offset + QCE_CONCOLIC_REGISTER_SIZE);
+      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, tmp_b);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, cell_t.symbolic, expr_b);
+          qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic, expr_b);
       break;
     }
-    case QCE_CELL_CONCRETE: {
-      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, cell_b.concrete);
+    case QCE_CELL_MODE_CONCRETE: {
+      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, val_b.v_i32);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, cell_t.symbolic, expr_b);
+          qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic, expr_b);
       break;
     }
-    case QCE_CELL_SYMBOLIC: {
+    case QCE_CELL_MODE_SYMBOLIC: {
       expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3,
-                                              cell_t.symbolic, cell_b.symbolic);
+      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic,
+                                              val_b.symbolic);
       break;
     }
     }
@@ -279,23 +363,48 @@ static inline void qce_state_env_get_i64(CPUArchState *env, QCEState *state,
 
 static inline void qce_state_tmp_get_i32(QCEState *state, ptrdiff_t index,
                                          QCEExpr *expr) {
-  const QCECell cell = qce_cell_holder_get(&state->tmp, (gpointer)index);
-  switch (qce_cell_mode(cell)) {
-  case QCE_CELL_NULL: {
+  QCECellValue val;
+  qce_cell_holder_get_i32(&state->tmp, (gpointer)index, &val);
+
+  switch (val.mode) {
+  case QCE_CELL_MODE_NULL: {
     qce_fatal("undefined tmp variable: %ld", index);
   }
-  case QCE_CELL_CONCRETE: {
+  case QCE_CELL_MODE_CONCRETE: {
     expr->mode = QCE_EXPR_CONCRETE;
-    expr->v_i32 = cell.concrete;
+    expr->v_i32 = val.v_i32;
     break;
   }
-  case QCE_CELL_SYMBOLIC: {
+  case QCE_CELL_MODE_SYMBOLIC: {
     expr->mode = QCE_EXPR_SYMBOLIC;
-    expr->symbolic = cell.symbolic;
+    expr->symbolic = val.symbolic;
     break;
   }
   }
   expr->type = QCE_EXPR_I32;
+}
+
+static inline void qce_state_tmp_get_i64(QCEState *state, ptrdiff_t index,
+                                         QCEExpr *expr) {
+  QCECellValue val;
+  qce_cell_holder_get_i64(&state->tmp, (gpointer)index, &val);
+
+  switch (val.mode) {
+  case QCE_CELL_MODE_NULL: {
+    qce_fatal("undefined tmp variable: %ld", index);
+  }
+  case QCE_CELL_MODE_CONCRETE: {
+    expr->mode = QCE_EXPR_CONCRETE;
+    expr->v_i64 = val.v_i64;
+    break;
+  }
+  case QCE_CELL_MODE_SYMBOLIC: {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    expr->symbolic = val.symbolic;
+    break;
+  }
+  }
+  expr->type = QCE_EXPR_I64;
 }
 
 static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
