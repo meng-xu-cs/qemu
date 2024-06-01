@@ -30,6 +30,10 @@
 #include <SDL.h>
 #endif
 
+#ifndef QCE_RELEASE
+#include "qemu/qce.h"
+#endif
+
 int qemu_default_main(void)
 {
     int status;
@@ -45,5 +49,11 @@ int (*qemu_main)(void) = qemu_default_main;
 int main(int argc, char **argv)
 {
     qemu_init(argc, argv);
+#ifndef QCE_RELEASE
+    if (getenv("QCE_UNIT_TEST") != NULL) {
+        qce_unit_test();
+        return 0;
+    }
+#endif
     return qemu_main();
 }

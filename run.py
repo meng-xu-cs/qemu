@@ -280,6 +280,16 @@ def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
     subprocess.check_call(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD)
 
 
+def cmd_test() -> None:
+    envs = {
+        "LD_LIBRARY_PATH": ":".join(
+            [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_DEPS_Z3_LIB]
+        ),
+        "QCE_UNIT_TEST": "1",
+    }
+    subprocess.check_call([PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64], env=envs)
+
+
 class AgentMode(Enum):
     Shell = 0
     Test = 1
@@ -549,6 +559,10 @@ def cmd_linux(
             host.wait()
 
 
+def cmd_dev_test() -> None:
+    _docker_exec_self([], ["test"])
+
+
 def cmd_dev_sample(
     volumes: List[str], kvm: bool, virtme: bool, trace: bool, solution: bool
 ) -> None:
@@ -618,6 +632,8 @@ def main() -> None:
     parser_dev.add_argument("-v", "--volume", action="append", default=[])
     sub_dev = parser_dev.add_subparsers(dest="cmd_dev")
 
+    parser_dev_sample = sub_dev.add_parser("test")
+
     parser_dev_sample = sub_dev.add_parser("sample")
     parser_dev_sample.add_argument("--kvm", action="store_true")
     parser_dev_sample.add_argument("--virtme", action="store_true")
@@ -635,6 +651,8 @@ def main() -> None:
     parser_build.add_argument("--incremental", action="store_true")
     parser_build.add_argument("--release", action="store_true")
     parser_build.add_argument("--deps-z3", action="store_true")
+
+    subparsers.add_parser("test")
 
     parser_linux = subparsers.add_parser("linux")
     parser_linux.add_argument("--kernel", required=True)
@@ -661,7 +679,9 @@ def main() -> None:
         else:
             _docker_exec_self([], ["build", "--incremental"])
 
-        if args.cmd_dev == "sample":
+        if args.cmd_dev == "test":
+            cmd_dev_test()
+        elif args.cmd_dev == "sample":
             cmd_dev_sample(
                 args.volume,
                 args.kvm,
@@ -676,6 +696,8 @@ def main() -> None:
         cmd_init(args.force)
     elif args.command == "build":
         cmd_build(args.incremental, args.release, args.deps_z3)
+    elif args.command == "test":
+        cmd_test()
     elif args.command == "linux":
         cmd_linux(
             args.kvm,

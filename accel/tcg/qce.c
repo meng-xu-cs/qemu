@@ -427,3 +427,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     }
   }
 }
+
+#ifndef QCE_RELEASE
+void qce_unit_test(void) { qce_debug("running unit tests for QCE"); }
+#endif
