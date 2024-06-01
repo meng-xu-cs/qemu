@@ -5,6 +5,8 @@
 // context
 typedef struct {
   Z3_context ctx;
+  Z3_solver sol;
+  Z3_model model;
 
   // variables
   Z3_ast blob_addr;
@@ -47,6 +49,9 @@ static inline void qce_smt_z3_init(SolverZ3 *solver) {
   Z3_ast blob_content =
       Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, "blob"), sort_blob);
 
+  // create the solver
+  Z3_solver sol = Z3_mk_solver(ctx);
+
   // assignment
   solver->ctx = ctx;
   solver->blob_addr = blob_addr;
@@ -54,6 +59,9 @@ static inline void qce_smt_z3_init(SolverZ3 *solver) {
   solver->blob_content = blob_content;
   solver->sort_bv32 = sort_bv32;
   solver->sort_bv64 = sort_bv64;
+
+  solver->sol = sol;
+  solver->model = NULL;
 }
 
 static inline void qce_smt_z3_fini(SolverZ3 *solver) {
