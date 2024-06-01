@@ -321,7 +321,7 @@ def mk_initramfs(out: str) -> None:
         cw.copy_file("bin/busybox", Path(bin_busybox))
 
         for tool in ["sh", "mount", "umount", "switch_root"]:
-            cw.symlink("bin/{}".format(tool), "busybox")
+            cw.symlink("bin/{}".format(tool), "/bin/busybox")
 
         # write the init script
         cw.write_file("init", INIT_SCRIPT.encode("utf-8"), 0o755)
