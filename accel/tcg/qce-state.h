@@ -475,9 +475,35 @@ static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
     }
     break;
   }
-  case QCE_VAR_TB:
+  case QCE_VAR_TB: {
+    switch (var->type) {
+    case TCG_TYPE_I32: {
+      qce_state_tmp_get_i32(state, var->v_tb.index, expr);
+      break;
+    }
+    case TCG_TYPE_I64: {
+      qce_state_tmp_get_i64(state, var->v_tb.index, expr);
+      break;
+    }
+    default:
+      qce_fatal("invalid QCE variable type for temp_tb");
+    }
     break;
-  case QCE_VAR_EBB:
+  }
+  case QCE_VAR_EBB: {
+    switch (var->type) {
+    case TCG_TYPE_I32: {
+      qce_state_tmp_get_i32(state, var->v_ebb.index, expr);
+      break;
+    }
+    case TCG_TYPE_I64: {
+      qce_state_tmp_get_i64(state, var->v_ebb.index, expr);
+      break;
+    }
+    default:
+      qce_fatal("invalid QCE variable type for temp_ebb");
+    }
     break;
+  }
   }
 }
