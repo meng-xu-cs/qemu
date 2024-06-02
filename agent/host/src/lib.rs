@@ -60,6 +60,12 @@ pub fn entrypoint() {
         .unwrap_or_else(|e| panic!("error negotiating with the QEMU-QMP: {}", e));
     info!("QEMU-QMP connected");
 
+    // create inter-process communication file with Python AI agent
+    let path_ipc = args.path_tmp.join("ipc");
+    std::fs::File::create(&path_ipc)
+        .unwrap_or_else(|e| panic!("error creating ipc file: {}", e));
+    info!("ipc file created");
+
     // sync with guest on start-up
     vmio.wait_on_host();
     info!("guest agent is ready");

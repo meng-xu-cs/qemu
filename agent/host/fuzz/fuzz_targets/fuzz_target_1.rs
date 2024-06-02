@@ -121,6 +121,12 @@ fuzz_target!(|data: &[u8]| {
     }
     info!("guest vm stopped");
 
+    if !vmio.check_success() {
+        // dump fuzz input
+        println!("crash input: {:?}", out);
+        panic!("guest vm is forced to exit in an unexpected way");
+    }
+
     // get kcov info from vm 
     let kcov_info = vmio
         .get_kcov_info();

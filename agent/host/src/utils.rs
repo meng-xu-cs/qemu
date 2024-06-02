@@ -171,4 +171,8 @@ impl Vmio {
         }
         result
     }
+
+    pub fn check_success(&self) -> bool {
+        self.spin_guest.load(atomic::Ordering::SeqCst) == 2
+    }
 }

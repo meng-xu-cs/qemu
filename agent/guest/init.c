@@ -89,6 +89,12 @@ void __attribute__((destructor)) guest_agent_fini(void) {
     // LOG_INFO("kcov data[%llu]: %llu", i, pc);
   }
 
+  // debug: test panic
+  // exit(1);
+
+  // let the host know we are done
+  atomic_store(&vmio->spin_guest, 2);
+
   // unmap the memory as clean up
   unmap_ivshmem(&pack);
 }

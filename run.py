@@ -449,6 +449,13 @@ def _execute_linux(
         ]
     )
 
+    kernel_args.extend(
+        [
+            "kasan.fault=panic",
+            "oops=panic"
+        ]
+    )
+
     # behaviors
     command.extend(["-no-shutdown"])
     if loop:
