@@ -62,10 +62,24 @@ pub fn entrypoint() {
 
     // create inter-process communication file with Python AI agent
     let path_ipc = args.path_tmp.join("ipc");
-    std::fs::File::create(&path_ipc)
-        .unwrap_or_else(|e| panic!("error creating ipc file: {}", e));
-    info!("ipc file created");
+    // create file with size 16M
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(&path_ipc)
+        .unwrap_or_else(|e| panic!("error creating ipc file: {}", e))
+        .set_len(VM_IVSHMEM_SIZE as u64)
+        .unwrap_or_else(|e| panic!("error setting size of ipc file: {}", e));
+    info!("ipc file is created at {}", path_ipc.display());
+    let mut ipc = Ivshmem::new(&path_ipc, VM_IVSHMEM_SIZE)
+        .unwrap_or_else(|e| panic!("error mapping ipc: {}", e));
+    info!("ipc is mapped");
+    let io_ipc = ipc.vmio();
+    info!("io_ipc is initialized");
+    io_ipc.init()
+        .unwrap_or_else(|e| panic!("error initializing ipc: {}", e));
 
+    info!("io_ipc is ready");
     // sync with guest on start-up
     vmio.wait_on_host();
     info!("guest agent is ready");
@@ -77,8 +91,15 @@ pub fn entrypoint() {
 
     // fuzzing loop
     loop {
+        // get the input data from python ai agent
+        info!("waiting for ai agent to send data");
+        io_ipc.wait_on_host();
+        let data = io_ipc.recv_data(); // data is a Vec<u8>
+
         // release the guest
-        vmio.post_to_guest();
+        // vmio.post_to_guest();
+        // send fuzz input 
+        vmio.send_fuzz_input(&data, data.len());
         info!("notified guest agent to continue");
 
         // wait for guest to stop
@@ -90,6 +111,12 @@ pub fn entrypoint() {
             VMExitMode::Hard | VMExitMode::Host => break,
         }
         info!("guest vm stopped");
+
+        // get kcov data
+        let kcov_data = vmio.get_kcov_info();
+        // send kcov data to python ai agent
+        io_ipc.send_kcov_info(&kcov_data);
+        info!("kcov data sent to ai agent");
 
         // always refresh from a new snapshot
         qemu.snapshot_load()

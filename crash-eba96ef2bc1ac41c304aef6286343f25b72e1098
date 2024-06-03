@@ -1,0 +1,26 @@
+command_count: 0
+commands {
+  packet {
+    cmd: VAL_PACKET_CMD
+    size: 0
+    flags: 0
+    data {
+      packet2 {
+        header {
+          w0: VAL_W0_AIXCC_FUZZ_tipc_msg_crypto_hdr_AIXCC_FUZZ_tipc_msg_crypto_hdr
+          size: 0
+          w1: VAL_W1_AIXCC_FUZZ_tipc_msg_crypto_hdr_AIXCC_FUZZ_tipc_msg_crypto_hdr
+          seqno: 108851651149824
+          node_id: VAL_NODE_ID_AIXCC_FUZZ_tipc_msg_crypto_hdr_AIXCC_FUZZ_tipc_msg_crypto_hdr
+          w4: VAL_W4_AIXCC_FUZZ_tipc_msg_crypto_hdr_AIXCC_FUZZ_tipc_msg_crypto_hdr
+          w5: VAL_W5_AIXCC_FUZZ_tipc_msg_crypto_hdr_AIXCC_FUZZ_tipc_msg_crypto_hdr
+        }
+        payload {
+          alg_name: ""
+          keylen: 0
+          key: ""
+        }
+      }
+    }
+  }
+}

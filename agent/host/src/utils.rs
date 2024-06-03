@@ -139,6 +139,10 @@ impl Vmio {
         Ok(())
     }
 
+    pub fn init_ipc(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
     pub fn wait_on_host(&mut self) {
         while self.spin_host.load(atomic::Ordering::SeqCst) == 1 {}
     }
@@ -158,6 +162,11 @@ impl Vmio {
         self.spin_guest.store(0, atomic::Ordering::SeqCst);
     }
 
+    pub fn recv_data(&self) -> Vec<u8> {
+        let size = self.size as usize;
+        self.data[..size].to_vec()
+    }
+
     pub fn get_kcov_info(&self) -> Vec<u64>{
         let mut result = Vec::new();
         let size = self.size as usize;
@@ -170,6 +179,21 @@ impl Vmio {
             result.push(value);
         }
         result
+    }
+
+    pub fn send_kcov_info(&mut self, data: &[u64]) {
+        let size = data.len();
+        // get a u64 ptr of data
+        let dest = self.data.as_mut_ptr() as *mut u64;
+        // iterate over data
+        for i in 0..size {
+            unsafe {
+                *dest.add(i) = data[i];
+            }
+        }
+        // set size
+        self.size = (size * 8) as u64;
+        self.spin_guest.store(0, atomic::Ordering::SeqCst);
     }
 
     pub fn check_success(&self) -> bool {

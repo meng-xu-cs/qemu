@@ -384,6 +384,88 @@ def _prepare_linux(
     return mode
 
 
+def _prepare_linux_ai(
+    kvm: bool,
+    kernel: str,
+    harness: Optional[str],
+    blob: Optional[str],
+    simulate_virtme: bool,
+    verbose: bool,
+) -> AgentMode:
+    # infer mode
+    if harness is None:
+        if blob is not None:
+            sys.exit("cannot specify blob without harness")
+        mode = AgentMode.Shell
+    else:
+        if not os.path.exists(harness):
+            sys.exit("harness source code does not exist at {}".format(harness))
+
+        if blob is None:
+            mode = AgentMode.Fuzz
+        else:
+            if not os.path.exists(blob):
+                sys.exit("blob data file does not exist at {}".format(blob))
+            mode = AgentMode.Test
+
+    # clear previous states
+    if os.path.exists(PATH_WKS_LINUX):
+        shutil.rmtree(PATH_WKS_LINUX)
+    os.mkdir(PATH_WKS_LINUX)
+
+    # search for kernel image
+    if not os.path.exists(kernel):
+        sys.exit("kernel image does not exist: {}".format(kernel))
+    shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
+
+    # compile the agents
+    if mode == AgentMode.Fuzz:
+        __compile_agent_host(verbose)
+    __compile_agent_guest(mode, simulate_virtme)
+
+    # prepare harness
+    if mode != AgentMode.Shell:
+        assert harness is not None  # to keep mypy happy
+        if mode == AgentMode.Test:
+            shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
+        else:
+            shutil.copy2(
+                PATH_AGENT_GUEST_UTILS_H, os.path.join(PATH_WKS_LINUX, "utils.h")
+            )
+            shutil.copy2(
+                PATH_AGENT_GUEST_INIT_C, os.path.join(PATH_WKS_LINUX, "init.c")
+            )
+            utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
+
+        subprocess.check_call(
+            [
+                "cc",
+                "-static",
+                PATH_WKS_LINUX_HARNESS_SRC,
+                "-o",
+                PATH_WKS_LINUX_HARNESS_BIN,
+            ]
+        )
+
+    # prepare the rootfs image
+    utils.mk_rootfs(
+        PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
+        PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD,
+        PATH_WKS_LINUX_DISK,
+        "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
+        PATH_WKS_LINUX_AGENT_GUEST,
+        None if harness is None else PATH_WKS_LINUX_HARNESS_BIN,
+        blob,
+        use_host_rootfs=simulate_virtme,
+    )
+
+    # prepare the init ramdisk image
+    utils.mk_initramfs(PATH_WKS_LINUX_INITRD)
+
+    # done with the preparation
+    return mode
+
+
 def _execute_linux(
     tmp: str,
     kvm: bool,
@@ -531,6 +613,32 @@ def cmd_linux(
         if host is not None:
             host.wait()
 
+def cmd_linux_ai(
+    kvm: bool,
+    kernel: str,
+    harness: Optional[str],
+    blob: Optional[str],
+    simulate_virtme: bool,
+    trace: bool,
+    verbose: bool,
+) -> None:
+    mode = _prepare_linux_ai(kvm, kernel, harness, blob, simulate_virtme, verbose)
+    with TemporaryDirectory() as tmp:
+        # start the host only in fuzzing mode
+        if mode == AgentMode.Fuzz:
+            command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
+            if verbose:
+                command.append("--verbose")
+            host = subprocess.Popen(command)
+        else:
+            host = None
+
+        # start the guest
+        _execute_linux(tmp, kvm, host is not None, trace, verbose)
+
+        # wait for host termination (if we have one)
+        if host is not None:
+            host.wait()
 
 def cmd_linux_debug(
     kvm: bool,
@@ -661,6 +769,15 @@ def main() -> None:
     parser_linux_dbg.add_argument("--trace", action="store_true")
     parser_linux_dbg.add_argument("--verbose", action="store_true")
     parser_linux_dbg.add_argument("--libfuzzer")
+    
+    parser_linux_dbg = subparsers.add_parser("linux_ai")
+    parser_linux_dbg.add_argument("--kernel", required=True)
+    parser_linux_dbg.add_argument("--kvm", action="store_true")
+    parser_linux_dbg.add_argument("--harness")
+    parser_linux_dbg.add_argument("--blob")
+    parser_linux_dbg.add_argument("--virtme", action="store_true")
+    parser_linux_dbg.add_argument("--trace", action="store_true")
+    parser_linux_dbg.add_argument("--verbose", action="store_true")
 
     # actions
     args = parser.parse_args()
@@ -703,6 +820,16 @@ def main() -> None:
             args.trace,
             args.verbose,
             args.libfuzzer
+        )
+    elif args.command == "linux_ai":
+        cmd_linux_ai(
+            args.kvm,
+            args.kernel,
+            args.harness,
+            args.blob,
+            args.virtme,
+            args.trace,
+            args.verbose,
         )
     elif args.command == "linux_debug":
         cmd_linux_debug(
