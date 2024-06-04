@@ -122,22 +122,16 @@ fuzz_target!(|data: &[u8]| {
         if out_size == 0 {
             return;
         }
-
-        // fuzzing loop
-        // release the guest
-        let vmio = VMIO.as_deref_mut().unwrap();
-
-        // send data to guest
         out.truncate(out_size);
+
+        // send data to guest, which also release the guest
+        let vmio = VMIO.as_deref_mut().unwrap();
         vmio.send_fuzz_input(&out, out_size);
+        info!("notified guest agent to continue");
 
         // debug
         // info!("fuzz input sent to guest: {:?}", out);
-
         // TODO: use FFI to convert proto data -> raw data
-
-        // vmio.post_to_guest();
-        info!("notified guest agent to continue");
 
         // wait for guest to stop
         let qemu = QEMU.as_mut().unwrap();
