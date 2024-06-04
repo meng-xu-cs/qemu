@@ -265,18 +265,29 @@ def __compile_agent_host(verbose: bool):
             os.path.join(tmp, "release", agent_host_name),
             PATH_WKS_LINUX_AGENT_HOST,
         )
-        
+
+
 def __compile_agent_host_fuzz(verbose: bool, libfuzzer: Optional[str]):
     agent_host_name = "fuzz_target_1"
 
     # re-use the debug build of the host agent
     if libfuzzer is not None:
         os.environ["CUSTOM_LIBFUZZER_PATH"] = os.path.abspath(libfuzzer)
-    
+
     if verbose:
-        subprocess.check_call(["cargo", "fuzz", "build", agent_host_name], cwd=PATH_AGENT_HOST_SRC)
+        subprocess.check_call(
+            ["cargo", "fuzz", "build", agent_host_name],
+            cwd=PATH_AGENT_HOST_SRC,
+        )
         shutil.copy2(
-            os.path.join(PATH_AGENT_HOST_SRC, "fuzz", "target", "x86_64-unknown-linux-gnu", "release", agent_host_name),
+            os.path.join(
+                PATH_AGENT_HOST_SRC,
+                "fuzz",
+                "target",
+                "x86_64-unknown-linux-gnu",
+                "release",
+                agent_host_name,
+            ),
             PATH_WKS_LINUX_AGENT_HOST_FUZZ,
         )
         return
@@ -308,7 +319,7 @@ def _prepare_linux(
     blob: Optional[str],
     simulate_virtme: bool,
     verbose: bool,
-    libfuzzer: Optional[str]
+    libfuzzer: Optional[str],
 ) -> AgentMode:
     # infer mode
     if harness is None:
@@ -531,12 +542,7 @@ def _execute_linux(
         ]
     )
 
-    kernel_args.extend(
-        [
-            "kasan.fault=panic",
-            "oops=panic"
-        ]
-    )
+    kernel_args.extend(["kasan.fault=panic", "oops=panic"])
 
     # behaviors
     command.extend(["-no-shutdown"])
@@ -589,9 +595,11 @@ def cmd_linux(
     simulate_virtme: bool,
     trace: bool,
     verbose: bool,
-    libfuzzer: Optional[str]
+    libfuzzer: Optional[str],
 ) -> None:
-    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
+    mode = _prepare_linux(
+        kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer
+    )
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
@@ -612,6 +620,7 @@ def cmd_linux(
         # wait for host termination (if we have one)
         if host is not None:
             host.wait()
+
 
 def cmd_linux_ai(
     kvm: bool,
@@ -640,6 +649,7 @@ def cmd_linux_ai(
         if host is not None:
             host.wait()
 
+
 def cmd_linux_debug(
     kvm: bool,
     kernel: str,
@@ -648,9 +658,11 @@ def cmd_linux_debug(
     simulate_virtme: bool,
     trace: bool,
     verbose: bool,
-    libfuzzer: Optional[str]
+    libfuzzer: Optional[str],
 ) -> None:
-    mode = _prepare_linux(kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
+    mode = _prepare_linux(
+        kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer
+    )
     with TemporaryDirectory() as tmp:
         print("Temp Directory: ", tmp)
         os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
@@ -769,7 +781,7 @@ def main() -> None:
     parser_linux_dbg.add_argument("--trace", action="store_true")
     parser_linux_dbg.add_argument("--verbose", action="store_true")
     parser_linux_dbg.add_argument("--libfuzzer")
-    
+
     parser_linux_dbg = subparsers.add_parser("linux_ai")
     parser_linux_dbg.add_argument("--kernel", required=True)
     parser_linux_dbg.add_argument("--kvm", action="store_true")
@@ -819,7 +831,7 @@ def main() -> None:
             args.virtme,
             args.trace,
             args.verbose,
-            args.libfuzzer
+            args.libfuzzer,
         )
     elif args.command == "linux_ai":
         cmd_linux_ai(
@@ -840,7 +852,7 @@ def main() -> None:
             args.virtme,
             args.trace,
             args.verbose,
-            args.libfuzzer
+            args.libfuzzer,
         )
     else:
         parser.print_help()
