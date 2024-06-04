@@ -1,5 +1,8 @@
 #include "utils.h"
 
+// Toggle for debug
+// #define DEBUG_GUEST_AGENT
+
 #define PATH_HARNESS "/root/harness"
 #define PATH_BLOB "/root/blob"
 
@@ -54,17 +57,15 @@ void __attribute__((constructor)) guest_agent_init(void) {
   if (vmio->size > 0) {
     // get the blob from the host
     checked_write_or_create(PATH_BLOB, vmio->buf, vmio->size);
-    LOG_INFO("get blob from host");
 
-    // debug
+#ifdef DEBUG_GUEST_AGENT
     LOG_INFO("blob size: %lu", vmio->size);
     for (int i = 0; i < vmio->size; i++) {
-      // LOG_INFO("blob[%d]: %c", i, vmio->buf[i]);
+      LOG_INFO("blob[%d]: %c", i, vmio->buf[i]);
     }
+#endif
   }
   LOG_INFO("blob ready");
-
-  
 
   // start kcov
   __atomic_store_n(&kcov_data[0], 0, __ATOMIC_RELAXED);
@@ -75,19 +76,22 @@ void __attribute__((destructor)) guest_agent_fini(void) {
 
   // get kcov data & send kcov data to the host
   uint64_t ncov = __atomic_load_n(&kcov_data[0], __ATOMIC_RELAXED);
+#ifdef DEBUG_GUEST_AGENT
   LOG_INFO("kcov data length: %lu", ncov);
+#endif
   if (ncov >= KCOV_COVER_SIZE) {
     ABORT_WITH("too much kcov entries");
   }
-  LOG_INFO("store kcov len");
-
   atomic_store(&vmio->size, ncov * 8);
-  LOG_INFO("store kcov data");
+
   for (uint64_t i = 0; i < ncov; i++) {
     uint64_t pc = __atomic_load_n(&kcov_data[i + 1], __ATOMIC_RELAXED);
-    atomic_store((uint64_t*)(&vmio->buf[i * 8]), pc);
-    // LOG_INFO("kcov data[%llu]: %llu", i, pc);
+    atomic_store((uint64_t *)(&vmio->buf[i * 8]), pc);
+#ifdef DEBUG_GUEST_AGENT
+    LOG_INFO("kcov data[%llu]: %llu", i, pc);
+#endif
   }
+  LOG_INFO("kcov ready");
 
   // debug: test panic
   // exit(1);
