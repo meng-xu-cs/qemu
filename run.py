@@ -586,10 +586,14 @@ def cmd_linux_debug(
 
 
 def cmd_dev_sample(
-    volumes: List[str], kvm: bool, virtme: bool, trace: bool, solution: bool
+    volumes: List[str],
+    kvm: bool,
+    virtme: bool,
+    trace: bool,
+    solution: bool,
 ) -> None:
-    if len(volumes) != 1:
-        sys.exit("Expect one and only one volume to attach")
+    if len(volumes) != 2:
+        sys.exit("Expect two and only two volumes to attach")
 
     passthrough_args = ["linux"]
     if kvm:
@@ -622,6 +626,10 @@ def cmd_dev_sample(
                     DOCKER_WORKDIR_PREFIX
                 ),
             ]
+        )
+    else:
+        passthrough_args.extend(
+            ["--libfuzzer", "/{}1/build/libaixcc.a".format(DOCKER_WORKDIR_PREFIX)]
         )
 
     _docker_exec_self(volumes, passthrough_args)
@@ -691,14 +699,14 @@ def main() -> None:
     parser_linux_dbg.add_argument("--verbose", action="store_true")
     parser_linux_dbg.add_argument("--libfuzzer")
 
-    parser_linux_dbg = subparsers.add_parser("linux_ai")
-    parser_linux_dbg.add_argument("--kernel", required=True)
-    parser_linux_dbg.add_argument("--kvm", action="store_true")
-    parser_linux_dbg.add_argument("--harness")
-    parser_linux_dbg.add_argument("--blob")
-    parser_linux_dbg.add_argument("--virtme", action="store_true")
-    parser_linux_dbg.add_argument("--trace", action="store_true")
-    parser_linux_dbg.add_argument("--verbose", action="store_true")
+    parser_linux_ai = subparsers.add_parser("linux_ai")
+    parser_linux_ai.add_argument("--kernel", required=True)
+    parser_linux_ai.add_argument("--kvm", action="store_true")
+    parser_linux_ai.add_argument("--harness")
+    parser_linux_ai.add_argument("--blob")
+    parser_linux_ai.add_argument("--virtme", action="store_true")
+    parser_linux_ai.add_argument("--trace", action="store_true")
+    parser_linux_ai.add_argument("--verbose", action="store_true")
 
     # actions
     args = parser.parse_args()
