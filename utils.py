@@ -1,12 +1,10 @@
+import guestfs  # type: ignore
 import os.path
-import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Optional, List
-import guestfs
 
 
 INCLUDED_ROOT_DIRS = [
@@ -35,42 +33,36 @@ MOUNTED_ROOT_DIRS = [
 
 
 class RootfsWriter(object):
-    def __init__(self, tmp: Path):
-        # self._tmp = tmp
+    def __init__(self, tmp: str):
         self.g = guestfs.GuestFS(python_return_dict=True)
         self.g.add_drive_opts(tmp, format="raw", readonly=False)
         self.g.launch()
         self.g.mount_options("", "/dev/sda", "/")
 
     def mkdir(self, name: str, mode: int = 0o755) -> None:
-        # self._tmp.joinpath(name).mkdir(mode)
+        # print("mkdir {}".format(name))
         self.g.mkdir_mode("/" + name, mode)
 
     def symlink(self, name: str, target: str) -> None:
         # print("symlink {} -> {}".format(target, name))
         self.g.ln("/" + target, "/" + name)
-        # self._tmp.joinpath(name).symlink_to(target)
 
     def copy_file(self, name: str, original: Path) -> None:
-        # read original file 
+        # read original file
         # print("copy_file {} -> {}".format(original, name))
         with open(original, "rb") as f:
             content = f.read()
         self.g.write("/" + name, content)
         # for convenience, 755 here
+        # TODO: find and set the correct mode
         self.g.chmod(0o755, "/" + name)
-        # shutil.copyfile(original, self._tmp.joinpath(name))
-        # shutil.copymode(original, self._tmp.joinpath(name))
 
     def write_file(self, name: str, body: bytes, mode: int) -> None:
         # print("write_file {} -> {}".format(body, name))
         self.g.write("/" + name, body)
         self.g.chmod(mode, "/" + name)
-        # path = self._tmp.joinpath(name)
-        # path.write_bytes(body)
-        # path.chmod(mode)
 
-    def _cleanup(self):
+    def cleanup(self):
         self.g.umount_all()
         self.g.close()
 
@@ -180,11 +172,8 @@ def mk_rootfs(
         # mount the filesystem
         fs_mnt = os.path.join(tmp, "mnt")
         os.mkdir(fs_mnt)
-        # subprocess.check_call(["mount", "-o", "loop", fs_img, fs_mnt])
-        # subprocess.check_call(["fuse-ext2", fs_img, fs_mnt, "-o", "rw+"])
-        
+
         # fill content in the image
-        # cw = RootfsWriter(Path(fs_mnt))
         cw = RootfsWriter(fs_img)
 
         # basic layout
@@ -202,10 +191,8 @@ def mk_rootfs(
             cw.copy_file("root/blob", Path(blob))
 
         # umount the filesystem
-        # subprocess.check_call(["umount", fs_mnt])
-        # subprocess.check_call(["fusermount", "-u", fs_mnt])
-        cw._cleanup()
-        
+        cw.cleanup()
+
         # output as qcow2
         subprocess.check_call(
             [
@@ -217,7 +204,7 @@ def mk_rootfs(
                 qcow_disk,
             ]
         )
-        
+
         subprocess.check_call(
             [
                 qemu_img,
@@ -226,29 +213,6 @@ def mk_rootfs(
                 qcow_size,
             ]
         )
-        # subprocess.check_call(
-        #     [
-        #         qemu_img,
-        #         "create",
-        #         "-f",
-        #         "qcow2",
-        #         qcow_disk,
-        #         qcow_size,
-        #     ]
-        # )
-
-        # TODO: probe for an available /dev/nbdX device
-        # dev_node = "/dev/nbd1"
-        # subprocess.check_call([qemu_nbd, "-c", dev_node, qcow_disk])
-        # subprocess.check_call(
-        #     [
-        #         qemu_img,
-        #         "dd",
-        #         "if={}".format(fs_img),
-        #         "of={}".format(dev_node),
-        #     ]
-        # )
-        # subprocess.check_call([qemu_nbd, "-d", dev_node])
 
 
 class CpioWriter(object):
