@@ -143,7 +143,6 @@ def mk_rootfs_from_bare_rootfs(cw: RootfsWriter) -> None:
 
 def mk_rootfs(
     qemu_img: str,
-    qemu_nbd: str,
     qcow_disk: str,
     qcow_size: str,
     agent: str,

@@ -38,9 +38,6 @@ PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64 = os.path.join(
 PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG = os.path.join(
     PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-img"
 )
-PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD = os.path.join(
-    PATH_WKS_ARTIFACT_INSTALL, "bin", "qemu-nbd"
-)
 
 PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
@@ -313,7 +310,6 @@ def __compile_agent_host_fuzz(verbose: bool, libfuzzer: Optional[str]):
 
 
 def _prepare_linux(
-    kvm: bool,
     kernel: str,
     harness: Optional[str],
     blob: Optional[str],
@@ -321,7 +317,7 @@ def _prepare_linux(
     verbose: bool,
     libfuzzer: Optional[str],
 ) -> AgentMode:
-    # infer mode
+    # infer mode of operation
     if harness is None:
         if blob is not None:
             sys.exit("cannot specify blob without harness")
@@ -379,89 +375,6 @@ def _prepare_linux(
     # prepare the rootfs image
     utils.mk_rootfs(
         PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
-        PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD,
-        PATH_WKS_LINUX_DISK,
-        "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
-        PATH_WKS_LINUX_AGENT_GUEST,
-        None if harness is None else PATH_WKS_LINUX_HARNESS_BIN,
-        blob,
-        use_host_rootfs=simulate_virtme,
-    )
-
-    # prepare the init ramdisk image
-    utils.mk_initramfs(PATH_WKS_LINUX_INITRD)
-
-    # done with the preparation
-    return mode
-
-
-def _prepare_linux_ai(
-    kvm: bool,
-    kernel: str,
-    harness: Optional[str],
-    blob: Optional[str],
-    simulate_virtme: bool,
-    verbose: bool,
-) -> AgentMode:
-    # infer mode
-    if harness is None:
-        if blob is not None:
-            sys.exit("cannot specify blob without harness")
-        mode = AgentMode.Shell
-    else:
-        if not os.path.exists(harness):
-            sys.exit("harness source code does not exist at {}".format(harness))
-
-        if blob is None:
-            mode = AgentMode.Fuzz
-        else:
-            if not os.path.exists(blob):
-                sys.exit("blob data file does not exist at {}".format(blob))
-            mode = AgentMode.Test
-
-    # clear previous states
-    if os.path.exists(PATH_WKS_LINUX):
-        shutil.rmtree(PATH_WKS_LINUX)
-    os.mkdir(PATH_WKS_LINUX)
-
-    # search for kernel image
-    if not os.path.exists(kernel):
-        sys.exit("kernel image does not exist: {}".format(kernel))
-    shutil.copy2(kernel, PATH_WKS_LINUX_KERNEL)
-
-    # compile the agents
-    if mode == AgentMode.Fuzz:
-        __compile_agent_host(verbose)
-    __compile_agent_guest(mode, simulate_virtme)
-
-    # prepare harness
-    if mode != AgentMode.Shell:
-        assert harness is not None  # to keep mypy happy
-        if mode == AgentMode.Test:
-            shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
-        else:
-            shutil.copy2(
-                PATH_AGENT_GUEST_UTILS_H, os.path.join(PATH_WKS_LINUX, "utils.h")
-            )
-            shutil.copy2(
-                PATH_AGENT_GUEST_INIT_C, os.path.join(PATH_WKS_LINUX, "init.c")
-            )
-            utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
-
-        subprocess.check_call(
-            [
-                "cc",
-                "-static",
-                PATH_WKS_LINUX_HARNESS_SRC,
-                "-o",
-                PATH_WKS_LINUX_HARNESS_BIN,
-            ]
-        )
-
-    # prepare the rootfs image
-    utils.mk_rootfs(
-        PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
-        PATH_WKS_ARTIFACT_INSTALL_QEMU_NBD,
         PATH_WKS_LINUX_DISK,
         "{}G".format(VM_DISK_SIZE // GB_IN_BYTES),
         PATH_WKS_LINUX_AGENT_GUEST,
@@ -597,9 +510,7 @@ def cmd_linux(
     verbose: bool,
     libfuzzer: Optional[str],
 ) -> None:
-    mode = _prepare_linux(
-        kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer
-    )
+    mode = _prepare_linux(kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
@@ -631,7 +542,7 @@ def cmd_linux_ai(
     trace: bool,
     verbose: bool,
 ) -> None:
-    mode = _prepare_linux_ai(kvm, kernel, harness, blob, simulate_virtme, verbose)
+    mode = _prepare_linux(kernel, harness, blob, simulate_virtme, verbose, None)
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
@@ -660,9 +571,7 @@ def cmd_linux_debug(
     verbose: bool,
     libfuzzer: Optional[str],
 ) -> None:
-    mode = _prepare_linux(
-        kvm, kernel, harness, blob, simulate_virtme, verbose, libfuzzer
-    )
+    mode = _prepare_linux(kernel, harness, blob, simulate_virtme, verbose, libfuzzer)
     with TemporaryDirectory() as tmp:
         print("Temp Directory: ", tmp)
         os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
