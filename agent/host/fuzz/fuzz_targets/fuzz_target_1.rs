@@ -171,7 +171,6 @@ fuzz_target!(|data: &[u8]| {
             .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
         info!("snapshot reloaded");
     }
-    // }
 
     // technically we should never reach here
     // error!("guest vm is forced to exit in an unexpected way");
