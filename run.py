@@ -455,9 +455,8 @@ def _execute_linux(
         ]
     )
 
-    kernel_args.extend(["kasan.fault=panic", "oops=panic"])
-
     # behaviors
+    kernel_args.extend(["kasan.fault=panic", "oops=panic"])
     command.extend(["-no-shutdown"])
     if loop:
         kernel_args.append("panic=-1")  # instructs the kernel to reboot immediately
@@ -514,14 +513,15 @@ def cmd_linux(
     with TemporaryDirectory() as tmp:
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
-            os.mkdir(os.path.join(tmp, "corpus"))
-            os.environ["AIXCC_KERNEL_FUZZ_TMP"] = tmp
+            path_corpus = os.path.join(tmp, "corpus")
+            os.mkdir(path_corpus)
+
+            host_env = {"AIXCC_KERNEL_FUZZ_TMP": tmp}
             if verbose:
-                os.environ["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
-            command = [PATH_WKS_LINUX_AGENT_HOST_FUZZ, os.path.join(tmp, "corpus")]
-            # if verbose:
-            #    command.append("--verbose")
-            host = subprocess.Popen(command)
+                host_env["AIXCC_KERNEL_FUZZ_VERBOSE"] = "1"
+            host = subprocess.Popen(
+                [PATH_WKS_LINUX_AGENT_HOST_FUZZ, path_corpus], env=host_env
+            )
         else:
             host = None
 

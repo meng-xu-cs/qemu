@@ -1,12 +1,12 @@
 #![no_main]
 
 use libfuzzer_sys::{fuzz_crossover, fuzz_mutator, fuzz_target};
+
+use std::env;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
 
 use log::{info, LevelFilter};
-
-use std::env;
 
 use qce_agent_host::qemu::{QemuProxy, VMExitMode};
 use qce_agent_host::utils::{inotify_watch_for_addition, Ivshmem, Vmio};
@@ -56,7 +56,6 @@ fuzz_target!(|data: &[u8]| {
     unsafe {
         if !INITED {
             // fuzzed code goes here
-            // let args = Options::from_args();
             let verbose = env::var("AIXCC_KERNEL_FUZZ_VERBOSE").is_ok();
             let path_tmp_var = env::var("AIXCC_KERNEL_FUZZ_TMP")
                 .unwrap_or_else(|_| "/tmp/aixcc_kernel_fuzz".to_string());
@@ -159,7 +158,6 @@ fuzz_target!(|data: &[u8]| {
 
         // get kcov info from vm
         let kcov_info = vmio.get_kcov_info();
-
         for i in 0..kcov_info.len() {
             // submit kcov to libfuzzer
             SubmitLibfuzzerCoverage(kcov_info[i] as u64);
