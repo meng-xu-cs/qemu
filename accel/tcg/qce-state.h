@@ -215,27 +215,27 @@ qce_state_env_put_concrete_i64(QCEState *state, intptr_t offset, int64_t val) {
   qce_cell_holder_put_concrete_i32(&state->env, key_b, cell[1]);
 }
 
-static inline void
-qce_state_env_put_symbolic_i32(QCEState *state, intptr_t offset, Z3_ast expr) {
+static inline void qce_state_env_put_symbolic_i32(QCEState *state,
+                                                  intptr_t offset, Z3_ast ast) {
   if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
-  qce_cell_holder_put_symbolic_i32(&state->env, (gpointer)offset, expr);
+  qce_cell_holder_put_symbolic_i32(&state->env, (gpointer)offset, ast);
 }
 
-static inline void
-qce_state_env_put_symbolic_i64(QCEState *state, intptr_t offset, Z3_ast expr) {
+static inline void qce_state_env_put_symbolic_i64(QCEState *state,
+                                                  intptr_t offset, Z3_ast ast) {
   if (offset % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     qce_fatal("misaligned offset for env location");
   }
 
   gpointer key_t = (gpointer)offset;
-  Z3_ast expr_t = qce_smt_z3_bv64_extract_t(&state->solver_z3, expr);
-  qce_cell_holder_put_symbolic_i32(&state->env, key_t, expr_t);
+  Z3_ast ast_t = qce_smt_z3_bv64_extract_t(&state->solver_z3, ast);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_t, ast_t);
 
   gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
-  Z3_ast expr_b = qce_smt_z3_bv64_extract_b(&state->solver_z3, expr);
-  qce_cell_holder_put_symbolic_i32(&state->env, key_b, expr_b);
+  Z3_ast ast_b = qce_smt_z3_bv64_extract_b(&state->solver_z3, ast);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_b, ast_b);
 }
 
 static inline void qce_state_env_get_i32(CPUArchState *env, QCEState *state,
@@ -359,6 +359,26 @@ static inline void qce_state_env_get_i64(CPUArchState *env, QCEState *state,
   }
   }
   expr->type = QCE_EXPR_I64;
+}
+
+static inline void
+qce_state_tmp_put_concrete_i32(QCEState *state, ptrdiff_t index, int32_t val) {
+  qce_cell_holder_put_concrete_i32(&state->tmp, (gpointer)index, val);
+}
+
+static inline void
+qce_state_tmp_put_concrete_i64(QCEState *state, ptrdiff_t index, int64_t val) {
+  qce_cell_holder_put_concrete_i64(&state->tmp, (gpointer)index, val);
+}
+
+static inline void qce_state_tmp_put_symbolic_i32(QCEState *state,
+                                                  ptrdiff_t index, Z3_ast ast) {
+  qce_cell_holder_put_symbolic_i32(&state->tmp, (gpointer)index, ast);
+}
+
+static inline void qce_state_tmp_put_symbolic_i64(QCEState *state,
+                                                  ptrdiff_t index, Z3_ast ast) {
+  qce_cell_holder_put_symbolic_i64(&state->tmp, (gpointer)index, ast);
 }
 
 static inline void qce_state_tmp_get_i32(QCEState *state, ptrdiff_t index,
