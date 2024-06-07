@@ -280,16 +280,6 @@ def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
     subprocess.check_call(["make", "install"], cwd=PATH_WKS_ARTIFACT_BUILD)
 
 
-def cmd_test() -> None:
-    envs = {
-        "LD_LIBRARY_PATH": ":".join(
-            [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_DEPS_Z3_LIB]
-        ),
-        "QCE_UNIT_TEST": "1",
-    }
-    subprocess.check_call([PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64], env=envs)
-
-
 class AgentMode(Enum):
     Shell = 0
     Test = 1
@@ -423,6 +413,7 @@ def _execute_linux(
     tmp: str,
     kvm: bool,
     loop: bool,
+    test: bool,
     trace: bool,
     verbose: bool,
 ) -> None:
@@ -526,6 +517,8 @@ def _execute_linux(
             [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_DEPS_Z3_LIB]
         )
     }
+    if test:
+        envs["QCE_UNIT_TEST"] = "1"
     if trace:
         envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
     subprocess.check_call(command, env=envs)
@@ -537,6 +530,7 @@ def cmd_linux(
     harness: Optional[str],
     blob: Optional[str],
     simulate_virtme: bool,
+    test: bool,
     trace: bool,
     verbose: bool,
 ) -> None:
@@ -552,7 +546,7 @@ def cmd_linux(
             host = None
 
         # start the guest
-        _execute_linux(tmp, kvm, host is not None, trace, verbose)
+        _execute_linux(tmp, kvm, host is not None, test, trace, verbose)
 
         # wait for host termination (if we have one)
         if host is not None:
@@ -564,7 +558,7 @@ def cmd_dev_test() -> None:
 
 
 def cmd_dev_sample(
-    volumes: List[str], kvm: bool, virtme: bool, trace: bool, solution: bool
+    volumes: List[str], kvm: bool, virtme: bool, test: bool, trace: bool, solution: bool
 ) -> None:
     if len(volumes) != 1:
         sys.exit("Expect one and only one volume to attach")
@@ -574,6 +568,8 @@ def cmd_dev_sample(
         passthrough_args.append("--kvm")
     if virtme:
         passthrough_args.append("--virtme")
+    if test:
+        passthrough_args.append("--test")
     if trace:
         passthrough_args.append("--trace")
 
@@ -632,11 +628,10 @@ def main() -> None:
     parser_dev.add_argument("-v", "--volume", action="append", default=[])
     sub_dev = parser_dev.add_subparsers(dest="cmd_dev")
 
-    parser_dev_sample = sub_dev.add_parser("test")
-
     parser_dev_sample = sub_dev.add_parser("sample")
     parser_dev_sample.add_argument("--kvm", action="store_true")
     parser_dev_sample.add_argument("--virtme", action="store_true")
+    parser_dev_sample.add_argument("--test", action="store_true")
     parser_dev_sample.add_argument("--trace", action="store_true")
     parser_dev_sample.add_argument("--solution", action="store_true")
 
@@ -660,6 +655,7 @@ def main() -> None:
     parser_linux.add_argument("--harness")
     parser_linux.add_argument("--blob")
     parser_linux.add_argument("--virtme", action="store_true")
+    parser_linux.add_argument("--test", action="store_true")
     parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
 
@@ -686,6 +682,7 @@ def main() -> None:
                 args.volume,
                 args.kvm,
                 args.virtme,
+                args.test,
                 args.trace,
                 args.solution,
             )
@@ -696,8 +693,6 @@ def main() -> None:
         cmd_init(args.force)
     elif args.command == "build":
         cmd_build(args.incremental, args.release, args.deps_z3)
-    elif args.command == "test":
-        cmd_test()
     elif args.command == "linux":
         cmd_linux(
             args.kvm,
@@ -705,6 +700,7 @@ def main() -> None:
             args.harness,
             args.blob,
             args.virtme,
+            args.test,
             args.trace,
             args.verbose,
         )

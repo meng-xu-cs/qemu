@@ -405,6 +405,14 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   }
 #endif
 
+#ifndef QCE_RELEASE
+  // run the unit test at the first hooked basic block
+  if (getenv("QCE_UNIT_TEST") != NULL) {
+    qce_unit_test();
+    _exit(0);
+  }
+#endif
+
   // dual-mode (symbolic + concrete) emulation
   for (size_t i = 0; i < entry->inst_count; i++) {
     QCEInst *inst = &entry->insts[i];
