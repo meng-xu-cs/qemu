@@ -539,6 +539,8 @@ def cmd_linux(
         # start the host only in fuzzing mode
         if mode == AgentMode.Fuzz:
             command = [PATH_WKS_LINUX_AGENT_HOST, tmp]
+            if test:
+                command.append("--test")
             if verbose:
                 command.append("--verbose")
             host = subprocess.Popen(command)

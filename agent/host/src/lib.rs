@@ -19,7 +19,10 @@ const VM_IVSHMEM_SIZE: usize = 16 * 1024 * 1024;
 struct Options {
     /// path to the temporary workspace directory
     path_tmp: PathBuf,
-    /// path to QEMU monitor unix domain socket
+    /// test mode
+    #[structopt(short, long)]
+    test: bool,
+    /// verbose mode
     #[structopt(short, long)]
     verbose: bool,
 }
@@ -74,13 +77,21 @@ pub fn entrypoint() {
         vmio.post_to_guest();
         info!("notified guest agent to continue");
 
+        // skip if we are testing
+        if args.test {
+            break;
+        }
+
         // wait for guest to stop
         match qemu
             .wait_for_guest_reset()
             .unwrap_or_else(|e| panic!("error waiting for status events from VM: {}", e))
         {
             VMExitMode::Soft => (),
-            VMExitMode::Hard | VMExitMode::Host => break,
+            VMExitMode::Hard | VMExitMode::Host => {
+                error!("guest vm is forced to halt in an unexpected way");
+                break;
+            }
         }
         info!("guest vm stopped");
 
@@ -89,9 +100,6 @@ pub fn entrypoint() {
             .unwrap_or_else(|e| panic!("error restoring a snapshot: {}", e));
         info!("snapshot reloaded");
     }
-
-    // technically we should never reach here
-    error!("guest vm is forced to exit in an unexpected way");
 
     // drop the ivshmem at the end
     drop(ivshmem);
