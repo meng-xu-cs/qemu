@@ -65,7 +65,7 @@ MB_IN_BYTES = KB_IN_BYTES * 1024
 GB_IN_BYTES = MB_IN_BYTES * 1024
 
 # qemu constants
-VM_MEM_SIZE = 2 * GB_IN_BYTES
+VM_MEM_SIZE = 1 * GB_IN_BYTES
 VM_DISK_NAME = "disk0"
 VM_DISK_SIZE = 2 * GB_IN_BYTES
 VM_IVSHMEM_FILE = "ivshmem"
@@ -425,7 +425,7 @@ def _execute_linux(
     kernel_args = []
 
     # basics
-    command.extend(["-m", "{}G".format(VM_MEM_SIZE // VM_MEM_SIZE)])
+    command.extend(["-m", "{}G".format(VM_MEM_SIZE // GB_IN_BYTES)])
     if kvm:
         command.extend(["-machine", "accel=kvm"])
     else:
@@ -521,6 +521,7 @@ def _execute_linux(
         envs["QCE_UNIT_TEST"] = "1"
     if trace:
         envs["QCE_TRACE"] = PATH_WKS_LINUX_TRACE
+    print("command is", command)
     subprocess.check_call(command, env=envs)
 
 
