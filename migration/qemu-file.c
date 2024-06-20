@@ -34,7 +34,8 @@
 #include "rdma.h"
 #include "io/channel-file.h"
 
-#define IO_BUF_SIZE 32768
+// The origin value is 32768. I multiply it 10 times to avoid too much io
+#define IO_BUF_SIZE 327680
 #define MAX_IOV_SIZE MIN_CONST(IOV_MAX, 64)
 
 struct QEMUFile {

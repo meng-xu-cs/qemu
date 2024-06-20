@@ -49,6 +49,7 @@
 #include "sysemu/cpus.h"
 #include "exec/memory.h"
 #include "exec/target_page.h"
+#include "exec/ramblock.h"
 #include "trace.h"
 #include "qemu/iov.h"
 #include "qemu/job.h"
@@ -236,6 +237,12 @@ static SaveState savevm_state = {
     .handler_pri_head = { [MIG_PRI_DEFAULT ... MIG_PRI_MAX] = NULL },
     .global_section_id = 0,
 };
+
+// Now we only save filename, but we could used it to save others like bitmap
+typedef struct SnapshotCache {
+    char file_name[256];
+} SnapshotCache;
+static SnapshotCache snapshot_cache;
 
 static SaveStateEntry *find_se(const char *idstr, uint32_t instance_id);
 
@@ -1700,6 +1707,45 @@ void qemu_savevm_state_cleanup(void)
     }
 }
 
+// In the following, we will use copy-on-write method. Let's try.
+// load snapshot
+static void load_ram_snapshot(void) {
+    RAMBlock *block = current_machine->ram->ram_block;
+    char *file_name = snapshot_cache.file_name;
+    int fd;
+
+    munmap(block->host, block->max_length);
+    fd = open(file_name, O_RDONLY);
+    mmap(block->host, block->max_length, 
+            PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED, fd, 0);
+    close(fd);
+}
+
+// save snapshot
+static void save_ram_snapshot(void) {
+    RAMBlock *block = current_machine->ram->ram_block;
+    char *file_name = snapshot_cache.file_name;
+    int fd;
+
+    //error_report("block: %s, max_length: %ld", block->idstr, block->max_length);
+    snprintf(file_name, 1024, "/dev/shm/snapshot_ram");
+    fd = open(file_name, O_RDWR | O_CREAT | O_TRUNC, (mode_t)0600);
+    if (ftruncate(fd, block->max_length)) {
+        error_report("fail to truncate");
+    }
+    //error_report("file name is %s, fd is %d", file_name, fd);
+    //mmap to share memory
+    char *map = mmap(0, block->max_length,
+                    PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    memcpy(map, block->host, block->max_length);
+    msync(map, block->max_length, MS_SYNC);
+    munmap(map, block->max_length);
+    close(fd);
+
+    //unmap the block memory and point back to snapshots
+    load_ram_snapshot();
+}
+
 static int qemu_savevm_state(QEMUFile *f, Error **errp)
 {
     int ret;
@@ -1728,6 +1774,9 @@ static int qemu_savevm_state(QEMUFile *f, Error **errp)
             break;
         }
     }
+
+    //Here we save ram.
+    save_ram_snapshot();
 
     ret = qemu_file_get_error(f);
     if (ret == 0) {
@@ -2976,6 +3025,9 @@ int qemu_loadvm_state(QEMUFile *f)
 
     cpu_synchronize_all_pre_loadvm();
 
+    //Reload the ram snapshot here
+    load_ram_snapshot();
+
     ret = qemu_loadvm_state_main(f, mis);
     qemu_event_set(&mis->main_thread_load_event);
 
@@ -3417,7 +3469,9 @@ static void snapshot_load_job_bh(void *opaque)
 
     vm_stop(RUN_STATE_RESTORE_VM);
 
-    s->ret = load_snapshot(s->tag, s->vmstate, true, s->devices, s->errp);
+    //This is copied from hmp_loadvm
+    //s->ret = load_snapshot(s->tag, s->vmstate, true, s->devices, s->errp);
+    s->ret = load_snapshot(s->tag, NULL, false, NULL, s->errp);
     if (s->ret) {
         load_snapshot_resume(orig_state);
     }
@@ -3434,8 +3488,9 @@ static void snapshot_save_job_bh(void *opaque)
     SnapshotJob *s = container_of(job, SnapshotJob, common);
 
     job_progress_set_remaining(&s->common, 1);
-    s->ret = save_snapshot(s->tag, false, s->vmstate,
-                           true, s->devices, s->errp);
+    //This is copied from hmp_savevm
+    //s->ret = save_snapshot(s->tag, false, s->vmstate, true, s->devices, s->errp);
+    s->ret = save_snapshot(s->tag, true, NULL, false, NULL, s->errp);
     job_progress_update(&s->common, 1);
 
     qmp_snapshot_job_free(s);

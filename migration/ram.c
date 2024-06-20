@@ -4553,5 +4553,7 @@ void ram_mig_init(void)
 {
     qemu_mutex_init(&XBZRLE.lock);
     register_savevm_live("ram", 0, 4, &savevm_ram_handlers, &ram_state);
+    // It is tricky: we unregister_savevm it as we will save ram in savevm.c
+    unregister_savevm(NULL, "ram", &ram_state);
     ram_block_notifier_add(&ram_mig_ram_notifier);
 }
