@@ -9,6 +9,9 @@ const SNAPSHOT_TAG: &str = "qce";
 const SNAPSHOT_JOB_PREFIX: &str = "qce_job_";
 const SNAPSHOT_DISK: &str = "disk0";
 
+//Add a const to control time recording
+const TIME_RECORDING: bool = true;
+
 pub struct QemuProxy<'a> {
     qmp: Qmp<Stream<BufReader<&'a UnixStream>, &'a UnixStream>>,
     job_count: usize,
@@ -33,7 +36,12 @@ impl<'a> QemuProxy<'a> {
         'outer: loop {
             self.qmp.nop()?;
             for event in self.qmp.events() {
-                if let Event::JOB_STATUS_CHANGE { data, timestamp: _ } = event {
+                if let Event::JOB_STATUS_CHANGE {data, timestamp} = event {
+                    // Add this to measure loading time.
+                    if TIME_RECORDING {
+                        println!("{:?}: staus is: {:?}, timpstamp is: {:?}", 
+                                    data.id, data.status, timestamp);
+                    }
                     if data.id != job_id {
                         continue;
                     }
