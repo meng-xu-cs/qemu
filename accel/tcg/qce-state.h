@@ -491,7 +491,7 @@ static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
       break;
     }
     default:
-      qce_fatal("invalid QCE variable type for direct_global");
+      qce_fatal("invalid QCE variable type for indirect_global");
     }
     break;
   }

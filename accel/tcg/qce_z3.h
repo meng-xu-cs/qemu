@@ -106,6 +106,10 @@ static inline Z3_ast qce_smt_z3_bv64_concat(SolverZ3 *solver, Z3_ast expr_t,
   return qce_smt_z3_simplify(solver, Z3_mk_concat(solver->ctx, expr_t, expr_b));
 }
 
+/*
+ * Testing
+ */
+
 #ifndef QCE_RELEASE
 static inline void qce_unit_test_z3(void) {
   // setup

@@ -12,11 +12,14 @@
 
 #define QCE_DEBUG_IR
 #include "qce-debug.h"
+
 #include "qce-ir.h"
 
 #include "qce_z3.h"
 
 #include "qce-state.h"
+
+#include "qce-sym.h"
 
 typedef enum {
   QCE_Tracing_NotStarted,
