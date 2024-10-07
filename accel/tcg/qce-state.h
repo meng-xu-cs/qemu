@@ -5,6 +5,8 @@
 #define QCE_CONCOLIC_REGISTER_SIZE sizeof(int32_t)
 static_assert(sizeof(intptr_t) == 2 * QCE_CONCOLIC_REGISTER_SIZE);
 
+#include "qce-expr.h"
+
 typedef enum {
   QCE_CELL_MODE_NULL = 0, // must be 0 here
   QCE_CELL_MODE_CONCRETE = 1,
@@ -103,11 +105,13 @@ static inline void qce_cell_holder_get_i32(QCECellHolder *holder, gpointer key,
     break;
   }
   case QCE_CELL_MODE_CONCRETE: {
+    val->mode = cell.mode;
     val->type = cell.type;
     val->v_i32 = (int32_t)((intptr_t)g_tree_lookup(holder->concrete, key));
     break;
   }
   case QCE_CELL_MODE_SYMBOLIC: {
+    val->mode = cell.mode;
     val->type = cell.type;
     val->symbolic = g_tree_lookup(holder->symbolic, key);
     break;
@@ -133,11 +137,13 @@ static inline void qce_cell_holder_get_i64(QCECellHolder *holder, gpointer key,
     break;
   }
   case QCE_CELL_MODE_CONCRETE: {
+    val->mode = cell.mode;
     val->type = cell.type;
     val->v_i64 = (int64_t)((intptr_t)g_tree_lookup(holder->concrete, key));
     break;
   }
   case QCE_CELL_MODE_SYMBOLIC: {
+    val->mode = cell.mode;
     val->type = cell.type;
     val->symbolic = g_tree_lookup(holder->symbolic, key);
     break;
@@ -150,23 +156,6 @@ static inline void qce_cell_holder_get_i64(QCECellHolder *holder, gpointer key,
   }
 #endif
 }
-
-// dual-mode representation of an expression
-typedef struct {
-  enum {
-    QCE_EXPR_CONCRETE,
-    QCE_EXPR_SYMBOLIC,
-  } mode;
-  enum {
-    QCE_EXPR_I32,
-    QCE_EXPR_I64,
-  } type;
-  union {
-    int32_t v_i32;
-    int64_t v_i64;
-    Z3_ast symbolic;
-  };
-} QCEExpr;
 
 // dual-mode representation of the machine state
 typedef struct {
@@ -208,11 +197,11 @@ qce_state_env_put_concrete_i64(QCEState *state, intptr_t offset, int64_t val) {
   }
   int32_t *cell = (int32_t *)&val;
 
-  gpointer key_t = (gpointer)offset;
-  qce_cell_holder_put_concrete_i32(&state->env, key_t, cell[0]);
+  gpointer key_l = (gpointer)offset;
+  qce_cell_holder_put_concrete_i32(&state->env, key_l, cell[0]);
 
-  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
-  qce_cell_holder_put_concrete_i32(&state->env, key_b, cell[1]);
+  gpointer key_h = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
+  qce_cell_holder_put_concrete_i32(&state->env, key_h, cell[1]);
 }
 
 static inline void qce_state_env_put_symbolic_i32(QCEState *state,
@@ -229,13 +218,13 @@ static inline void qce_state_env_put_symbolic_i64(QCEState *state,
     qce_fatal("misaligned offset for env location");
   }
 
-  gpointer key_t = (gpointer)offset;
-  Z3_ast ast_t = qce_smt_z3_bv64_extract_t(&state->solver_z3, ast);
-  qce_cell_holder_put_symbolic_i32(&state->env, key_t, ast_t);
+  gpointer key_l = (gpointer)offset;
+  Z3_ast ast_l = qce_smt_z3_bv64_extract_l(&state->solver_z3, ast);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_l, ast_l);
 
-  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
-  Z3_ast ast_b = qce_smt_z3_bv64_extract_b(&state->solver_z3, ast);
-  qce_cell_holder_put_symbolic_i32(&state->env, key_b, ast_b);
+  gpointer key_h = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
+  Z3_ast ast_h = qce_smt_z3_bv64_extract_h(&state->solver_z3, ast);
+  qce_cell_holder_put_symbolic_i32(&state->env, key_h, ast_h);
 }
 
 static inline void qce_state_env_get_i32(CPUArchState *env, QCEState *state,
@@ -273,85 +262,85 @@ static inline void qce_state_env_get_i64(CPUArchState *env, QCEState *state,
     qce_fatal("misaligned offset for env location");
   }
 
-  gpointer key_t = (gpointer)offset;
-  QCECellValue val_t;
-  qce_cell_holder_get_i32(&state->env, key_t, &val_t);
+  gpointer key_l = (gpointer)offset;
+  QCECellValue val_l;
+  qce_cell_holder_get_i32(&state->env, key_l, &val_l);
 
-  gpointer key_b = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
-  QCECellValue val_b;
-  qce_cell_holder_get_i32(&state->env, key_b, &val_b);
+  gpointer key_h = (gpointer)(offset + QCE_CONCOLIC_REGISTER_SIZE);
+  QCECellValue val_h;
+  qce_cell_holder_get_i32(&state->env, key_h, &val_h);
 
-  switch (val_t.mode) {
+  switch (val_l.mode) {
   case QCE_CELL_MODE_NULL: {
-    switch (val_b.mode) {
+    switch (val_h.mode) {
     case QCE_CELL_MODE_NULL: {
       expr->mode = QCE_EXPR_CONCRETE;
       expr->v_i64 = *(int64_t *)((intptr_t)env + offset);
       break;
     }
     case QCE_CELL_MODE_CONCRETE: {
-      int32_t tmp_t = *(int32_t *)((intptr_t)env + offset);
+      int32_t tmp_l = *(int32_t *)((intptr_t)env + offset);
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)tmp_t << 32 | val_b.v_i32;
+      expr->v_i64 = *(int64_t *)(int32_t[]){tmp_l, val_h.v_i32};
       break;
     }
     case QCE_CELL_MODE_SYMBOLIC: {
-      int32_t tmp_t = *(int32_t *)((intptr_t)env + offset);
-      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, tmp_t);
+      int32_t tmp_l = *(int32_t *)((intptr_t)env + offset);
+      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, tmp_l);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, val_b.symbolic);
+          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
       break;
     }
     }
     break;
   }
   case QCE_CELL_MODE_CONCRETE: {
-    switch (val_b.mode) {
+    switch (val_h.mode) {
     case QCE_CELL_MODE_NULL: {
-      int32_t tmp_b =
+      int32_t tmp_h =
           *(int32_t *)((intptr_t)env + offset + QCE_CONCOLIC_REGISTER_SIZE);
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)val_t.v_i32 << 32 | tmp_b;
+      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, tmp_h};
       break;
     }
     case QCE_CELL_MODE_CONCRETE: {
       expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = (int64_t)val_t.v_i32 << 32 | val_b.v_i32;
+      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, val_h.v_i32};
       break;
     }
     case QCE_CELL_MODE_SYMBOLIC: {
-      Z3_ast expr_t = qce_smt_z3_bv32_value(&state->solver_z3, val_t.v_i32);
+      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_t, val_b.symbolic);
+          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
       break;
     }
     }
     break;
   }
   case QCE_CELL_MODE_SYMBOLIC: {
-    switch (val_b.mode) {
+    switch (val_h.mode) {
     case QCE_CELL_MODE_NULL: {
-      int32_t tmp_b =
+      int32_t tmp_h =
           *(int32_t *)((intptr_t)env + offset + QCE_CONCOLIC_REGISTER_SIZE);
-      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, tmp_b);
+      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, tmp_h);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic, expr_b);
+          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
       break;
     }
     case QCE_CELL_MODE_CONCRETE: {
-      Z3_ast expr_b = qce_smt_z3_bv32_value(&state->solver_z3, val_b.v_i32);
+      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32);
       expr->mode = QCE_EXPR_SYMBOLIC;
       expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic, expr_b);
+          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
       break;
     }
     case QCE_CELL_MODE_SYMBOLIC: {
       expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3, val_t.symbolic,
-                                              val_b.symbolic);
+      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic,
+                                              val_l.symbolic);
       break;
     }
     }
@@ -389,6 +378,7 @@ static inline void qce_state_tmp_get_i32(QCEState *state, ptrdiff_t index,
   switch (val.mode) {
   case QCE_CELL_MODE_NULL: {
     qce_fatal("undefined tmp variable: %ld", index);
+    break;
   }
   case QCE_CELL_MODE_CONCRETE: {
     expr->mode = QCE_EXPR_CONCRETE;
@@ -412,6 +402,7 @@ static inline void qce_state_tmp_get_i64(QCEState *state, ptrdiff_t index,
   switch (val.mode) {
   case QCE_CELL_MODE_NULL: {
     qce_fatal("undefined tmp variable: %ld", index);
+    break;
   }
   case QCE_CELL_MODE_CONCRETE: {
     expr->mode = QCE_EXPR_CONCRETE;
@@ -491,7 +482,7 @@ static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
       break;
     }
     default:
-      qce_fatal("invalid QCE variable type for direct_global");
+      qce_fatal("invalid QCE variable type for indirect_global");
     }
     break;
   }
@@ -527,3 +518,280 @@ static inline void qce_state_get_var(CPUArchState *env, QCEState *state,
   }
   }
 }
+
+/*
+ * Testing
+ */
+
+#ifndef QCE_RELEASE
+
+// helper macro
+#define QCE_UNIT_TEST_STATE_PROLOGUE(name)                                     \
+  static inline void qce_unit_test_state_##name(CPUArchState *env) {           \
+    qce_debug("[test][state] " #name);                                         \
+    QCEState state;                                                            \
+    qce_state_init(&state);
+
+#define QCE_UNIT_TEST_STATE_EPILOGUE                                           \
+  qce_state_fini(&state);                                                      \
+  }
+
+#define QCE_UNIT_TEST_STATE_RUN(name) qce_unit_test_state_##name(env)
+
+// individual test cases
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_concrete_i32) {
+  qce_state_env_put_concrete_i32(&state, 0, 42);
+  QCEExpr e;
+  qce_state_env_get_i32(env, &state, 0, &e);
+  assert(e.mode == QCE_EXPR_CONCRETE);
+  assert(e.type == QCE_EXPR_I32);
+  assert(e.v_i32 == 42);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_symbolic_i32) {
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 42);
+  qce_state_env_put_symbolic_i32(&state, 4, ast);
+  QCEExpr e;
+  qce_state_env_get_i32(env, &state, 4, &e);
+  assert(e.mode == QCE_EXPR_SYMBOLIC);
+  assert(e.type == QCE_EXPR_I32);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_override_i32) {
+  qce_state_env_put_concrete_i32(&state, 0, 0x42);
+  QCEExpr e1;
+  qce_state_env_get_i32(env, &state, 0, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I32);
+  assert(e1.v_i32 == 0x42);
+
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 0x43);
+  qce_state_env_put_symbolic_i32(&state, 0, ast);
+  QCEExpr e2;
+  qce_state_env_get_i32(env, &state, 0, &e2);
+  assert(e2.mode == QCE_EXPR_SYMBOLIC);
+  assert(e2.type == QCE_EXPR_I32);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e2.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_concrete_i32) {
+  qce_state_tmp_put_concrete_i32(&state, 0, 77);
+  QCEExpr e;
+  qce_state_tmp_get_i32(&state, 0, &e);
+  assert(e.mode == QCE_EXPR_CONCRETE);
+  assert(e.type == QCE_EXPR_I32);
+  assert(e.v_i32 == 77);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_symbolic_i32) {
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 77);
+  qce_state_tmp_put_symbolic_i32(&state, 10, ast);
+  QCEExpr e;
+  qce_state_tmp_get_i32(&state, 10, &e);
+  assert(e.mode == QCE_EXPR_SYMBOLIC);
+  assert(e.type == QCE_EXPR_I32);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_override_i32) {
+  qce_state_tmp_put_concrete_i32(&state, 120, 0x42);
+  QCEExpr e1;
+  qce_state_tmp_get_i32(&state, 120, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I32);
+  assert(e1.v_i32 == 0x42);
+
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 0x43);
+  qce_state_tmp_put_symbolic_i32(&state, 120, ast);
+  QCEExpr e2;
+  qce_state_tmp_get_i32(&state, 120, &e2);
+  assert(e2.mode == QCE_EXPR_SYMBOLIC);
+  assert(e2.type == QCE_EXPR_I32);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e2.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_concrete_i64) {
+  qce_state_env_put_concrete_i64(&state, 16, 0x0123456789ABCDEF);
+  QCEExpr e1;
+  qce_state_env_get_i64(env, &state, 16, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I64);
+  assert(e1.v_i64 == 0x0123456789ABCDEF);
+
+  // ensure little-endian
+  QCEExpr e1_l;
+  qce_state_env_get_i32(env, &state, 16, &e1_l);
+  assert(e1_l.mode == QCE_EXPR_CONCRETE);
+  assert(e1_l.type == QCE_EXPR_I32);
+  assert(e1_l.v_i64 == 0x89ABCDEF);
+
+  QCEExpr e1_h;
+  qce_state_env_get_i32(env, &state, 20, &e1_h);
+  assert(e1_h.mode == QCE_EXPR_CONCRETE);
+  assert(e1_h.type == QCE_EXPR_I32);
+  assert(e1_h.v_i64 == 0x01234567);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_symbolic_i64) {
+  Z3_ast ast = qce_smt_z3_bv64_value(&state.solver_z3, 0xABCDEF0123456789);
+  qce_state_env_put_symbolic_i64(&state, 4, ast);
+  QCEExpr e;
+  qce_state_env_get_i64(env, &state, 4, &e);
+  assert(e.mode == QCE_EXPR_SYMBOLIC);
+  assert(e.type == QCE_EXPR_I64);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+
+  // ensure little-endian
+  QCEExpr e1_l;
+  qce_state_env_get_i32(env, &state, 4, &e1_l);
+  assert(e1_l.mode == QCE_EXPR_SYMBOLIC);
+  assert(e1_l.type == QCE_EXPR_I32);
+  assert(
+      qce_smt_z3_prove(&state.solver_z3,
+                       qce_smt_z3_mk_eq(&state.solver_z3, e1_l.symbolic,
+                                        qce_smt_z3_bv32_value(&state.solver_z3,
+                                                              0x23456789))) ==
+      SMT_Z3_PROVE_PROVED);
+
+  QCEExpr e1_h;
+  qce_state_env_get_i32(env, &state, 8, &e1_h);
+  assert(e1_h.mode == QCE_EXPR_SYMBOLIC);
+  assert(e1_h.type == QCE_EXPR_I32);
+  assert(
+      qce_smt_z3_prove(&state.solver_z3,
+                       qce_smt_z3_mk_eq(&state.solver_z3, e1_h.symbolic,
+                                        qce_smt_z3_bv32_value(&state.solver_z3,
+                                                              0xABCDEF01))) ==
+      SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_override_i64) {
+  qce_state_env_put_concrete_i64(&state, 16, 0x23456789ABCDEF01);
+  QCEExpr e1;
+  qce_state_env_get_i64(env, &state, 16, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I64);
+  assert(e1.v_i64 == 0x23456789ABCDEF01);
+
+  // partial override 1
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 0x98765432);
+  qce_state_env_put_symbolic_i32(&state, 16, ast);
+  QCEExpr e2;
+  qce_state_env_get_i64(env, &state, 16, &e2);
+  assert(e2.mode == QCE_EXPR_SYMBOLIC);
+  assert(e2.type == QCE_EXPR_I64);
+  assert(qce_smt_z3_prove(
+             &state.solver_z3,
+             qce_smt_z3_mk_eq(
+                 &state.solver_z3, e2.symbolic,
+                 qce_smt_z3_bv64_concat(
+                     &state.solver_z3,
+                     qce_smt_z3_bv32_value(&state.solver_z3, 0x23456789),
+                     ast))) == SMT_Z3_PROVE_PROVED);
+
+  // partial override 2
+  qce_state_env_put_concrete_i32(&state, 20, 0x10FEDCBA);
+  QCEExpr e3;
+  qce_state_env_get_i64(env, &state, 16, &e3);
+  assert(e3.mode == QCE_EXPR_SYMBOLIC);
+  assert(e3.type == QCE_EXPR_I64);
+  assert(qce_smt_z3_prove(
+             &state.solver_z3,
+             qce_smt_z3_mk_eq(
+                 &state.solver_z3, e3.symbolic,
+                 qce_smt_z3_bv64_concat(
+                     &state.solver_z3,
+                     qce_smt_z3_bv32_value(&state.solver_z3, 0x10FEDCBA),
+                     ast))) == SMT_Z3_PROVE_PROVED);
+
+  // partial override 3
+  qce_state_env_put_concrete_i32(&state, 16, 0x45678923);
+  QCEExpr e4;
+  qce_state_env_get_i64(env, &state, 16, &e4);
+  assert(e4.mode == QCE_EXPR_CONCRETE);
+  assert(e4.type == QCE_EXPR_I64);
+  assert(e4.v_i64 == 0x10FEDCBA45678923);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_concrete_i64) {
+  qce_state_tmp_put_concrete_i64(&state, 0, 0xFEDCBA9876543210);
+  QCEExpr e2;
+  qce_state_tmp_get_i64(&state, 0, &e2);
+  assert(e2.mode == QCE_EXPR_CONCRETE);
+  assert(e2.type == QCE_EXPR_I64);
+  assert(e2.v_i64 == 0xFEDCBA9876543210);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_symbolic_i64) {
+  Z3_ast ast = qce_smt_z3_bv64_value(&state.solver_z3, 0xABCDEF0123456789);
+  qce_state_tmp_put_symbolic_i64(&state, 6, ast);
+  QCEExpr e;
+  qce_state_tmp_get_i64(&state, 6, &e);
+  assert(e.mode == QCE_EXPR_SYMBOLIC);
+  assert(e.type == QCE_EXPR_I64);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_override_i64) {
+  qce_state_tmp_put_concrete_i64(&state, 76, 1);
+  QCEExpr e1;
+  qce_state_tmp_get_i64(&state, 76, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I64);
+  assert(e1.v_i64 == 1);
+
+  Z3_ast ast = qce_smt_z3_bv64_value(&state.solver_z3, 2);
+  qce_state_tmp_put_symbolic_i64(&state, 76, ast);
+  QCEExpr e2;
+  qce_state_tmp_get_i64(&state, 76, &e2);
+  assert(e2.mode == QCE_EXPR_SYMBOLIC);
+  assert(e2.type == QCE_EXPR_I64);
+  assert(qce_smt_z3_prove(&state.solver_z3,
+                          qce_smt_z3_mk_eq(&state.solver_z3, e2.symbolic,
+                                           ast)) == SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+// collector
+static inline void qce_unit_test_state(CPUArchState *env) {
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_concrete_i32);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_symbolic_i32);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_override_i32);
+
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_concrete_i32);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_symbolic_i32);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_override_i32);
+
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_concrete_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_symbolic_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_env_override_i64);
+
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_concrete_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_symbolic_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_override_i64);
+}
+#endif

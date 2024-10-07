@@ -16,6 +16,7 @@
     error_report("[!!!] " fmt, ##__VA_ARGS__);                                 \
     qce_on_panic();                                                            \
     killpg(0, SIGKILL);                                                        \
+    assert(0);                                                                 \
   } while (0);
 #else
 #define qce_debug(fmt, ...)
@@ -55,7 +56,7 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg);
 void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu);
 
 #ifndef QCE_RELEASE
-void qce_unit_test(void);
+void qce_unit_test(CPUArchState *env);
 #endif
 
 #endif /* QEMU_QCE_H */

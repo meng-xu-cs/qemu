@@ -12,11 +12,14 @@
 
 #define QCE_DEBUG_IR
 #include "qce-debug.h"
+
 #include "qce-ir.h"
 
-#include "qce_z3.h"
+#include "qce-z3.h"
 
 #include "qce-state.h"
+
+#include "qce-sym.h"
 
 typedef enum {
   QCE_Tracing_NotStarted,
@@ -381,9 +384,11 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     return;
   }
 
+  // we need this arch state in the rest of the execution
+  CPUArchState *arch = cpu_env(cpu);
+
   // validate that we have caught the right values
   if (session->mode == QCE_Tracing_Capturing) {
-    CPUArchState *arch = cpu_env(cpu);
     if (session->blob_addr != arch->regs[R_EDI] ||
         session->blob_size != arch->regs[R_ESI]) {
       qce_error("session value mismatch at TB 0x%p", tb);
@@ -408,7 +413,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifndef QCE_RELEASE
   // run the unit test at the first hooked basic block
   if (getenv("QCE_CHECK") != NULL) {
-    qce_unit_test();
+    qce_unit_test(arch);
     _exit(0);
   }
 #endif
@@ -425,7 +430,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #endif
 
     switch (inst->kind) {
-    default:
+    case QCE_INST_LD_I32: {
+      qce_sym_inst_ld_i32(arch, &session->state, &inst->i_ld_i32.addr,
+                          inst->i_ld_i32.offset, &inst->i_ld_i32.res);
+      break;
+    }
+    default: {
 #ifdef QCE_DEBUG_IR
       qce_debug_print_inst(stderr, inst);
 #endif
@@ -433,13 +443,15 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       qce_error("emulation not supported yet");
       break;
     }
+    }
   }
 }
 
 #ifndef QCE_RELEASE
-void qce_unit_test(void) {
+void qce_unit_test(CPUArchState *env) {
   qce_debug("start unit testing");
   qce_unit_test_z3();
+  qce_unit_test_state(env);
   qce_debug("unit testing completed");
 }
 #endif
