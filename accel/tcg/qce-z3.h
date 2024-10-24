@@ -225,6 +225,35 @@ static inline bool qce_smt_z3_probe_bv64(SolverZ3 *solver, Z3_ast expr,
 }
 
 /*
+ * Template
+ */
+
+#define DEFINE_SMT_Z3_BIN_OP(bits, name, func)                                 \
+  static inline Z3_ast qce_smt_z3_bv##bits##_##name(SolverZ3 *solver,          \
+                                                    Z3_ast lhs, Z3_ast rhs) {  \
+    __qce_smt_z3_type_check_i##bits(solver, lhs);                              \
+    __qce_smt_z3_type_check_i##bits(solver, rhs);                              \
+    return __qce_smt_z3_simplify(solver, func(solver->ctx, lhs, rhs));         \
+  }
+
+#define DEFINE_SMT_Z3_BIN_OP_DUAL(name, func)                                  \
+  DEFINE_SMT_Z3_BIN_OP(32, name, func)                                         \
+  DEFINE_SMT_Z3_BIN_OP(64, name, func)
+
+#define DEFINE_SMT_Z3_BIN_OP_EX(bits, name, func)                              \
+  static inline Z3_ast qce_smt_z3_bv##bits##_##name(SolverZ3 *solver,          \
+                                                    Z3_ast lhs, Z3_ast rhs) {  \
+    __qce_smt_z3_type_check_i##bits(solver, lhs);                              \
+    __qce_smt_z3_type_check_i##bits(solver, rhs);                              \
+    return __qce_smt_z3_simplify(solver,                                       \
+                                 func(solver->ctx, 2, (Z3_ast[]){lhs, rhs}));  \
+  }
+
+#define DEFINE_SMT_Z3_BIN_OP_DUAL_EX(name, func)                               \
+  DEFINE_SMT_Z3_BIN_OP_EX(32, name, func)                                      \
+  DEFINE_SMT_Z3_BIN_OP_EX(64, name, func)
+
+/*
  * Bit-vector
  */
 
@@ -270,51 +299,15 @@ static inline Z3_ast qce_smt_z3_bv64_concat(SolverZ3 *solver, Z3_ast h,
  * Arithmetics
  */
 
-static inline Z3_ast qce_smt_z3_bv32_add(SolverZ3 *solver, Z3_ast lhs,
-                                         Z3_ast rhs) {
-  __qce_smt_z3_type_check_i32(solver, lhs);
-  __qce_smt_z3_type_check_i32(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_bvadd(solver->ctx, lhs, rhs));
-}
-
-static inline Z3_ast qce_smt_z3_bv64_add(SolverZ3 *solver, Z3_ast lhs,
-                                         Z3_ast rhs) {
-  __qce_smt_z3_type_check_i64(solver, lhs);
-  __qce_smt_z3_type_check_i64(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_bvadd(solver->ctx, lhs, rhs));
-}
-
-static inline Z3_ast qce_smt_z3_bv32_sub(SolverZ3 *solver, Z3_ast lhs,
-                                         Z3_ast rhs) {
-  __qce_smt_z3_type_check_i32(solver, lhs);
-  __qce_smt_z3_type_check_i32(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_bvsub(solver->ctx, lhs, rhs));
-}
-
-static inline Z3_ast qce_smt_z3_bv64_sub(SolverZ3 *solver, Z3_ast lhs,
-                                         Z3_ast rhs) {
-  __qce_smt_z3_type_check_i64(solver, lhs);
-  __qce_smt_z3_type_check_i64(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_bvsub(solver->ctx, lhs, rhs));
-}
+DEFINE_SMT_Z3_BIN_OP_DUAL(add, Z3_mk_bvadd)
+DEFINE_SMT_Z3_BIN_OP_DUAL(sub, Z3_mk_bvsub)
 
 /*
  * Comparisons
  */
 
-static inline Z3_ast qce_smt_z3_bv32_eq(SolverZ3 *solver, Z3_ast lhs,
-                                        Z3_ast rhs) {
-  __qce_smt_z3_type_check_i32(solver, lhs);
-  __qce_smt_z3_type_check_i32(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_eq(solver->ctx, lhs, rhs));
-}
-
-static inline Z3_ast qce_smt_z3_bv64_eq(SolverZ3 *solver, Z3_ast lhs,
-                                        Z3_ast rhs) {
-  __qce_smt_z3_type_check_i64(solver, lhs);
-  __qce_smt_z3_type_check_i64(solver, rhs);
-  return __qce_smt_z3_simplify(solver, Z3_mk_eq(solver->ctx, lhs, rhs));
-}
+DEFINE_SMT_Z3_BIN_OP_DUAL(eq, Z3_mk_eq)
+DEFINE_SMT_Z3_BIN_OP_DUAL_EX(ne, Z3_mk_distinct)
 
 /*
  * Proving

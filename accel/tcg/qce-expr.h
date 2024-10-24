@@ -21,6 +21,53 @@ typedef struct {
 } QCEExpr;
 
 /*
+ * Templates
+ */
+
+#define DEFINE_EXPR_BIN_OP(bits, name, op)                                     \
+  static inline void qce_expr_##name##_i##bits(                                \
+      SolverZ3 *solver, QCEExpr *lhs, QCEExpr *rhs, QCEExpr *result) {         \
+    qce_expr_assert_type(lhs, I##bits);                                        \
+    qce_expr_assert_type(rhs, I##bits);                                        \
+                                                                               \
+    if (lhs->mode == QCE_EXPR_CONCRETE) {                                      \
+      if (rhs->mode == QCE_EXPR_CONCRETE) {                                    \
+        result->mode = QCE_EXPR_CONCRETE;                                      \
+        result->v_i##bits = lhs->v_i##bits op rhs->v_i##bits;                  \
+      } else {                                                                 \
+        result->mode = QCE_EXPR_SYMBOLIC;                                      \
+        result->symbolic = qce_smt_z3_bv##bits##_##name(                       \
+            solver, qce_smt_z3_bv##bits##_value(solver, lhs->v_i##bits),       \
+            rhs->symbolic);                                                    \
+      }                                                                        \
+    } else {                                                                   \
+      if (rhs->mode == QCE_EXPR_CONCRETE) {                                    \
+        result->mode = QCE_EXPR_SYMBOLIC;                                      \
+        result->symbolic = qce_smt_z3_bv##bits##_##name(                       \
+            solver, lhs->symbolic,                                             \
+            qce_smt_z3_bv##bits##_value(solver, rhs->v_i##bits));              \
+      } else {                                                                 \
+        Z3_ast res = qce_smt_z3_bv##bits##_##name(solver, lhs->symbolic,       \
+                                                  rhs->symbolic);              \
+        int##bits##_t val = 0;                                                 \
+        if (qce_smt_z3_probe_bv##bits(solver, res, &val)) {                    \
+          result->mode = QCE_EXPR_CONCRETE;                                    \
+          result->v_i##bits = val;                                             \
+        } else {                                                               \
+          result->mode = QCE_EXPR_SYMBOLIC;                                    \
+          result->symbolic = res;                                              \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
+                                                                               \
+    result->type = QCE_EXPR_I##bits;                                           \
+  }
+
+#define DEFINE_EXPR_BIN_OP_DUAL(name, op)                                      \
+  DEFINE_EXPR_BIN_OP(32, name, op)                                             \
+  DEFINE_EXPR_BIN_OP(64, name, op)
+
+/*
  * Initialization
  */
 
@@ -56,145 +103,8 @@ static inline void qce_expr_init_s64(SolverZ3 *solver, QCEExpr *expr) {
  * Arithmetics
  */
 
-static inline void qce_expr_add_i32(SolverZ3 *solver, QCEExpr *lhs,
-                                    QCEExpr *rhs, QCEExpr *result) {
-  qce_expr_assert_type(lhs, I32);
-  qce_expr_assert_type(rhs, I32);
-
-  if (lhs->mode == QCE_EXPR_CONCRETE) {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_CONCRETE;
-      result->v_i32 = lhs->v_i32 + rhs->v_i32;
-    } else {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv32_add(
-          solver, qce_smt_z3_bv32_value(solver, lhs->v_i32), rhs->symbolic);
-    }
-  } else {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv32_add(
-          solver, lhs->symbolic, qce_smt_z3_bv32_value(solver, rhs->v_i32));
-    } else {
-      Z3_ast res = qce_smt_z3_bv32_add(solver, lhs->symbolic, rhs->symbolic);
-      int32_t val = 0;
-      if (qce_smt_z3_probe_bv32(solver, res, &val)) {
-        result->mode = QCE_EXPR_CONCRETE;
-        result->v_i32 = val;
-      } else {
-        result->mode = QCE_EXPR_SYMBOLIC;
-        result->symbolic = res;
-      }
-    }
-  }
-
-  result->type = QCE_EXPR_I32;
-}
-
-static inline void qce_expr_add_i64(SolverZ3 *solver, QCEExpr *lhs,
-                                    QCEExpr *rhs, QCEExpr *result) {
-  qce_expr_assert_type(lhs, I64);
-  qce_expr_assert_type(rhs, I64);
-
-  if (lhs->mode == QCE_EXPR_CONCRETE) {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_CONCRETE;
-      result->v_i64 = lhs->v_i64 + rhs->v_i64;
-    } else {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv64_add(
-          solver, qce_smt_z3_bv64_value(solver, lhs->v_i64), rhs->symbolic);
-    }
-  } else {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv64_add(
-          solver, lhs->symbolic, qce_smt_z3_bv64_value(solver, rhs->v_i64));
-    } else {
-      Z3_ast res = qce_smt_z3_bv64_add(solver, lhs->symbolic, rhs->symbolic);
-      int64_t val = 0;
-      if (qce_smt_z3_probe_bv64(solver, res, &val)) {
-        result->mode = QCE_EXPR_CONCRETE;
-        result->v_i64 = val;
-      } else {
-        result->mode = QCE_EXPR_SYMBOLIC;
-        result->symbolic = res;
-      }
-    }
-  }
-
-  result->type = QCE_EXPR_I64;
-}
-
-static inline void qce_expr_sub_i32(SolverZ3 *solver, QCEExpr *lhs,
-                                    QCEExpr *rhs, QCEExpr *result) {
-  qce_expr_assert_type(lhs, I32);
-  qce_expr_assert_type(rhs, I32);
-
-  if (lhs->mode == QCE_EXPR_CONCRETE) {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_CONCRETE;
-      result->v_i32 = lhs->v_i32 - rhs->v_i32;
-    } else {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv32_sub(
-          solver, qce_smt_z3_bv32_value(solver, lhs->v_i32), rhs->symbolic);
-    }
-  } else {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv32_sub(
-          solver, lhs->symbolic, qce_smt_z3_bv32_value(solver, rhs->v_i32));
-    } else {
-      Z3_ast res = qce_smt_z3_bv32_sub(solver, lhs->symbolic, rhs->symbolic);
-      int32_t val = 0;
-      if (qce_smt_z3_probe_bv32(solver, res, &val)) {
-        result->mode = QCE_EXPR_CONCRETE;
-        result->v_i32 = val;
-      } else {
-        result->mode = QCE_EXPR_SYMBOLIC;
-        result->symbolic = res;
-      }
-    }
-  }
-
-  result->type = QCE_EXPR_I32;
-}
-
-static inline void qce_expr_sub_i64(SolverZ3 *solver, QCEExpr *lhs,
-                                    QCEExpr *rhs, QCEExpr *result) {
-  qce_expr_assert_type(lhs, I64);
-  qce_expr_assert_type(rhs, I64);
-
-  if (lhs->mode == QCE_EXPR_CONCRETE) {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_CONCRETE;
-      result->v_i64 = lhs->v_i64 - rhs->v_i64;
-    } else {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv64_sub(
-          solver, qce_smt_z3_bv64_value(solver, lhs->v_i64), rhs->symbolic);
-    }
-  } else {
-    if (rhs->mode == QCE_EXPR_CONCRETE) {
-      result->mode = QCE_EXPR_SYMBOLIC;
-      result->symbolic = qce_smt_z3_bv64_sub(
-          solver, lhs->symbolic, qce_smt_z3_bv64_value(solver, rhs->v_i64));
-    } else {
-      Z3_ast res = qce_smt_z3_bv64_sub(solver, lhs->symbolic, rhs->symbolic);
-      int64_t val = 0;
-      if (qce_smt_z3_probe_bv64(solver, res, &val)) {
-        result->mode = QCE_EXPR_CONCRETE;
-        result->v_i64 = val;
-      } else {
-        result->mode = QCE_EXPR_SYMBOLIC;
-        result->symbolic = res;
-      }
-    }
-  }
-
-  result->type = QCE_EXPR_I64;
-}
+DEFINE_EXPR_BIN_OP_DUAL(add, +)
+DEFINE_EXPR_BIN_OP_DUAL(sub, -)
 
 /*
  * Testing
