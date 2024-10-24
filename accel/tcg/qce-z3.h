@@ -309,6 +309,16 @@ DEFINE_SMT_Z3_BIN_OP_DUAL(sub, Z3_mk_bvsub)
 DEFINE_SMT_Z3_BIN_OP_DUAL(eq, Z3_mk_eq)
 DEFINE_SMT_Z3_BIN_OP_DUAL_EX(ne, Z3_mk_distinct)
 
+DEFINE_SMT_Z3_BIN_OP_DUAL(slt, Z3_mk_bvslt)
+DEFINE_SMT_Z3_BIN_OP_DUAL(sle, Z3_mk_bvsle)
+DEFINE_SMT_Z3_BIN_OP_DUAL(sge, Z3_mk_bvsge)
+DEFINE_SMT_Z3_BIN_OP_DUAL(sgt, Z3_mk_bvsgt)
+
+DEFINE_SMT_Z3_BIN_OP_DUAL(ult, Z3_mk_bvult)
+DEFINE_SMT_Z3_BIN_OP_DUAL(ule, Z3_mk_bvule)
+DEFINE_SMT_Z3_BIN_OP_DUAL(uge, Z3_mk_bvuge)
+DEFINE_SMT_Z3_BIN_OP_DUAL(ugt, Z3_mk_bvugt)
+
 /*
  * Proving
  */

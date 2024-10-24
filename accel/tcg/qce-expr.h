@@ -21,6 +21,29 @@ typedef struct {
 } QCEExpr;
 
 /*
+ * Utilities
+ */
+
+#define DEFINE_CONCRETE_BIN_OP_SIGNED(bits, name, op)                          \
+  static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
+      int##bits##_t lhs, int##bits##_t rhs) {                                  \
+    return lhs op rhs;                                                         \
+  }
+
+#define DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(name, op)                           \
+  DEFINE_CONCRETE_BIN_OP_SIGNED(32, name, op)                                  \
+  DEFINE_CONCRETE_BIN_OP_SIGNED(64, name, op)
+
+#define DEFINE_CONCRETE_BIN_OP_UNSIGNED(bits, name, op)                        \
+  static inline uint##bits##_t __qce_concrete_bv##bits##_##name(               \
+      uint##bits##_t lhs, uint##bits##_t rhs) {                                \
+    return lhs op rhs;                                                         \
+  }
+
+DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(add, +)
+DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(sub, -)
+
+/*
  * Templates
  */
 
@@ -33,7 +56,8 @@ typedef struct {
     if (lhs->mode == QCE_EXPR_CONCRETE) {                                      \
       if (rhs->mode == QCE_EXPR_CONCRETE) {                                    \
         result->mode = QCE_EXPR_CONCRETE;                                      \
-        result->v_i##bits = lhs->v_i##bits op rhs->v_i##bits;                  \
+        result->v_i##bits =                                                    \
+            __qce_concrete_bv##bits##_##name(lhs->v_i##bits, rhs->v_i##bits);  \
       } else {                                                                 \
         result->mode = QCE_EXPR_SYMBOLIC;                                      \
         result->symbolic = qce_smt_z3_bv##bits##_##name(                       \
