@@ -3,6 +3,7 @@
 import argparse
 import multiprocessing
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -76,19 +77,46 @@ DOCKER_SRC_DIR = "/src"
 DOCKER_WORKDIR_PREFIX = "/work"
 
 
+# platform configs
+class PlatformConfigs(object):
+    def __init__(self):
+        # probe for the platform configurations
+        os_type = platform.system()
+        if os_type == "Linux":
+            self.supports_kvm = os.path.exists("/dev/kvm")
+        elif os_type == "Darwin":
+            self.supports_kvm = False
+        else:
+            sys.exit("Unsupported operating system: {}".format(os_type))
+
+        cpu_arch = platform.machine()
+        if cpu_arch == "x86_64":
+            self.is_native_x86_64 = True
+        elif cpu_arch == "arm64":
+            self.is_native_x86_64 = False
+        else:
+            sys.exit("Unsupported CPU architecture: {}".format(cpu_arch))
+
+
+PLATFORM = PlatformConfigs()
+
+
 def _docker_exec(
     tag: str, volumes: List[str], ephemeral: bool, interactive: bool, cmdline: List[str]
 ) -> None:
     command = [
         "docker",
         "run",
-        "--device=/dev/kvm",
         "--tmpfs",
         "/dev/shm:exec",
         "--tmpfs",
         "/tmp",
         "--privileged=true",
     ]
+    if PLATFORM.supports_kvm:
+        command.append("--device=/dev/kvm")
+    if not PLATFORM.is_native_x86_64:
+        command.extend(["--platform", "linux/amd64"])
 
     if ephemeral:
         command.append("--rm")
@@ -123,7 +151,10 @@ def cmd_docker_build(force: bool) -> None:
         subprocess.check_call(["docker", "image", "rm", DOCKER_TAG])
         subprocess.check_call(["docker", "image", "prune", "--force"])
 
-    subprocess.check_call(["docker", "build", ".", "-t", DOCKER_TAG], cwd=PATH_REPO)
+    command = ["docker", "build", ".", "-t", DOCKER_TAG]
+    if not PLATFORM.is_native_x86_64:
+        command.extend(["--platform", "linux/amd64"])
+    subprocess.check_call(command, cwd=PATH_REPO)
 
 
 def cmd_docker_shell(volumes: List[str]) -> None:
@@ -212,12 +243,13 @@ def _qemu_config(
         "--disable-user",
         # features
         "--enable-tcg",
-        "--enable-kvm",
         "--enable-slirp",
         "--disable-multiprocess",
         # deps
         "--z3={}".format(path_deps_z3),
     ]
+    if PLATFORM.supports_kvm:
+        command.append("--enable-kvm")
 
     if release:
         command.extend(
