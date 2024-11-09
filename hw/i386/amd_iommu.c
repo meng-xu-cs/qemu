@@ -1657,11 +1657,16 @@ static void amdvi_sysbus_realize(DeviceState *dev, Error **errp)
         error_report("AMD IOMMU with x2APIC confguration requires xtsup=on");
         exit(EXIT_FAILURE);
     }
-    if (s->xtsup && kvm_irqchip_is_split() && !kvm_enable_x2apic()) {
-        error_report("AMD IOMMU xtsup=on requires support on the KVM side");
-        exit(EXIT_FAILURE);
+    if (s->xtsup) {
+#ifdef CONFIG_KVM
+        if (kvm_irqchip_is_split() && !kvm_enable_x2apic()) {
+#endif
+            error_report("AMD IOMMU xtsup=on requires support on the KVM side");
+            exit(EXIT_FAILURE);
+#ifdef CONFIG_KVMq
+        }
+#endif
     }
-
     pci_setup_iommu(bus, &amdvi_iommu_ops, s);
     amdvi_init(s);
 }
