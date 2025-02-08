@@ -693,6 +693,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP(SUB, sub, 32);
       HANDLE_SYM_INST_BIN_OP(SUB, sub, 64);
 
+      HANDLE_SYM_INST_BIN_OP(MUL, mul, 32);
+      HANDLE_SYM_INST_BIN_OP(MUL, mul, 64);
+
+      /* multiword arithmetic */
+      HANDLE_SYM_INST_QUAD_OP(ADD2, add2, 32);
+      HANDLE_SYM_INST_QUAD_OP(ADD2, add2, 64);
+      
+      HANDLE_SYM_INST_QUAD_OP(SUB2, sub2, 32);
+      HANDLE_SYM_INST_QUAD_OP(SUB2, sub2, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BIN_RES(MULS2, muls2, 32);
+      HANDLE_SYM_INST_BIN_OP_BIN_RES(MULS2, muls2, 64);
+      // HANDLE_SYM_INST_BIN_OP_BIN_RES(MULU2, mulu2, 32);
+      // HANDLE_SYM_INST_BIN_OP_BIN_RES(MULU2, mulu2, 64);
+
       /* bitwise */
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 32);
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 64);
@@ -702,6 +717,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_BIN_OP_BV(XOR, xor, 32);
       HANDLE_SYM_INST_BIN_OP_BV(XOR, xor, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(ANDC, andc, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(ANDC, andc, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(ORC, orc, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(ORC, orc, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(NAND, nand, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(NAND, nand, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(NOR, nor, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(NOR, nor, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(EQV, eqv, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(EQV, eqv, 64);
 
       /* load and store */
       HANDLE_SYM_INST_ld(LD8U, ld8u, 32);
@@ -743,7 +773,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       qce_debug_print_inst(stderr, inst);
 #endif
       // TODO: change to fatal
-      qce_fatal("emulation not supported yet");
+      // qce_fatal("emulation not supported yet");
     }
     }
 

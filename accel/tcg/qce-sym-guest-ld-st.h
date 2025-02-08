@@ -16,7 +16,9 @@ static inline void __check_memop_validity(QCEState *state, MemOp mo,
     break;
   }
   case MO_ALIGN: {
-    align = access_bytes;
+    align = memop_size(mo);
+    // qce_debug("align=%lu", align);
+    // align = access_bytes;
     break;
   }
   case MO_ALIGN_4: {
@@ -34,6 +36,7 @@ static inline void __check_memop_validity(QCEState *state, MemOp mo,
   // check on alignment
   if (addr->mode == QCE_EXPR_CONCRETE) {
     if (addr->v_i64 % align != 0) {
+      qce_debug("addr=%p, align=%lu", (void *)addr->v_i64, align);
       qce_fatal("unaligned guest memory access is not supported");
     }
   } else {

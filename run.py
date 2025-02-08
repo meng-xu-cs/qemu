@@ -407,7 +407,7 @@ def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
     else:
         if os.path.exists(PATH_WKS_ARTIFACT):
             shutil.rmtree(PATH_WKS_ARTIFACT)
-            os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
+        os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False) # need confirmed
 
         # deps
         if deps_z3:
@@ -990,7 +990,7 @@ def main() -> None:
     parser_dev_e2e.add_argument("--trace", action="store_true")
 
     parser_dev_check = sub_dev.add_parser("check")
-    parser_dev_check.add_argument("--unit")
+    parser_dev_check.add_argument("--unit", action="store_true") # need confirmed
 
     #
     # base commands

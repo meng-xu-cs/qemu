@@ -224,6 +224,9 @@ X_INST_O0I1(pause, env, I64)
 X_INST_O0I2(syscall, env, I64, next_eip, I32)
 X_INST_O0I2(sysret, env, I64, dflag, I32)
 
+X_INST_O1I2(get_dr, res, I64, env, I64, reg, I32)
+// X_INST_O0I2(raise_exception, env, I64, exception_index, I32)
+
 /*
  * Template Teardown
  */
