@@ -674,6 +674,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_mov(32);
       HANDLE_SYM_INST_mov(64);
 
+      HANDLE_SYM_INST_movcond(32);
+      HANDLE_SYM_INST_movcond(64);
+
       /* sign/zero extend */
       HANDLE_SYM_INST_ext(32, 8, u, U);
       HANDLE_SYM_INST_ext(32, 8, s, S);
@@ -695,6 +698,16 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_BIN_OP(MUL, mul, 32);
       HANDLE_SYM_INST_BIN_OP(MUL, mul, 64);
+
+      /* shifts/ and rotates */
+      HANDLE_SYM_INST_BIN_OP(SHL, shl, 32);
+      HANDLE_SYM_INST_BIN_OP(SHL, shl, 64);
+
+      HANDLE_SYM_INST_BIN_OP(SHR, shr, 32);
+      HANDLE_SYM_INST_BIN_OP(SHR, shr, 64);
+
+      HANDLE_SYM_INST_BIN_OP(SAR, sar, 32);
+      HANDLE_SYM_INST_BIN_OP(SAR, sar, 64);
 
       /* multiword arithmetic */
       HANDLE_SYM_INST_QUAD_OP(ADD2, add2, 32);

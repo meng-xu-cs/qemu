@@ -34,6 +34,10 @@ DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvand, &)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvor, |)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvxor, ^)
 
+DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(shl, <<)
+DEFINE_CONCRETE_BIN_OP_UNSIGNED_DUAL(shr, >>)
+DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(sar, >>)
+
 #define DEFINE_CONCRETE_BIN_OP_SIGNED_TEMP(bits, name, op1, op2, op3)          \
   static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
       int##bits##_t lhs, int##bits##_t rhs) {                                  \
@@ -306,6 +310,10 @@ DEFINE_EXPR_QUAD_OP_DUAL(add2)
 DEFINE_EXPR_QUAD_OP_DUAL(sub2)
 // DEFINE_EXPR_BIN_OP_BIN_RES_DUAL(mulu2)
 DEFINE_EXPR_BIN_OP_BIN_RES_DUAL(muls2)
+
+DEFINE_EXPR_BIN_OP_DUAL(shl)
+DEFINE_EXPR_BIN_OP_DUAL(shr)
+DEFINE_EXPR_BIN_OP_DUAL(sar)
 
 /*
  * Bitwise

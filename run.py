@@ -407,7 +407,7 @@ def cmd_build(incremental: bool, release: bool, deps_z3: bool) -> None:
     else:
         if os.path.exists(PATH_WKS_ARTIFACT):
             shutil.rmtree(PATH_WKS_ARTIFACT)
-        os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False) # need confirmed
+            os.makedirs(PATH_WKS_ARTIFACT, exist_ok=False)
 
         # deps
         if deps_z3:
