@@ -53,6 +53,17 @@ DEFINE_SYM_INST_BIN_OP_BV(or, 64)
 DEFINE_SYM_INST_BIN_OP_BV(xor, 32)
 DEFINE_SYM_INST_BIN_OP_BV(xor, 64)
 
+DEFINE_SYM_INST_BIN_OP_BV(andc, 32)
+DEFINE_SYM_INST_BIN_OP_BV(andc, 64)
+DEFINE_SYM_INST_BIN_OP_BV(orc, 32)
+DEFINE_SYM_INST_BIN_OP_BV(orc, 64)
+DEFINE_SYM_INST_BIN_OP_BV(nand, 32)
+DEFINE_SYM_INST_BIN_OP_BV(nand, 64)
+DEFINE_SYM_INST_BIN_OP_BV(nor, 32)
+DEFINE_SYM_INST_BIN_OP_BV(nor, 64)
+DEFINE_SYM_INST_BIN_OP_BV(eqv, 32)
+DEFINE_SYM_INST_BIN_OP_BV(eqv, 64)
+
 #define HANDLE_SYM_INST_BIN_OP_BV(key, name, bits)                             \
   case QCE_INST_##key##_I##bits: {                                             \
     qce_sym_inst_bv##name##_i##bits(                                           \

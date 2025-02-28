@@ -722,6 +722,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP_BV(XOR, xor, 32);
       HANDLE_SYM_INST_BIN_OP_BV(XOR, xor, 64);
 
+      HANDLE_SYM_INST_BIN_OP_BV(ANDC, andc, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(ANDC, andc, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(ORC, orc, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(ORC, orc, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(NAND, nand, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(NAND, nand, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(NOR, nor, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(NOR, nor, 64);
+
+      HANDLE_SYM_INST_BIN_OP_BV(EQV, eqv, 32);
+      HANDLE_SYM_INST_BIN_OP_BV(EQV, eqv, 64);
+
       /* load and store */
       HANDLE_SYM_INST_ld(LD8U, ld8u, 32);
       HANDLE_SYM_INST_ld(LD8S, ld8s, 32);

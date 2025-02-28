@@ -34,6 +34,22 @@ DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvand, &)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvor, |)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvxor, ^)
 
+#define DEFINE_CONCRETE_BIN_OP_LOGIC(bits, name, op1, op2, op3)                \
+  static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
+      int##bits##_t lhs, int##bits##_t rhs) {                                  \
+    return op1 lhs op2 op3 rhs;                                                \
+}
+
+#define DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(name, op1, op2, op3)                 \
+  DEFINE_CONCRETE_BIN_OP_LOGIC(32, name, op1, op2, op3)                        \
+  DEFINE_CONCRETE_BIN_OP_LOGIC(64, name, op1, op2, op3)
+
+DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(bvandc, +, &, ~)
+DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(bvorc, +, ^, ~)
+DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(bvnand, ~, |, ~)
+DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(bvnor, ~, &, ~)
+DEFINE_CONCRETE_BIN_OP_LOGIC_DUAL(bveqv, +, |, ~)
+
 #define DEFINE_CONCRETE_BIN_OP_MULTIWORD_add2(bits, name, op)                  \
   static inline void __qce_concrete_bv##bits##_##name(                         \
       int##bits##_t lhs_low, int##bits##_t lhs_high,                           \
@@ -301,6 +317,12 @@ DEFINE_EXPR_BIN_OP_MULTIWORD2_DUAL(muls2)
 DEFINE_EXPR_BIN_OP_DUAL(bvand)
 DEFINE_EXPR_BIN_OP_DUAL(bvor)
 DEFINE_EXPR_BIN_OP_DUAL(bvxor)
+
+DEFINE_EXPR_BIN_OP_DUAL(bvandc)
+DEFINE_EXPR_BIN_OP_DUAL(bvorc)
+DEFINE_EXPR_BIN_OP_DUAL(bvnand)
+DEFINE_EXPR_BIN_OP_DUAL(bvnor)
+DEFINE_EXPR_BIN_OP_DUAL(bveqv)
 
 /*
  * Testing
@@ -1008,6 +1030,87 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(bvor)
   }                                                                            \
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(bvxor)
+
+#define QCE_UNIT_TEST_EXPR_bvnand(bits)                                        \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(bvnand_i##bits) {                                \
+    /* 1 & 2 == -1 */                                                          \
+    QCEExpr v1, v2, r;                                                         \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_init_v##bits(&v2, 2);                                             \
+    qce_expr_bvnand_i##bits(&solver, &v1, &v2, &r);                            \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == -1);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* -1 & (-3) == 2 */                                                       \
+    QCEExpr v1m, v3m, r;                                                       \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    qce_expr_init_v##bits(&v3m, -3);                                           \
+    qce_expr_bvnand_i##bits(&solver, &v1m, &v3m, &r);                          \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 2);                                                  \
+  }                                                                            \
+  {                                                                            \
+    /* a & b == b & a */                                                       \
+    QCEExpr a, b, r;                                                           \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_s##bits(&solver, &b);                                        \
+    qce_expr_bvnand_i##bits(&solver, &a, &b, &r);                              \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(                                                   \
+               &solver, qce_smt_z3_bv##bits##_eq(                              \
+                            &solver, r.symbolic,                               \
+                            qce_smt_z3_bv##bits##_bvand(&solver, b.symbolic,   \
+                                                        a.symbolic))) ==       \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  {                                                                            \
+    /* a & 0 == -1 */                                                          \
+    QCEExpr v0, a, r;                                                          \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_bvnand_i##bits(&solver, &a, &v0, &r);                             \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0);                                                  \
+  }                                                                            \
+  {                                                                            \
+    /* a & -1 == -a - 1 */                                                     \
+    QCEExpr v1m, a, r;                                                         \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_bvnand_i##bits(&solver, &a, &v1m, &r);                            \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(&solver, r.symbolic,      \
+                              qce_smt_z3_bv##bits##_add(&solver,               \
+                                qce_smt_z3_bv##bits##_mul(&solver,             \
+                                a.symbolic, qce_smt_z3_bv##bits##_value(&solver, v1m.v_i##bits)),\
+                                qce_smt_z3_bv##bits##_value(&solver, v1m.v_i##bits)))) ==              \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  {                                                                            \
+    /* a & a == -a - 1 */                                                      \
+    QCEExpr v1m, a, r;                                                         \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_bvnand_i##bits(&solver, &a, &a, &r);                              \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(&solver, r.symbolic,      \
+                              qce_smt_z3_bv##bits##_add(&solver,               \
+                                qce_smt_z3_bv##bits##_mul(&solver,             \
+                                a.symbolic, qce_smt_z3_bv##bits##_value(&solver, v1m.v_i##bits)),\
+                                qce_smt_z3_bv##bits##_value(&solver, v1m.v_i##bits)))) ==              \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(bvnand)
 #endif
 
 #endif /* QCE_EXPR_BIN_OP_H */
