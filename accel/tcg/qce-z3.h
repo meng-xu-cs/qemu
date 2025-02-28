@@ -454,6 +454,59 @@ static inline size_t qce_smt_z3_solve_for(SolverZ3 *solver, Z3_ast cond,
   return output_size;
 }
 
+static void qce_Z3_mk_bvadd2(Z3_context ctx,
+                             Z3_ast t1_low, Z3_ast t1_high,
+                             Z3_ast t2_low, Z3_ast t2_high,
+                             Z3_ast *t0_low, Z3_ast *t0_high) {
+  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, t1_low));
+
+  Z3_ast t1 = Z3_mk_concat(ctx, t1_high, t1_low);
+  Z3_ast t2 = Z3_mk_concat(ctx, t2_high, t2_low);
+  Z3_ast t0 = Z3_mk_bvadd(ctx, t1, t2);
+
+  *t0_low = Z3_mk_extract(ctx, nbits-1, 0, t0);
+  *t0_high = Z3_mk_extract(ctx, 2*nbits-1, nbits, t0);
+}
+
+static void qce_Z3_mk_bvsub2(Z3_context ctx,
+                             Z3_ast t1_low, Z3_ast t1_high,
+                             Z3_ast t2_low, Z3_ast t2_high,
+                             Z3_ast *t0_low, Z3_ast *t0_high) {
+  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, t1_low));
+
+  Z3_ast t1 = Z3_mk_concat(ctx, t1_high, t1_low);
+  Z3_ast t2 = Z3_mk_concat(ctx, t2_high, t2_low);
+  Z3_ast t0 = Z3_mk_bvsub(ctx, t1, t2);
+
+  *t0_low = Z3_mk_extract(ctx, nbits-1, 0, t0);
+  *t0_high = Z3_mk_extract(ctx, 2*nbits-1, nbits, t0);
+}
+
+// static void qce_Z3_mk_bvmulu2(Z3_context ctx, Z3_ast t1, Z3_ast t2, Z3_ast t0[]) {
+//   unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, t1));
+
+//   t1 = Z3_mk_sign_ext(ctx, nbits, t1);
+//   t2 = Z3_mk_sign_ext(ctx, nbits, t2);
+
+//   Z3_ast result = Z3_mk_bvmul(ctx, t1, t2);
+
+//   t0[0] = Z3_mk_extract(ctx, nbits-1, 0, result);
+//   t0[1] = Z3_mk_extract(ctx, 2*nbits-1, nbits, result);
+// }
+
+static void qce_Z3_mk_bvmuls2(Z3_context ctx, Z3_ast t1, Z3_ast t2,
+                              Z3_ast *t0_low, Z3_ast *t0_high) {
+  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, t1));
+
+  t1 = Z3_mk_sign_ext(ctx, nbits, t1);
+  t2 = Z3_mk_sign_ext(ctx, nbits, t2);
+
+  Z3_ast result = Z3_mk_bvmul(ctx, t1, t2);
+
+  *t0_low = Z3_mk_extract(ctx, nbits-1, 0, result);
+  *t0_high = Z3_mk_extract(ctx, 2*nbits-1, nbits, result);
+}
+
 /*
  * Template
  */
@@ -505,6 +558,39 @@ static inline size_t qce_smt_z3_solve_for(SolverZ3 *solver, Z3_ast cond,
 #define DEFINE_SMT_Z3_OP2_DUAL_EX(name, func)                                  \
   DEFINE_SMT_Z3_OP2_EX(32, name, func)                                         \
   DEFINE_SMT_Z3_OP2_EX(64, name, func)
+
+#define DEFINE_SMT_Z3_OP2_RES2(bits, name, func)                               \
+static inline void qce_smt_z3_bv##bits##_##name(SolverZ3 *solver,            \
+Z3_ast lhs, Z3_ast rhs,      \
+Z3_ast *res_low,             \
+Z3_ast *res_high) {          \
+__qce_smt_z3_type_check_bv##bits(solver, lhs);                             \
+__qce_smt_z3_type_check_bv##bits(solver, rhs);                             \
+func(solver->ctx, lhs, rhs, res_low, res_high);                            \
+*res_low = __qce_smt_z3_simplify(solver, *res_low);                        \
+*res_high = __qce_smt_z3_simplify(solver, *res_high);                      \
+}
+
+#define DEFINE_SMT_Z3_OP2_RES2_DUAL(name, func)                                \
+DEFINE_SMT_Z3_OP2_RES2(32, name, func)                                       \
+DEFINE_SMT_Z3_OP2_RES2(64, name, func)
+
+#define DEFINE_SMT_Z3_OP4(bits, name, func)                                    \
+  static inline void qce_smt_z3_bv##bits##_##name(SolverZ3 *solver,            \
+      Z3_ast lhs_low, Z3_ast lhs_high, Z3_ast rhs_low, Z3_ast rhs_high,        \
+      Z3_ast *res_low, Z3_ast *res_high) {                                     \
+    __qce_smt_z3_type_check_bv##bits(solver, lhs_low);                         \
+    __qce_smt_z3_type_check_bv##bits(solver, lhs_high);                        \
+    __qce_smt_z3_type_check_bv##bits(solver, rhs_low);                         \
+    __qce_smt_z3_type_check_bv##bits(solver, rhs_high);                        \
+    func(solver->ctx, lhs_low, lhs_high, rhs_low, rhs_high, res_low, res_high);\
+    *res_low = __qce_smt_z3_simplify(solver, *res_low);                        \
+    *res_high = __qce_smt_z3_simplify(solver, *res_high);                      \
+}
+
+#define DEFINE_SMT_Z3_OP4_DUAL(name, func)                                     \
+  DEFINE_SMT_Z3_OP4(32, name, func)                                            \
+  DEFINE_SMT_Z3_OP4(64, name, func)
 
 /*
  * Bit-vector
@@ -603,6 +689,15 @@ DEFINE_SMT_Z3_OP2_DUAL(mul, Z3_mk_bvmul)
 DEFINE_SMT_Z3_OP2_DUAL(div, Z3_mk_bvsdiv)
 DEFINE_SMT_Z3_OP2_DUAL(smod, Z3_mk_bvsrem)
 DEFINE_SMT_Z3_OP2_DUAL(umod, Z3_mk_bvurem)
+
+/*
+ * Multiword Arithmetics
+ */
+
+DEFINE_SMT_Z3_OP4_DUAL(add2, qce_Z3_mk_bvadd2)
+DEFINE_SMT_Z3_OP4_DUAL(sub2, qce_Z3_mk_bvsub2)
+//DEFINE_SMT_Z3_OP2_RES2_DUAL(mulu2, qce_Z3_mk_bvmulu2)
+DEFINE_SMT_Z3_OP2_RES2_DUAL(muls2, qce_Z3_mk_bvmuls2)
 
 /*
  * Comparisons
