@@ -24,6 +24,14 @@ DEFINE_SYM_INST_BIN_OP(mul, 64)
 DEFINE_SYM_INST_BIN_OP(div, 32)
 DEFINE_SYM_INST_BIN_OP(div, 64)
 
+
+DEFINE_SYM_INST_BIN_OP(shl, 32)
+DEFINE_SYM_INST_BIN_OP(shl, 64)
+DEFINE_SYM_INST_BIN_OP(shr, 32)
+DEFINE_SYM_INST_BIN_OP(shr, 64)
+DEFINE_SYM_INST_BIN_OP(sar, 32)
+DEFINE_SYM_INST_BIN_OP(sar, 64)
+
 #define HANDLE_SYM_INST_BIN_OP(key, name, bits)                                \
   case QCE_INST_##key##_I##bits: {                                             \
     qce_sym_inst_##name##_i##bits(                                             \
