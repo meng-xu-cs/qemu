@@ -693,6 +693,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP(SUB, sub, 32);
       HANDLE_SYM_INST_BIN_OP(SUB, sub, 64);
 
+      HANDLE_SYM_INST_BIN_OP(MUL, mul, 32);
+      HANDLE_SYM_INST_BIN_OP(MUL, mul, 64);
+
+      HANDLE_SYM_INST_BIN_OP(DIV, div, 32);
+      HANDLE_SYM_INST_BIN_OP(DIV, div, 64);
+
       /* bitwise */
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 32);
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 64);
