@@ -108,6 +108,8 @@ QCE_UNIT_TEST_EXPR_EPILOGUE
 
 #include "qce-expr-ld-st.h"
 
+#include "qce-expr-mov.h"
+
 #ifndef QCE_RELEASE
 static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN(basics);
