@@ -674,6 +674,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_mov(32);
       HANDLE_SYM_INST_mov(64);
 
+      HANDLE_SYM_INST_movcond(32);
+      HANDLE_SYM_INST_movcond(64);
+
       /* sign/zero extend */
       HANDLE_SYM_INST_ext(32, 8, u, U);
       HANDLE_SYM_INST_ext(32, 8, s, S);
