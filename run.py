@@ -990,7 +990,7 @@ def main() -> None:
     parser_dev_e2e.add_argument("--trace", action="store_true")
 
     parser_dev_check = sub_dev.add_parser("check")
-    parser_dev_check.add_argument("--unit")
+    parser_dev_check.add_argument("--unit", action="store_true") # need confirmed
 
     #
     # base commands

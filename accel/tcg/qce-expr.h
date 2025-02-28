@@ -108,12 +108,20 @@ QCE_UNIT_TEST_EXPR_EPILOGUE
 
 #include "qce-expr-ld-st.h"
 
+#include "qce-expr-mov.h"
+
 #ifndef QCE_RELEASE
 static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN(basics);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(add);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(sub);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(mul);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(div);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(add2);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(sub2);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(mulu2);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(muls2);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(special_a_add_then_sub);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(eq);
@@ -131,6 +139,11 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvand);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvor);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvxor);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvandc);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvorc);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnand);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnor);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(eqv);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(st8);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(st8_symbolic);
