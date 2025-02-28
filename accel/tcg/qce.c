@@ -715,6 +715,16 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 32);
       HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 64);
 
+      /* shifts/rotates */
+      HANDLE_SYM_INST_BIN_OP(SHL, shl, 32);
+      HANDLE_SYM_INST_BIN_OP(SHL, shl, 64);
+
+      HANDLE_SYM_INST_BIN_OP(SHR, shr, 32);
+      HANDLE_SYM_INST_BIN_OP(SHR, shr, 64);
+
+      HANDLE_SYM_INST_BIN_OP(SAR, sar, 32);
+      HANDLE_SYM_INST_BIN_OP(SAR, sar, 64);
+
       /* bitwise */
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 32);
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 64);

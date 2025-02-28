@@ -778,6 +778,14 @@ DEFINE_SMT_Z3_OP4_DUAL(sub2, qce_Z3_mk_bvsub2)
 DEFINE_SMT_Z3_OP2_RES2_DUAL(muls2, qce_Z3_mk_bvmuls2)
 
 /*
+ * Shifts/Rotates
+ */
+
+DEFINE_SMT_Z3_OP2_DUAL(shl, Z3_mk_bvshl)
+DEFINE_SMT_Z3_OP2_DUAL(shr, Z3_mk_bvlshr)
+DEFINE_SMT_Z3_OP2_DUAL(sar, Z3_mk_bvashr)
+
+/*
  * Comparisons
  */
 
