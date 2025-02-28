@@ -116,6 +116,10 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(sub);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(mul);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(div);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(add2);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(sub2);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(mulu2);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(muls2);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(special_a_add_then_sub);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(eq);
