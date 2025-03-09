@@ -2,6 +2,22 @@
 #define QCE_EXPR_UNI_OP_H
 
 /*
+ * Utilities
+ */
+
+#define DEFINE_CONCRETE_UNI_OP_SIGNED(bits, name, op)                          \
+  static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
+      int##bits##_t operand) {                                                 \
+    return op operand;                                                         \
+}
+
+#define DEFINE_CONCRETE_UNI_OP_SIGNED_DUAL(name, op)                           \
+  DEFINE_CONCRETE_UNI_OP_SIGNED(32, name, op)                                  \
+  DEFINE_CONCRETE_UNI_OP_SIGNED(64, name, op)
+
+DEFINE_CONCRETE_UNI_OP_SIGNED_DUAL(neg, -)
+
+/*
  * Templates
  */
 
@@ -34,5 +50,7 @@
 #define DEFINE_EXPR_UNI_OP_DUAL(name)                                          \
   DEFINE_EXPR_UNI_OP(32, name)                                                 \
   DEFINE_EXPR_UNI_OP(64, name)
+
+DEFINE_EXPR_UNI_OP_DUAL(neg)
 
 #endif /* QCE_EXPR_UNI_OP_H */

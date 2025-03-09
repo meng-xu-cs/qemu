@@ -38,8 +38,6 @@ DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvand, &)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvor, |)
 DEFINE_CONCRETE_BIN_OP_SIGNED_DUAL(bvxor, ^)
 
-
-
 #define DEFINE_CONCRETE_BIN_OP_LOGIC(bits, name, op1, op2, op3)                \
   static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
       int##bits##_t lhs, int##bits##_t rhs) {                                  \

@@ -767,6 +767,7 @@ DEFINE_SMT_Z3_OP2_DUAL(mul, Z3_mk_bvmul)
 DEFINE_SMT_Z3_OP2_DUAL(div, Z3_mk_bvsdiv)
 DEFINE_SMT_Z3_OP2_DUAL(smod, Z3_mk_bvsrem)
 DEFINE_SMT_Z3_OP2_DUAL(umod, Z3_mk_bvurem)
+DEFINE_SMT_Z3_OP1_DUAL(neg, Z3_mk_bvneg)
 
 /*
  * Multiword Arithmetics
