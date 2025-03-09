@@ -1,8 +1,8 @@
 #ifndef QCE_EXPR_MOVE_H
 #define QCE_EXPR_MOVE_H
 
-#define DEFINE_CONCRETE_MOVCOND(bits)                                          \
-  static inline QCEExpr *__qce_concrete_bv##bits##_movcond(                    \
+#define DEFINE_CONCRETE_COND_MOV(bits)                                         \
+  static inline QCEExpr *__qce_concrete_bv##bits##_COND_MOV(                   \
       int##bits##_t lhs, int##bits##_t rhs,                                    \
       QCEExpr * val1, QCEExpr * val2, tcg_target_ulong cond) {                 \
     bool result;                                                               \
@@ -44,19 +44,23 @@
       result = (lhs & rhs) != 0;                                               \
       break;                                                                   \
     default:                                                                   \
-      qce_fatal("movcond: condition not handled");                             \
+      qce_fatal("[Conditional Move] condition not handled");                   \
     }                                                                          \
     return result ? val1: val2;                                                \
   }
 
-#define DEFINE_CONCRETE_MOVCOND_DUAL                                           \
-  DEFINE_CONCRETE_MOVCOND(32)                                                  \
-  DEFINE_CONCRETE_MOVCOND(64)
+#define DEFINE_CONCRETE_COND_MOV_DUAL                                          \
+  DEFINE_CONCRETE_COND_MOV(32)                                                 \
+  DEFINE_CONCRETE_COND_MOV(64)
 
-DEFINE_CONCRETE_MOVCOND_DUAL
+DEFINE_CONCRETE_COND_MOV_DUAL
 
-#define DEFINE_EXPR_MOVECOND(bits)                                             \
-  static inline void qce_expr_movcond_i##bits(                                 \
+#define DEFINE_CONCRETE_SETMOVE_DUAL                                           \
+  DEFINE_CONCRETE_SETMOVE(32)                                                  \
+  DEFINE_CONCRETE_SETMOVE(64)
+
+#define DEFINE_EXPR_COND_MOV(bits)                                             \
+  static inline void qce_expr_COND_MOV_i##bits(                                \
       SolverZ3 *solver, QCEExpr *lhs, QCEExpr *rhs,                            \
       QCEExpr *val1, QCEExpr *val2, tcg_target_ulong cond, QCEExpr *result) {  \
     /* type checking */                                                        \
@@ -69,26 +73,26 @@ DEFINE_CONCRETE_MOVCOND_DUAL
     /* base assignment */                                                      \
     if (lhs->mode == QCE_EXPR_CONCRETE) {                                      \
       if (rhs->mode == QCE_EXPR_CONCRETE) {                                    \
-        result = __qce_concrete_bv##bits##_movcond(lhs->v_i##bits,             \
+        result = __qce_concrete_bv##bits##_COND_MOV(lhs->v_i##bits,            \
                                                    rhs->v_i##bits,             \
                                                    val1, val2, cond);          \
       } else {                                                                 \
         result->mode = QCE_EXPR_SYMBOLIC;                                      \
-        result->symbolic = qce_smt_z3_bv##bits##_movcond(                      \
+        result->symbolic = qce_smt_z3_bv##bits##_COND_MOV(                     \
             solver, qce_smt_z3_bv##bits##_value(solver, lhs->v_i##bits),       \
             rhs->symbolic, val1->mode == QCE_EXPR_SYMBOLIC ? val1->symbolic : qce_smt_z3_bv##bits##_value(solver, val1->v_i##bits), val2->mode == QCE_EXPR_SYMBOLIC ? val2->symbolic : qce_smt_z3_bv##bits##_value(solver, val2->v_i##bits), cond);                                  \
       }                                                                        \
     } else {                                                                   \
       if (rhs->mode == QCE_EXPR_CONCRETE) {                                    \
         result->mode = QCE_EXPR_SYMBOLIC;                                      \
-        result->symbolic = qce_smt_z3_bv##bits##_movcond(                      \
+        result->symbolic = qce_smt_z3_bv##bits##_COND_MOV(                     \
             solver, lhs->symbolic,                                             \
             qce_smt_z3_bv##bits##_value(solver, rhs->v_i##bits),               \
             val1->mode == QCE_EXPR_SYMBOLIC ? val1->symbolic : qce_smt_z3_bv##bits##_value(solver, val1->v_i##bits), val2->mode == QCE_EXPR_SYMBOLIC ? val2->symbolic : qce_smt_z3_bv##bits##_value(solver, val2->v_i##bits), cond);                                                 \
       } else {                                                                 \
         result->mode = QCE_EXPR_SYMBOLIC;                                      \
         result->symbolic =                                                     \
-            qce_smt_z3_bv##bits##_movcond(solver, lhs->symbolic,               \
+            qce_smt_z3_bv##bits##_COND_MOV(solver, lhs->symbolic,              \
                                           rhs->symbolic, val1->mode == QCE_EXPR_SYMBOLIC ? val1->symbolic : qce_smt_z3_bv##bits##_value(solver, val1->v_i##bits), val2->mode == QCE_EXPR_SYMBOLIC ? val2->symbolic : qce_smt_z3_bv##bits##_value(solver, val2->v_i##bits), cond);    \
       }                                                                        \
     }                                                                          \
@@ -103,10 +107,10 @@ DEFINE_CONCRETE_MOVCOND_DUAL
     }                                                                          \
   }
 
-#define DEFINE_EXPR_MOVECOND_DUAL                                              \
-  DEFINE_EXPR_MOVECOND(32)                                                     \
-  DEFINE_EXPR_MOVECOND(64)
+#define DEFINE_EXPR_COND_MOV_DUAL                                              \
+  DEFINE_EXPR_COND_MOV(32)                                                     \
+  DEFINE_EXPR_COND_MOV(64)
 
-DEFINE_EXPR_MOVECOND_DUAL
+DEFINE_EXPR_COND_MOV_DUAL
 
 #endif /* QCE_EXPR_LD_ST_H */

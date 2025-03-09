@@ -230,7 +230,7 @@ static inline void qce_state_env_put_concrete_i32(QCEState *state,
                                                   intptr_t addr, int32_t val) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_put_concrete_i32] misaligned address for env location");
   }
 #endif
   qce_cell_holder_put_concrete_i32(&state->env, (gpointer)addr, val);
@@ -240,7 +240,7 @@ static inline void qce_state_env_put_symbolic_i32(QCEState *state,
                                                   intptr_t addr, Z3_ast ast) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_put_symbolic_i32] misaligned address for env location");
   }
 #endif
   qce_cell_holder_put_symbolic_i32(&state->env, (gpointer)addr, ast);
@@ -267,7 +267,7 @@ static inline void qce_state_env_put_concrete_i64(QCEState *state,
                                                   intptr_t addr, int64_t val) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_put_concrete_i64] misaligned address for env location");
   }
 #endif
   int32_t *cell = (int32_t *)&val;
@@ -283,7 +283,7 @@ static inline void qce_state_env_put_symbolic_i64(QCEState *state,
                                                   intptr_t addr, Z3_ast ast) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_put_symbolic_i64] misaligned address for env location");
   }
 #endif
 
@@ -317,7 +317,7 @@ static inline void qce_state_env_get_i32(QCEState *state, intptr_t addr,
                                          QCEExpr *expr) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_get_i32] misaligned address for env location");
   }
 #endif
 
@@ -348,7 +348,7 @@ static inline void qce_state_env_get_i64(QCEState *state, intptr_t addr,
                                          QCEExpr *expr) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for env location");
+    qce_fatal("[qce_state_env_get_i64] misaligned address for env location");
   }
 #endif
 
@@ -448,7 +448,7 @@ static inline void qce_state_mem_put_concrete_i32(QCEState *state,
                                                   int32_t val) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_put_concrete_i32] misaligned address for mem location");
   }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
@@ -461,7 +461,7 @@ static inline void qce_state_mem_put_symbolic_i32(QCEState *state,
                                                   Z3_ast ast) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_put_symbolic_i32] misaligned address for mem location");
   }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
@@ -491,7 +491,7 @@ static inline void qce_state_mem_put_concrete_i64(QCEState *state,
                                                   int64_t val) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_put_concrete_i64] misaligned address for mem location");
   }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
@@ -510,7 +510,7 @@ static inline void qce_state_mem_put_symbolic_i64(QCEState *state,
                                                   Z3_ast ast) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_put_symbolic_i64] misaligned address for mem location");
   }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
@@ -544,7 +544,7 @@ static inline void qce_state_mem_get_i32(CPUArchState *env, QCEState *state,
                                          QCEExpr *expr) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_get_i32] misaligned address for mem location");
   }
 #endif
 
@@ -577,7 +577,7 @@ static inline void qce_state_mem_get_i64(CPUArchState *env, QCEState *state,
                                          QCEExpr *expr) {
 #ifndef QCE_RELEASE
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("misaligned address for mem location");
+    qce_fatal("[qce_state_mem_get_i64] qce_state_mem_get_i64: misaligned address for mem location");
   }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);

@@ -48,6 +48,70 @@ DEFINE_SYM_INST_ext(64, 32, s);
     break;                                                                     \
   }
 
+#define DEFINE_SYM_INST_setcond(bits)                                          \
+  static inline void qce_sym_inst_setcond_i##bits(                             \
+      CPUArchState *env, QCEState *state, QCEVar *v1, QCEVar *v2,              \
+      tcg_target_ulong cond, QCEVar *res) {                                    \
+    QCEExpr expr_c1, expr_c2, expr_v1, expr_v2;                                \
+    expr_c1.mode = QCE_EXPR_CONCRETE;                                          \
+    expr_c1.type = QCE_EXPR_I##bits;                                           \
+    expr_c1.v_i##bits = 1;                                                     \
+    expr_c2.mode = QCE_EXPR_CONCRETE;                                          \
+    expr_c2.type = QCE_EXPR_I##bits;                                           \
+    expr_c2.v_i##bits = 0;                                                     \
+    qce_state_get_var(env, state, v1, &expr_v1);                               \
+    qce_state_get_var(env, state, v2, &expr_v2);                               \
+                                                                               \
+    QCEExpr expr_res;                                                          \
+    qce_expr_COND_MOV##_i##bits(&state->solver_z3, &expr_c1, &expr_c2,         \
+                                &expr_v1, &expr_v2, cond, &expr_res);          \
+    qce_state_put_var(env, state, res, &expr_res);                             \
+}
+
+DEFINE_SYM_INST_setcond(32);
+DEFINE_SYM_INST_setcond(64);
+
+#define HANDLE_SYM_INST_setcond(bits)                                          \
+  case QCE_INST_SETCOND_I##bits: {                                             \
+    qce_sym_inst_setcond_i##bits(                                              \
+        arch, &session->state,                                                 \
+        &inst->i_setcond_i##bits.v1, &inst->i_setcond_i##bits.v2,              \
+        inst->i_setcond_i##bits.cond,&inst->i_setcond_i##bits.res);            \
+    break;                                                                     \
+}
+
+#define DEFINE_SYM_INST_negsetcond(bits)                                       \
+  static inline void qce_sym_inst_negsetcond_i##bits(                          \
+      CPUArchState *env, QCEState *state, QCEVar *v1, QCEVar *v2,              \
+      tcg_target_ulong cond, QCEVar *res) {                                    \
+    QCEExpr expr_c1, expr_c2, expr_v1, expr_v2;                                \
+    expr_c1.mode = QCE_EXPR_CONCRETE;                                          \
+    expr_c1.type = QCE_EXPR_I##bits;                                           \
+    expr_c1.v_i##bits = -1;                                                    \
+    expr_c2.mode = QCE_EXPR_CONCRETE;                                          \
+    expr_c2.type = QCE_EXPR_I##bits;                                           \
+    expr_c2.v_i##bits = 0;                                                     \
+    qce_state_get_var(env, state, v1, &expr_v1);                               \
+    qce_state_get_var(env, state, v2, &expr_v2);                               \
+                                                                               \
+    QCEExpr expr_res;                                                          \
+    qce_expr_COND_MOV##_i##bits(&state->solver_z3, &expr_c1, &expr_c2,         \
+                                &expr_v1, &expr_v2, cond, &expr_res);          \
+    qce_state_put_var(env, state, res, &expr_res);                             \
+}
+
+DEFINE_SYM_INST_negsetcond(32);
+DEFINE_SYM_INST_negsetcond(64);
+
+#define HANDLE_SYM_INST_negsetcond(bits)                                       \
+  case QCE_INST_NEGSETCOND_I##bits: {                                          \
+    qce_sym_inst_negsetcond_i##bits(                                           \
+        arch, &session->state,                                                 \
+        &inst->i_negsetcond_i##bits.v1, &inst->i_negsetcond_i##bits.v2,        \
+        inst->i_negsetcond_i##bits.cond,&inst->i_negsetcond_i##bits.res);      \
+    break;                                                                     \
+}
+
 #define DEFINE_SYM_INST_movcond(bits)                                          \
   static inline void qce_sym_inst_movcond_i##bits(                             \
       CPUArchState *env, QCEState *state, QCEVar *c1, QCEVar *c2,              \
@@ -59,7 +123,7 @@ DEFINE_SYM_INST_ext(64, 32, s);
     qce_state_get_var(env, state, v2, &expr_v2);                               \
                                                                                \
     QCEExpr expr_res;                                                          \
-    qce_expr_movcond##_i##bits(&state->solver_z3, &expr_c1, &expr_c2,          \
+    qce_expr_COND_MOV##_i##bits(&state->solver_z3, &expr_c1, &expr_c2,         \
                                &expr_v1, &expr_v2, cond, &expr_res);           \
     qce_state_put_var(env, state, res, &expr_res);                             \
 }

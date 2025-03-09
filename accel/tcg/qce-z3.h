@@ -519,7 +519,7 @@ static Z3_ast qce_Z3_mk_bveqv(Z3_context ctx, Z3_ast t1, Z3_ast t2) {
   return Z3_mk_bvxor(ctx, t1, Z3_mk_bvnot(ctx, t2));
 }
 
-static Z3_ast qce_Z3_mk_movcond(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v1, Z3_ast v2, tcg_target_ulong cond) {
+static Z3_ast qce_Z3_mk_COND_MOV(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v1, Z3_ast v2, tcg_target_ulong cond) {
   Z3_context ctx = solver->ctx;
   unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, c1));
   Z3_ast zero = nbits == 32 ? Z3_mk_int(solver->ctx, 0, solver->sort_bv32) : Z3_mk_int(solver->ctx, 0, solver->sort_bv64);
@@ -562,7 +562,7 @@ static Z3_ast qce_Z3_mk_movcond(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v
     condition = Z3_mk_distinct(ctx, 2, (Z3_ast[]){Z3_mk_bvand(ctx, c1, c2), zero});
     break;
   default:
-    qce_fatal("movcond: condition not handled");
+    qce_fatal("[Conditional Move] condition not handled");
   }
   return Z3_mk_ite(ctx, condition, v1, v2);
 }
@@ -652,8 +652,8 @@ static Z3_ast qce_Z3_mk_movcond(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v
   DEFINE_SMT_Z3_OP4(32, name, func)                                            \
   DEFINE_SMT_Z3_OP4(64, name, func)
 
-#define DEFINE_SMT_Z3_MOVCOND(bits, name, func)                                \
-  static inline Z3_ast qce_smt_z3_bv##bits##_##name(SolverZ3 *solver,          \
+#define DEFINE_SMT_Z3_COND_MOV(bits, func)                                     \
+  static inline Z3_ast qce_smt_z3_bv##bits##_COND_MOV(SolverZ3 *solver,        \
       Z3_ast lhs, Z3_ast rhs, Z3_ast val1, Z3_ast val2,                        \
       tcg_target_ulong cond) {                                                 \
     __qce_smt_z3_type_check_bv##bits(solver, lhs);                             \
@@ -664,9 +664,9 @@ static Z3_ast qce_Z3_mk_movcond(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v
                                  func(solver, lhs, rhs, val1, val2, cond));    \
 }
 
-#define DEFINE_SMT_Z3_MOVCOND_DUAL(name, func)                                 \
-  DEFINE_SMT_Z3_MOVCOND(32, name, func)                                        \
-  DEFINE_SMT_Z3_MOVCOND(64, name, func)
+#define DEFINE_SMT_Z3_COND_MOV_DUAL(func)                                      \
+  DEFINE_SMT_Z3_COND_MOV(32, func)                                             \
+  DEFINE_SMT_Z3_COND_MOV(64, func)
 
 /*
  * Bit-vector
@@ -755,7 +755,7 @@ DEFINE_SMT_Z3_OP1_ld_s(64, 16);
 DEFINE_SMT_Z3_OP1_ld_u(64, 32);
 DEFINE_SMT_Z3_OP1_ld_s(64, 32);
 
-DEFINE_SMT_Z3_MOVCOND_DUAL(movcond, qce_Z3_mk_movcond);
+DEFINE_SMT_Z3_COND_MOV_DUAL(qce_Z3_mk_COND_MOV);
 
 /*
  * Arithmetics

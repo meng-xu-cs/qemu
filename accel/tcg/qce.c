@@ -582,6 +582,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
                                    state->solver_z3.blob_addr);
     qce_state_env_put_symbolic_i64(state, (intptr_t)&arch->regs[R_ESI],
                                    state->solver_z3.blob_size);
+
     session->mode = QCE_Tracing_Running;
     qce_debug("target function confirmed, start tracing");
   }
@@ -673,6 +674,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       /* assignment */
       HANDLE_SYM_INST_mov(32);
       HANDLE_SYM_INST_mov(64);
+
+      HANDLE_SYM_INST_setcond(32);
+      HANDLE_SYM_INST_setcond(64);
+
+      HANDLE_SYM_INST_negsetcond(32);
+      HANDLE_SYM_INST_negsetcond(64);
 
       HANDLE_SYM_INST_movcond(32);
       HANDLE_SYM_INST_movcond(64);

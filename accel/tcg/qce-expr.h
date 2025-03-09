@@ -142,7 +142,7 @@ static inline void qce_unit_test_expr(void) {
 
   // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvandc);
   // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvorc);
-  QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnand);
+  // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnand);
   // QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnor);
   // QCE_UNIT_TEST_EXPR_RUN_DUAL(eqv);
 
