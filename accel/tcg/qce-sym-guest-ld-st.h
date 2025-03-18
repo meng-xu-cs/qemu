@@ -72,7 +72,7 @@ static inline void __check_memop_validity(QCEState *state, MemOp mo,
 #define __check_memop_validity(mo, addr, access_bytes)
 #endif
 
-static inline void __prepare_expr_for_memop_i32(QCEState *state, MemOp mo,
+static inline void __prepare_expr_for_ld_memop_i32(QCEState *state, MemOp mo,
                                                 QCEExpr *val, QCEExpr *res) {
   if (mo & MO_SIGN) {
     switch (mo & MO_SIZE) {
@@ -117,7 +117,7 @@ static inline void __prepare_expr_for_memop_i32(QCEState *state, MemOp mo,
   }
 }
 
-static inline void __prepare_expr_for_memop_i64(QCEState *state, MemOp mo,
+static inline void __prepare_expr_for_ld_memop_i64(QCEState *state, MemOp mo,
                                                 QCEExpr *val, QCEExpr *res) {
   if (mo & MO_SIGN) {
     switch (mo & MO_SIZE) {
@@ -164,6 +164,53 @@ static inline void __prepare_expr_for_memop_i64(QCEState *state, MemOp mo,
   }
 }
 
+static inline void __prepare_expr_for_st_memop_i32(QCEState *state, MemOp mo,
+                                                QCEExpr *val, QCEExpr *res) {
+  switch (mo & MO_SIZE) {
+  case MO_8: {
+    *(uint8_t *)&res->v_i32 = (uint8_t)val->v_i32;
+    break;
+  }
+  case MO_16: {
+    *(uint16_t *)&res->v_i32 = (uint16_t)val->v_i32;
+    break;
+  }
+  case MO_32: {
+    memcpy(res, val, sizeof(QCEExpr));
+    break;
+  }
+  case MO_64: {
+    qce_fatal("64-bit operation observed on a 32-bit guest memory access");
+  }
+  default:
+    __qce_unreachable__
+  }
+}
+
+static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
+                                                QCEExpr *val, QCEExpr *res) {
+  switch (mo & MO_SIZE) {
+  case MO_8: {
+    *(uint8_t *)&res->v_i64 = (uint8_t)val->v_i64;
+    break;
+  }
+  case MO_16: {
+    *(uint16_t *)&res->v_i64 = (uint16_t)val->v_i64;
+    break;
+  }
+  case MO_32: {
+    *(uint32_t *)&res->v_i64 = (uint32_t)val->v_i64;
+    break;
+  }
+  case MO_64: {
+    memcpy(res, val, sizeof(QCEExpr));
+    break;
+  }
+  default:
+    __qce_unreachable__
+  }
+}
+
 #define DEFINE_SYM_INST_qemu_ld(bits)                                          \
   static inline void qce_sym_inst_guest_ld_i##bits(                            \
       CPUArchState *env, QCEState *state, QCEVar *addr, MemOpIdx flag,         \
@@ -197,7 +244,7 @@ static inline void __prepare_expr_for_memop_i64(QCEState *state, MemOp mo,
                                                                                \
     /* handle the flags */                                                     \
     QCEExpr expr_val;                                                          \
-    __prepare_expr_for_memop_i##bits(state, mo, &expr_cell, &expr_val);        \
+    __prepare_expr_for_ld_memop_i##bits(state, mo, &expr_cell, &expr_val);     \
                                                                                \
     /* put back the result */                                                  \
     qce_state_put_var(env, state, res, &expr_val);                             \
@@ -226,9 +273,11 @@ DEFINE_SYM_INST_qemu_ld(64);
     QCEExpr expr_val;                                                          \
     qce_state_get_var(env, state, val, &expr_val);                             \
                                                                                \
-    /* handle the flags */                                                     \
+    /* load the original value first and then handle the flags */              \
     QCEExpr expr_cell;                                                         \
-    __prepare_expr_for_memop_i##bits(state, mo, &expr_val, &expr_cell);        \
+    qce_state_mem_get_i##bits(env, state, expr_addr.v_i64, mmu_idx,            \
+                              &expr_cell);                                     \
+    __prepare_expr_for_st_memop_i##bits(state, mo, &expr_val, &expr_cell);     \
                                                                                \
     /* store the value */                                                      \
     switch (expr_addr.mode) {                                                  \

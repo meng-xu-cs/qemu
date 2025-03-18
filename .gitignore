@@ -23,3 +23,4 @@ GTAGS
 *.swp
 *.patch
 *.gcov
+tests/qce/e2e/debug/
