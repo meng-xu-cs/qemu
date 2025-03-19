@@ -454,6 +454,10 @@ static inline size_t qce_smt_z3_solve_for(SolverZ3 *solver, Z3_ast cond,
   return output_size;
 }
 
+/*
+ * Customized Z3 APIs
+ */
+
 static void qce_Z3_mk_bvadd2(Z3_context ctx,
                              Z3_ast t1_low, Z3_ast t1_high,
                              Z3_ast t2_low, Z3_ast t2_high,

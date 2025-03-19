@@ -675,14 +675,14 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_mov(32);
       HANDLE_SYM_INST_mov(64);
 
-      HANDLE_SYM_INST_setcond(32);
-      HANDLE_SYM_INST_setcond(64);
+//      HANDLE_SYM_INST_setcond(32);
+//      HANDLE_SYM_INST_setcond(64);
 
-      HANDLE_SYM_INST_negsetcond(32);
-      HANDLE_SYM_INST_negsetcond(64);
+//      HANDLE_SYM_INST_negsetcond(32);
+//      HANDLE_SYM_INST_negsetcond(64);
 
-      HANDLE_SYM_INST_movcond(32);
-      HANDLE_SYM_INST_movcond(64);
+//      HANDLE_SYM_INST_movcond(32);
+//      HANDLE_SYM_INST_movcond(64);
 
       /* sign/zero extend */
       HANDLE_SYM_INST_ext(32, 8, u, U);
@@ -709,31 +709,31 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP(DIV, div, 32);
       HANDLE_SYM_INST_BIN_OP(DIV, div, 64);
 
-      HANDLE_SYM_INST_UNI_OP(NEG, neg, 32);
-      HANDLE_SYM_INST_UNI_OP(NEG, neg, 64);
+//      HANDLE_SYM_INST_UNI_OP(NEG, neg, 32);
+//      HANDLE_SYM_INST_UNI_OP(NEG, neg, 64);
 
       /* multiword arithmetic */
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD(ADD2, add2, 32);
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD(ADD2, add2, 64);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD(ADD2, add2, 32);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD(ADD2, add2, 64);
 
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 32);
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 64);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 32);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 64);
 
       // HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 32);
       // HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 64);
 
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 32);
-      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 64);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 32);
+//      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 64);
 
       /* shifts/rotates */
-      HANDLE_SYM_INST_BIN_OP(SHL, shl, 32);
-      HANDLE_SYM_INST_BIN_OP(SHL, shl, 64);
+//      HANDLE_SYM_INST_BIN_OP(SHL, shl, 32);
+//      HANDLE_SYM_INST_BIN_OP(SHL, shl, 64);
 
-      HANDLE_SYM_INST_BIN_OP(SHR, shr, 32);
-      HANDLE_SYM_INST_BIN_OP(SHR, shr, 64);
+//      HANDLE_SYM_INST_BIN_OP(SHR, shr, 32);
+//      HANDLE_SYM_INST_BIN_OP(SHR, shr, 64);
 
-      HANDLE_SYM_INST_BIN_OP(SAR, sar, 32);
-      HANDLE_SYM_INST_BIN_OP(SAR, sar, 64);
+//      HANDLE_SYM_INST_BIN_OP(SAR, sar, 32);
+//      HANDLE_SYM_INST_BIN_OP(SAR, sar, 64);
 
       /* bitwise */
       HANDLE_SYM_INST_BIN_OP_BV(AND, and, 32);
