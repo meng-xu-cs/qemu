@@ -650,7 +650,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
         // TODO: validate this understanding
         break;
       }
-      goto end_of_loop;
+      /*
+	   * If a validated TB has been assigned to goto_tb, we need to manually
+       * execute the TB since QEMU will not go back to the main loop and
+	   * invoke qce_on_tcg_tb_executed until all the TBs in the chaining have
+       * been executed.
+	   * Otherwise, just simply return and let QEMU dynamically decides what
+	   * is the next TB to be exeucted.
+	   */
+#ifdef QCE_DEBUG_IR
+	  if (g_qce->trace_file != NULL) {
+		fprintf(g_qce->trace_file, "<<<<\n");
+	  }
+#endif
+	  qce_on_tcg_tb_executed((TranslationBlock *)next_tb, cpu);
+      return;
     }
     case QCE_INST_EXIT_TB: {
       // TODO: what about the return value? i.e., inst->i_exit_tb.idx
