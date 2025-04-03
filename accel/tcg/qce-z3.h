@@ -315,7 +315,7 @@ static inline bool qce_smt_z3_probe_bv64(SolverZ3 *solver, Z3_ast expr,
 #ifndef QCE_RELEASE
       bool probed =
 #endif
-          Z3_get_numeral_uint64(solver->ctx, expr, val);
+          Z3_get_numeral_uint64(solver->ctx, evaluated, val);
 #ifndef QCE_RELEASE
       assert(probed);
 #endif
@@ -324,7 +324,7 @@ static inline bool qce_smt_z3_probe_bv64(SolverZ3 *solver, Z3_ast expr,
     return false;
   }
   default:
-    qce_fatal("unexpected Z3 ast kind for bv32: %d", kind);
+    qce_fatal("unexpected Z3 ast kind for bv64: %d", kind);
   }
 }
 
