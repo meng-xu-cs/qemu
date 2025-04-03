@@ -298,21 +298,21 @@
   X_INST_I2C1L1(qce_name##_I64, tcg_name##_i64, i1_name, I64, i2_name, I64,    \
                 c1_name, l1_name)
 
-#define MEMOP_MULTI_O1A1C1(qce_name, tcg_name, o1_name, i1_name, c1_name)      \
-  X_INST_O1A1C1(qce_name##_I32, tcg_name##_i32, o1_name, I32, i1_name,         \
+#define MEMOP_MULTI_O1A1C1(qce_name, tcg_name, o1_name, a1_name, c1_name)      \
+  X_INST_O1A1C1(qce_name##_I32, tcg_name##_i32, o1_name, I32, a1_name,         \
                 c1_name)                                                       \
-  X_INST_O1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, c1_name)
+  X_INST_O1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, a1_name, c1_name)
 
-#define MEMOP_SINGLE_O1A1C1(qce_name, tcg_name, o1_name, i1_name, c1_name)     \
-  X_INST_O1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, c1_name)
+#define MEMOP_SINGLE_O1A1C1(qce_name, tcg_name, o1_name, a1_name, c1_name)     \
+  X_INST_O1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, a1_name, c1_name)
 
-#define MEMOP_MULTI_I1A1C1(qce_name, tcg_name, o1_name, i1_name, c1_name)      \
-  X_INST_I1A1C1(qce_name##_I32, tcg_name##_i32, o1_name, I32, i1_name,         \
+#define MEMOP_MULTI_I1A1C1(qce_name, tcg_name, i1_name, a1_name, c1_name)      \
+  X_INST_I1A1C1(qce_name##_I32, tcg_name##_i32, i1_name, I32, a1_name,         \
                 c1_name)                                                       \
-  X_INST_I1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, c1_name)
+  X_INST_I1A1C1(qce_name##_I64, tcg_name##_i64, i1_name, I64, a1_name, c1_name)
 
-#define MEMOP_SINGLE_I1A1C1(qce_name, tcg_name, o1_name, i1_name, c1_name)     \
-  X_INST_I1A1C1(qce_name##_I64, tcg_name##_i64, o1_name, I64, i1_name, c1_name)
+#define MEMOP_SINGLE_I1A1C1(qce_name, tcg_name, i1_name, a1_name, c1_name)     \
+  X_INST_I1A1C1(qce_name##_I64, tcg_name##_i64, i1_name, I64, a1_name, c1_name)
 
 /*
  * Template Instantiations

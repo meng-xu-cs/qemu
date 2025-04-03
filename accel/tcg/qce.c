@@ -512,7 +512,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   const QCECacheEntry *entry = qht_lookup_custom(
       &g_qce->cache, tb, qemu_xxhash2((uint64_t)tb), qce_cache_qht_lookup);
   if (entry == NULL) {
-    qce_fatal("unable to find QCE entry for translation block: 0x%p", tb);
+    qce_fatal("unable to find QCE entry for translation block: %p", tb);
   }
 
 #ifdef QCE_DEBUG_IR
@@ -566,7 +566,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
     // in case we did not find anything, report an error instead of being fatal
     if (session->mode != QCE_Tracing_Capturing) {
-      qce_error("failed to find the needle at TB 0x%p after kickstart", tb);
+      qce_error("failed to find the needle at TB %p after kickstart", tb);
     }
     return;
   }
@@ -578,7 +578,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   if (session->mode == QCE_Tracing_Capturing) {
     if (session->blob_addr != arch->regs[R_EDI] ||
         session->blob_size != arch->regs[R_ESI]) {
-      qce_error("session value mismatch at TB 0x%p", tb);
+      qce_error("session value mismatch at TB %p", tb);
       return;
     }
 
