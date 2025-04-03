@@ -835,6 +835,16 @@ end_of_loop:
     fprintf(g_qce->trace_file, "<<<<\n");
   }
 #endif
+  /*
+   * Since QEMU will update the instruction counter once it hits zero,
+   * reset the mode of instruction counter's cell to NULL at every time
+   * TB exits to prevent loading an old value in subsequent executions.
+   */
+  QCECellMeta cell = {.mode = QCE_CELL_MODE_NULL};
+  QCECellHolder holder = session->state.env;
+  // TODO: find a better way to get the address of the instruction counter
+  gpointer key = (gpointer)((char *)arch - 8);
+  g_tree_insert(holder.meta, key, *(gpointer *)&cell);
 }
 
 #ifndef QCE_RELEASE
