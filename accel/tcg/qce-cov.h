@@ -120,15 +120,24 @@ static inline bool qce_session_add_cov_item(QCESession *session, vaddr pc,
     cov_flip = cov_bit_eval_set(pc);
   }
 
+  // register the path-side coverage
+  g_array_append_val(session->coverage, cov);
+  XXH64_update(&session->cov_hash, &cov, sizeof(vaddr));
+
+  // check whether the branch execution times has reached the limit
+  uint64_t branch_exec_time =
+    (uint64_t)g_tree_lookup(session->branch_exec_count, (gpointer)pc);
+  if (branch_exec_time >= BRANCH_EXEC_LIMIT) {
+    return false;
+  }
+  g_tree_insert(session->branch_exec_count, (gpointer)pc,
+                (gpointer)++branch_exec_time);
+
   // derive the flip-side hash
   XXH64_state_t hasher;
   XXH64_copyState(&hasher, &session->cov_hash);
   XXH64_update(&hasher, &cov_flip, sizeof(vaddr));
   uint64_t hash_flip = XXH64_digest(&hasher);
-
-  // register the path-side coverage
-  g_array_append_val(session->coverage, cov);
-  XXH64_update(&session->cov_hash, &cov, sizeof(vaddr));
 
   // check whether we need to cover the flip of this case
   uint64_t len = session->coverage->len;

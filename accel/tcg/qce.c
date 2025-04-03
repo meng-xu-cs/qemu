@@ -39,6 +39,7 @@ typedef enum {
 } QCETracingMode;
 
 // session
+#define BRANCH_EXEC_LIMIT 3
 typedef struct {
   // unique identifier
   size_t id;
@@ -62,6 +63,8 @@ typedef struct {
   GArray *coverage;
   // hash of the coverage trace
   XXH64_state_t cov_hash;
+  // number of times a branch executed
+  GTree *branch_exec_count;
 } QCESession;
 
 // cache entry
@@ -206,6 +209,7 @@ void qce_destroy(void) {
   // de-allocate resources
   __qce_free_cov_db(session->database);
   g_array_free(session->coverage, true);
+  g_tree_destroy(session->branch_exec_count);
   // there is no need to free other internal fields of session
   g_free(session);
 
@@ -259,6 +263,8 @@ void qce_session_init(void) {
 
   session->coverage = g_array_new(false, false, sizeof(vaddr));
   XXH64_reset(&session->cov_hash, QEMU_XXHASH_SEED);
+
+  session->branch_exec_count = g_tree_new(qce_gtree_cov_cmp);
 
   // this session is fixed to the QCE context
   g_qce->session = session;
