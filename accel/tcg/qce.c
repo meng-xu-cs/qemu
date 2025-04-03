@@ -674,6 +674,16 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     }
     case QCE_INST_EXIT_TB: {
       // TODO: what about the return value? i.e., inst->i_exit_tb.idx
+      /*
+	   * Since QEMU will update the instruction counter once it hits zero,
+	   * reset the mode of instruction counter's cell to NULL at every time
+	   * TB exits to prevent loading an old value in subsequent executions.
+       */
+	  QCECellMeta cell = {.mode = QCE_CELL_MODE_NULL};
+      QCECellHolder holder = session->state.env;
+      // TODO: find a better way to get the address of the instruction counter
+      gpointer key = (gpointer)((char *)arch - 8);
+      g_tree_insert(holder.meta, key, *(gpointer *)&cell);
       goto end_of_loop;
     }
     case QCE_INST_CALL_lookup_tb_ptr: {
