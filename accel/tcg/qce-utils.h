@@ -61,4 +61,17 @@ static inline G_GNUC_PRINTF(2, 3) FILE *checked_open(const char *mode,
   return handle;
 }
 
+/*
+ * QEMU moved this static function definition from internal-target.h to
+ * cpu-exec.c in commit e07788a, so we define our own copy in QCE.
+ */
+static vaddr log_pc(CPUState *cpu, const TranslationBlock *tb)
+{
+  if (tb_cflags(tb) & CF_PCREL) {
+    return cpu->cc->get_pc(cpu);
+  } else {
+    return tb->pc;
+  }
+}
+
 #endif /* QCE_UTILS_H */
