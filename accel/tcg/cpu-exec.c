@@ -418,7 +418,7 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
 }
 
 /* Return the current PC from CPU, which may be cached in TB. */
-static vaddr log_pc(CPUState *cpu, const TranslationBlock *tb)
+vaddr log_pc(CPUState *cpu, const TranslationBlock *tb)
 {
     if (tb_cflags(tb) & CF_PCREL) {
         return cpu->cc->get_pc(cpu);

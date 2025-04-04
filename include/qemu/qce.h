@@ -68,4 +68,6 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu);
 void qce_unit_test(CPUArchState *env);
 #endif
 
+vaddr log_pc(CPUState *cpu, const TranslationBlock *tb);
+
 #endif /* QEMU_QCE_H */

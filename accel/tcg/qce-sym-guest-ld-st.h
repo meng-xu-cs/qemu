@@ -297,16 +297,16 @@ DEFINE_SYM_INST_qemu_st(64);
 #define HANDLE_SYM_INST_qemu_ld(bits)                                          \
   case QCE_INST_GUEST_LD##bits: {                                              \
     qce_sym_inst_guest_ld_i##bits(                                             \
-        arch, &session->state, &inst->i_qemu_ld_a64_i##bits.addr,              \
-        inst->i_qemu_ld_a64_i##bits.flag, &inst->i_qemu_ld_a64_i##bits.res);   \
+        arch, &session->state, &inst->i_qemu_ld_i##bits.addr,                  \
+        inst->i_qemu_ld_i##bits.flag, &inst->i_qemu_ld_i##bits.res);           \
     break;                                                                     \
   }
 
 #define HANDLE_SYM_INST_qemu_st(bits)                                          \
   case QCE_INST_GUEST_ST##bits: {                                              \
     qce_sym_inst_guest_st_i##bits(                                             \
-        arch, &session->state, &inst->i_qemu_st_a64_i##bits.val,               \
-        &inst->i_qemu_st_a64_i##bits.addr, inst->i_qemu_st_a64_i##bits.flag);  \
+        arch, &session->state, &inst->i_qemu_st_i##bits.val,                   \
+        &inst->i_qemu_st_i##bits.addr, inst->i_qemu_st_i##bits.flag);          \
     break;                                                                     \
   }
 
