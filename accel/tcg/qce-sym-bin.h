@@ -24,7 +24,6 @@ DEFINE_SYM_INST_BIN_OP(mul, 64)
 DEFINE_SYM_INST_BIN_OP(div, 32)
 DEFINE_SYM_INST_BIN_OP(div, 64)
 
-
 DEFINE_SYM_INST_BIN_OP(shl, 32)
 DEFINE_SYM_INST_BIN_OP(shl, 64)
 DEFINE_SYM_INST_BIN_OP(shr, 32)
@@ -77,15 +76,6 @@ DEFINE_SYM_INST_BIN_OP_BV(eqv, 64)
     qce_sym_inst_bv##name##_i##bits(                                           \
         arch, &session->state, &inst->i_##name##_i##bits.v1,                   \
         &inst->i_##name##_i##bits.v2, &inst->i_##name##_i##bits.res);          \
-    break;                                                                     \
-  }
-
-#define HANDLE_SYM_INST_BIN_OP_BIN_RES(key, name, bits)                        \
-  case QCE_INST_##key##_I##bits: {                                             \
-    qce_sym_inst_##name##_i##bits(                                             \
-        arch, &session->state,                                                 \
-        &inst->i_##name##_i##bits.v1, &inst->i_##name##_i##bits.v2,            \
-        &inst->i_##name##_i##bits.res_t, &inst->i_##name##_i##bits.res_b);     \
     break;                                                                     \
   }
 
