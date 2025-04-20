@@ -165,18 +165,18 @@ static inline void __prepare_expr_for_ld_memop_i64(QCEState *state, MemOp mo,
 }
 
 static inline void __prepare_expr_for_st_memop_i32(QCEState *state, MemOp mo,
-                                                QCEExpr *val, QCEExpr *res) {
+                                  QCEExpr *src, QCEExpr *dst, QCEExpr *res) {
   switch (mo & MO_SIZE) {
   case MO_8: {
-    *(uint8_t *)&res->v_i32 = (uint8_t)val->v_i32;
+    qce_expr_st8_i32(&state->solver_z3, src, dst, res);
     break;
   }
   case MO_16: {
-    *(uint16_t *)&res->v_i32 = (uint16_t)val->v_i32;
+    qce_expr_st16_i32(&state->solver_z3, src, dst, res);
     break;
   }
   case MO_32: {
-    memcpy(res, val, sizeof(QCEExpr));
+    memcpy(res, src, sizeof(QCEExpr));
     break;
   }
   case MO_64: {
@@ -188,22 +188,22 @@ static inline void __prepare_expr_for_st_memop_i32(QCEState *state, MemOp mo,
 }
 
 static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
-                                                QCEExpr *val, QCEExpr *res) {
+                                  QCEExpr *src, QCEExpr *dst, QCEExpr *res) {
   switch (mo & MO_SIZE) {
   case MO_8: {
-    *(uint8_t *)&res->v_i64 = (uint8_t)val->v_i64;
+    qce_expr_st8_i64(&state->solver_z3, src, dst, res);
     break;
   }
   case MO_16: {
-    *(uint16_t *)&res->v_i64 = (uint16_t)val->v_i64;
+    qce_expr_st16_i64(&state->solver_z3, src, dst, res);
     break;
   }
   case MO_32: {
-    *(uint32_t *)&res->v_i64 = (uint32_t)val->v_i64;
+    qce_expr_st32_i64(&state->solver_z3, src, dst, res);
     break;
   }
   case MO_64: {
-    memcpy(res, val, sizeof(QCEExpr));
+    memcpy(res, src, sizeof(QCEExpr));
     break;
   }
   default:
@@ -274,15 +274,17 @@ DEFINE_SYM_INST_qemu_ld(64);
     qce_state_get_var(env, state, val, &expr_val);                             \
                                                                                \
     /* load the original value first and then handle the flags */              \
-    QCEExpr expr_cell;                                                         \
+    QCEExpr expr_cell, expr_cell_updated;                                      \
     qce_state_mem_get_i##bits(env, state, expr_addr.v_i64, mmu_idx,            \
                               &expr_cell);                                     \
-    __prepare_expr_for_st_memop_i##bits(state, mo, &expr_val, &expr_cell);     \
+    __prepare_expr_for_st_memop_i##bits(state, mo, &expr_val, &expr_cell,      \
+                                        &expr_cell_updated);                   \
                                                                                \
     /* store the value */                                                      \
     switch (expr_addr.mode) {                                                  \
     case QCE_EXPR_CONCRETE: {                                                  \
-      qce_state_mem_put_i##bits(state, expr_addr.v_i64, mmu_idx, &expr_cell);  \
+      qce_state_mem_put_i##bits(state, expr_addr.v_i64, mmu_idx,               \
+                                &expr_cell_updated);                           \
       break;                                                                   \
     }                                                                          \
     case QCE_EXPR_SYMBOLIC: {                                                  \
