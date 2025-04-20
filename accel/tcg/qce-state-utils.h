@@ -85,4 +85,28 @@ static void qce_state_verify(CPUArchState *env, QCEState *state,
   }
 }
 
+static gboolean qce_state_reset_concrete(gpointer key, gpointer value,
+                                         gpointer user_data) {
+  QCECellHolder *holder = (QCECellHolder *)user_data;
+  QCECellMeta cell = *(QCECellMeta *)&value;
+  if (cell.mode == QCE_CELL_MODE_CONCRETE) {
+    QCECellMeta new_cell = {.mode = QCE_CELL_MODE_NULL};
+    g_tree_insert(holder->meta, key, *(gpointer *)&new_cell);
+  }
+  return FALSE;
+}
+
+static gboolean qce_state_mem_reset(gpointer key, gpointer value,
+                                    gpointer user_data) {
+  QCECellHolder *holder = (QCECellHolder *)value;
+  g_tree_foreach(holder->meta, qce_state_reset_concrete, (gpointer)holder);
+  return FALSE;
+}
+
+static void qce_state_reset(QCEState *state) {
+  g_tree_foreach(state->env.meta, qce_state_reset_concrete,
+                 (gpointer)&state->env);
+  g_tree_foreach(state->mem, qce_state_mem_reset, NULL);
+}
+
 #endif /* QCE_STATE_UTILS_H */

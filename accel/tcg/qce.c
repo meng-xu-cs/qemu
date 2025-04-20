@@ -42,11 +42,14 @@ typedef enum {
 typedef enum {
   QCE_Emulation_Normal,
   QCE_Emulation_TBChaining,
+  QCE_Emulation_Exception,
 } QCEEmulationStatus;
 
 typedef struct {
   // emulation status
   QCEEmulationStatus status;
+  // record the resumption point after an exception
+  TranslationBlock *resume_tb;
 } QCEEmulationContext;
 
 // session
@@ -549,6 +552,21 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     return;
   }
 
+  if (session->emulation_ctx.status == QCE_Emulation_Exception) {
+    if (session->emulation_ctx.resume_tb == tb) {
+      /*
+       *  Since QEMU might explicitly set some condition codes (CC_OP) during
+       *  the exception handling. At the resumption point, we need to reset
+       *  the states maintained by QCE and force it to reload fresh data from
+       *  QEMU to avoid the potential inconsistencies between QEMU's internal
+       *  states and QCE-managed states.
+       */
+      qce_state_reset(&session->state);
+    } else {
+      return;
+    }
+  }
+
   // look for a TB which jumps to the called function
   if (session->mode == QCE_Tracing_Kicked) {
     // filter out empty TB
@@ -699,6 +717,24 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     }
     case QCE_INST_EXIT_TB: {
       // TODO: what about the return value? i.e., inst->i_exit_tb.idx
+      /*
+       * Once the instruction counter hits zero, QEMU will raise a timer
+       * interrupt. We need to suspend the QCE emulation until QEMU
+       * has finished handling the exception and record the address
+       * of the TB for resuming emulation later.
+       */
+      if ((inst->i_exit_tb.idx & TB_EXIT_MASK) > TB_EXIT_IDX1) {
+        QCECellHolder holder = session->state.env;
+        gpointer icount_addr = (gpointer)&cpu->neg.icount_decr;
+        int32_t icount =
+            (int32_t)(intptr_t)g_tree_lookup(holder.concrete, icount_addr);
+        // make sure the instruction counter hit zero
+        g_assert(icount - tb->icount < 0);
+        session->emulation_ctx.resume_tb = tb;
+        session->emulation_ctx.status = QCE_Emulation_Exception;
+      } else {
+        session->emulation_ctx.status = QCE_Emulation_Normal;
+      }
       goto end_of_loop;
     }
     case QCE_INST_CALL_lookup_tb_ptr: {
@@ -706,6 +742,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       g_assert(cursor + 1 < entry->inst_count);
       g_assert(entry->insts[cursor + 1].kind == QCE_INST_GOTO_PTR);
 #endif
+      session->emulation_ctx.status = QCE_Emulation_Normal;
       goto end_of_loop;
     }
 
@@ -859,17 +896,6 @@ end_of_loop:
     fprintf(g_qce->trace_file, "<<<<\n");
   }
 #endif
-  session->emulation_ctx.status = QCE_Emulation_Normal;
-  /*
-   * Since QEMU will update the instruction counter once it hits zero,
-   * reset the mode of instruction counter's cell to NULL at every time
-   * TB exits to prevent loading an old value in subsequent executions.
-   */
-  QCECellMeta cell = {.mode = QCE_CELL_MODE_NULL};
-  QCECellHolder holder = session->state.env;
-  // TODO: find a better way to get the address of the instruction counter
-  gpointer key = (gpointer)((char *)arch - 8);
-  g_tree_insert(holder.meta, key, *(gpointer *)&cell);
 }
 
 #ifndef QCE_RELEASE
