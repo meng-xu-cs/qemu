@@ -28,6 +28,7 @@
 #include "qce-expr.h"
 
 #include "qce-state.h"
+#include "qce-state-utils.h"
 
 typedef enum {
   QCE_Tracing_NotStarted,
@@ -38,6 +39,16 @@ typedef enum {
   QCE_Tracing_Stopped,
 } QCETracingMode;
 
+typedef enum {
+  QCE_Emulation_Normal,
+  QCE_Emulation_TBChaining,
+} QCEEmulationStatus;
+
+typedef struct {
+  // emulation status
+  QCEEmulationStatus status;
+} QCEEmulationContext;
+
 // session
 #define BRANCH_EXEC_LIMIT 3
 typedef struct {
@@ -46,6 +57,9 @@ typedef struct {
 
   // mark whether the session is in tracing mode
   QCETracingMode mode;
+
+  // emulation context
+  QCEEmulationContext emulation_ctx;
 
   // information about the blob
   tcg_target_ulong blob_addr;
@@ -253,6 +267,8 @@ void qce_session_init(void) {
   QCESession *session = g_malloc0(sizeof(*session));
   session->id = 0;
   session->mode = QCE_Tracing_NotStarted;
+
+  session->emulation_ctx.status = QCE_Emulation_Normal;
 
   session->seed_count = 0;
   /* session->blob_* and session->state do not need initialization */
@@ -612,6 +628,13 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   }
 #endif
 
+#ifdef QCE_DEBUG_IR
+  // verify the state maintained by QCE when not in TB chaining
+  if (session->emulation_ctx.status == QCE_Emulation_Normal) {
+    qce_state_verify(arch, &session->state, tb);
+  }
+#endif
+
   // dual-mode (symbolic + concrete) emulation
   size_t cursor = 0;
   vaddr last_pc = 0;
@@ -670,6 +693,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 		fprintf(g_qce->trace_file, "<<<<\n");
 	  }
 #endif
+      session->emulation_ctx.status = QCE_Emulation_TBChaining;
 	  qce_on_tcg_tb_executed((TranslationBlock *)next_tb, cpu);
       return;
     }
@@ -835,6 +859,7 @@ end_of_loop:
     fprintf(g_qce->trace_file, "<<<<\n");
   }
 #endif
+  session->emulation_ctx.status = QCE_Emulation_Normal;
   /*
    * Since QEMU will update the instruction counter once it hits zero,
    * reset the mode of instruction counter's cell to NULL at every time
