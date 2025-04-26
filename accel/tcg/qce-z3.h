@@ -523,54 +523,6 @@ static Z3_ast qce_Z3_mk_bveqv(Z3_context ctx, Z3_ast t1, Z3_ast t2) {
   return Z3_mk_bvxor(ctx, t1, Z3_mk_bvnot(ctx, t2));
 }
 
-static Z3_ast qce_Z3_mk_COND_MOV(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast v1, Z3_ast v2, tcg_target_ulong cond) {
-  Z3_context ctx = solver->ctx;
-  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, c1));
-  Z3_ast zero = nbits == 32 ? Z3_mk_int(solver->ctx, 0, solver->sort_bv32) : Z3_mk_int(solver->ctx, 0, solver->sort_bv64);
-  Z3_ast condition;
-  switch ((TCGCond)cond) {
-  case TCG_COND_EQ:
-    condition = Z3_mk_eq(ctx, c1, c2);
-    break;
-  case TCG_COND_NE:
-    condition = Z3_mk_distinct(ctx, 2, (Z3_ast[]){c1, c2});
-    break;
-  case TCG_COND_LT:
-    condition = Z3_mk_bvslt(ctx, c1, c2);
-    break;
-  case TCG_COND_GT:
-    condition = Z3_mk_bvsgt(ctx, c1, c2);
-    break;
-  case TCG_COND_LE:
-    condition = Z3_mk_bvsle(ctx, c1, c2);
-    break;
-  case TCG_COND_GE:
-    condition = Z3_mk_bvsge(ctx, c1, c2);
-    break;
-  case TCG_COND_LTU:
-    condition = Z3_mk_bvult(ctx, c1, c2);
-    break;
-  case TCG_COND_GTU:
-    condition = Z3_mk_bvugt(ctx, c1, c2);
-    break;
-  case TCG_COND_LEU:
-    condition = Z3_mk_bvule(ctx, c1, c2);
-    break;
-  case TCG_COND_GEU:
-    condition = Z3_mk_bvuge(ctx, c1, c2);
-    break;
-  case TCG_COND_TSTEQ:
-    condition = Z3_mk_eq(ctx, Z3_mk_bvand(ctx, c1, c2), zero);
-    break;
-  case TCG_COND_TSTNE:
-    condition = Z3_mk_distinct(ctx, 2, (Z3_ast[]){Z3_mk_bvand(ctx, c1, c2), zero});
-    break;
-  default:
-    qce_fatal("[Conditional Move] condition not handled");
-  }
-  return Z3_mk_ite(ctx, condition, v1, v2);
-}
-
 /*
  * Template
  */
@@ -655,22 +607,6 @@ static Z3_ast qce_Z3_mk_COND_MOV(SolverZ3 *solver, Z3_ast c1, Z3_ast c2, Z3_ast 
 #define DEFINE_SMT_Z3_OP4_DUAL(name, func)                                     \
   DEFINE_SMT_Z3_OP4(32, name, func)                                            \
   DEFINE_SMT_Z3_OP4(64, name, func)
-
-#define DEFINE_SMT_Z3_COND_MOV(bits, func)                                     \
-  static inline Z3_ast qce_smt_z3_bv##bits##_COND_MOV(SolverZ3 *solver,        \
-      Z3_ast lhs, Z3_ast rhs, Z3_ast val1, Z3_ast val2,                        \
-      tcg_target_ulong cond) {                                                 \
-    __qce_smt_z3_type_check_bv##bits(solver, lhs);                             \
-    __qce_smt_z3_type_check_bv##bits(solver, rhs);                             \
-    __qce_smt_z3_type_check_bv##bits(solver, val1);                            \
-    __qce_smt_z3_type_check_bv##bits(solver, val2);                            \
-    return __qce_smt_z3_simplify(solver,                                       \
-                                 func(solver, lhs, rhs, val1, val2, cond));    \
-}
-
-#define DEFINE_SMT_Z3_COND_MOV_DUAL(func)                                      \
-  DEFINE_SMT_Z3_COND_MOV(32, func)                                             \
-  DEFINE_SMT_Z3_COND_MOV(64, func)
 
 /*
  * Bit-vector
@@ -758,8 +694,6 @@ DEFINE_SMT_Z3_OP1_ld_u(64, 16);
 DEFINE_SMT_Z3_OP1_ld_s(64, 16);
 DEFINE_SMT_Z3_OP1_ld_u(64, 32);
 DEFINE_SMT_Z3_OP1_ld_s(64, 32);
-
-DEFINE_SMT_Z3_COND_MOV_DUAL(qce_Z3_mk_COND_MOV);
 
 /*
  * Arithmetics

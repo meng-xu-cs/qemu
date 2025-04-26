@@ -320,8 +320,8 @@
 
 X_INST_MULTI_O1I1(MOV, mov, into, from)
 
-X_INST_MULTI_O1I2C1(SETCOND, setcond, res, v1, v2, cond)
-X_INST_MULTI_O1I2C1(NEGSETCOND, negsetcond, res, v1, v2, cond)
+X_INST_MULTI_O1I2C1(SETCOND, setcond, res, c1, c2, cond)
+X_INST_MULTI_O1I2C1(NEGSETCOND, negsetcond, res, c1, c2, cond)
 X_INST_MULTI_O1I4C1(MOVCOND, movcond, res, c1, c2, v1, v2, cond)
 
 X_INST_MULTI_O1I1(NEG, neg, res, v)

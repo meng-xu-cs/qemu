@@ -163,4 +163,134 @@ DEFINE_SYM_INST_brcond(64);
     break;                                                                     \
   }
 
+#define DEFINE_SYM_INST_cond_mov(bits)                                         \
+  static inline void qce_sym_inst_cond_mov_i##bits(                            \
+      CPUArchState *env, QCEState *state, QCEExpr *expr_v1, QCEExpr *expr_v2,  \
+      QCEVar *c1, QCEVar *c2, tcg_target_ulong cond, QCEVar *res) {            \
+    QCEExpr expr_c1, expr_c2;                                                  \
+    qce_state_get_var(env, state, c1, &expr_c1);                               \
+    qce_state_get_var(env, state, c2, &expr_c2);                               \
+                                                                               \
+    QCEPred pred;                                                              \
+    switch (cond) {                                                            \
+      /* equality */                                                           \
+    case TCG_COND_EQ: {                                                        \
+      qce_expr_eq_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);       \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_NE: {                                                        \
+      qce_expr_ne_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);       \
+      break;                                                                   \
+    }                                                                          \
+      /* signed comparison */                                                  \
+    case TCG_COND_LT: {                                                        \
+      qce_expr_slt_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_LE: {                                                        \
+      qce_expr_sle_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_GE: {                                                        \
+      qce_expr_sge_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_GT: {                                                        \
+      qce_expr_sgt_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+      /* unsigned comparison */                                                \
+    case TCG_COND_LTU: {                                                       \
+      qce_expr_ult_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_LEU: {                                                       \
+      qce_expr_ule_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_GEU: {                                                       \
+      qce_expr_uge_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_GTU: {                                                       \
+      qce_expr_ugt_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &pred);      \
+      break;                                                                   \
+    }                                                                          \
+      /* "test" i.e. and then compare vs 0 */                                  \
+    case TCG_COND_TSTEQ: {                                                     \
+      QCEExpr expr_r;                                                          \
+      qce_expr_bvand_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &expr_r);  \
+      QCEExpr expr_0;                                                          \
+      qce_expr_init_v##bits(&expr_0, 0);                                       \
+      qce_expr_eq_i##bits(&state->solver_z3, &expr_r, &expr_0, &pred);         \
+      break;                                                                   \
+    }                                                                          \
+    case TCG_COND_TSTNE: {                                                     \
+      QCEExpr expr_r;                                                          \
+      qce_expr_bvand_i##bits(&state->solver_z3, &expr_c1, &expr_c2, &expr_r);  \
+      QCEExpr expr_0;                                                          \
+      qce_expr_init_v##bits(&expr_0, 0);                                       \
+      qce_expr_ne_i##bits(&state->solver_z3, &expr_r, &expr_0, &pred);         \
+      break;                                                                   \
+    }                                                                          \
+    /* all other cases are invalid */                                          \
+    default:                                                                   \
+      qce_fatal("unknown condition: %lx", cond);                               \
+    }                                                                          \
+                                                                               \
+    QCEExpr *expr_res;                                                         \
+    if (pred.mode == QCE_PRED_CONCRETE) {                                      \
+      expr_res = pred.concrete ? expr_v1 : expr_v2;                            \
+    } else {                                                                   \
+      /* concretize the predicate */                                           \
+      QCESession *session = g_qce->session;                                    \
+      bool concretized = qce_smt_z3_concretize_bool(                           \
+          &state->solver_z3, session->blob_addr, session->blob_size,           \
+          session->blob_content, pred.symbolic);                               \
+      expr_res = concretized ? expr_v1 : expr_v2;                              \
+    }                                                                          \
+    qce_state_put_var(env, state, res, expr_res);                              \
+  }
+
+DEFINE_SYM_INST_cond_mov(32)
+DEFINE_SYM_INST_cond_mov(64)
+
+#define HANDLE_SYM_INST_setcond(bits)                                          \
+  case QCE_INST_SETCOND_I##bits: {                                             \
+    QCEExpr expr_v1, expr_v2;                                                  \
+    qce_expr_init_v##bits(&expr_v1, 1);                                        \
+    qce_expr_init_v##bits(&expr_v2, 0);                                        \
+    qce_sym_inst_cond_mov_i##bits(                                             \
+        arch, &session->state, &expr_v1, &expr_v2,                             \
+        &inst->i_setcond_i##bits.c1, &inst->i_setcond_i##bits.c2,              \
+        inst->i_setcond_i##bits.cond, &inst->i_setcond_i##bits.res);           \
+    break;                                                                     \
+}
+
+#define HANDLE_SYM_INST_negsetcond(bits)                                       \
+  case QCE_INST_NEGSETCOND_I##bits: {                                          \
+    QCEExpr expr_v1, expr_v2;                                                  \
+    qce_expr_init_v##bits(&expr_v1, -1);                                       \
+    qce_expr_init_v##bits(&expr_v2, 0);                                        \
+    qce_sym_inst_cond_mov_i##bits(                                             \
+        arch, &session->state, &expr_v1, &expr_v2,                             \
+        &inst->i_negsetcond_i##bits.c1, &inst->i_negsetcond_i##bits.c2,        \
+        inst->i_negsetcond_i##bits.cond, &inst->i_negsetcond_i##bits.res);     \
+    break;                                                                     \
+}
+
+#define HANDLE_SYM_INST_movcond(bits)                                          \
+  case QCE_INST_MOVCOND_I##bits: {                                             \
+    QCEExpr expr_v1, expr_v2;                                                  \
+    qce_state_get_var(arch, &session->state,                                   \
+                      &inst->i_movcond_i##bits.v1, &expr_v1);                  \
+    qce_state_get_var(arch, &session->state,                                   \
+                      &inst->i_movcond_i##bits.v2, &expr_v2);                  \
+    qce_sym_inst_cond_mov_i##bits(                                             \
+        arch, &session->state, &expr_v1, &expr_v2,                             \
+        &inst->i_movcond_i##bits.c1,&inst->i_movcond_i##bits.c2,               \
+        inst->i_movcond_i##bits.cond, &inst->i_movcond_i##bits.res);           \
+    break;                                                                     \
+}
+
 #endif /* QCE_SYM_CMP_H */
