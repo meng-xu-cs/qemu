@@ -791,8 +791,8 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_BIN_OP(DIV, div, 32);
       HANDLE_SYM_INST_BIN_OP(DIV, div, 64);
 
-//      HANDLE_SYM_INST_UNI_OP(NEG, neg, 32);
-//      HANDLE_SYM_INST_UNI_OP(NEG, neg, 64);
+      HANDLE_SYM_INST_UNI_OP(NEG, neg, 32);
+      HANDLE_SYM_INST_UNI_OP(NEG, neg, 64);
 
       /* multiword arithmetic */
 //      HANDLE_SYM_INST_BIN_OP_MULTIWORD(ADD2, add2, 32);
@@ -801,8 +801,8 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 //      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 32);
 //      HANDLE_SYM_INST_BIN_OP_MULTIWORD(SUB2, sub2, 64);
 
-      // HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 32);
-      // HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 64);
+//       HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 32);
+//       HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULU2, mulu2, 64);
 
 //      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 32);
 //      HANDLE_SYM_INST_BIN_OP_MULTIWORD2(MULS2, muls2, 64);
