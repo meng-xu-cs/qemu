@@ -8,5 +8,6 @@
 #include "qce-sym-mov.h"
 #include "qce-sym-uni.h"
 #include "qce-sym-misc.h"
+#include "qce-sym-call.h"
 
 #endif /* QCE_SYM_H */

@@ -880,6 +880,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_deposit(32);
       HANDLE_SYM_INST_deposit(64);
 
+      /* call instructions */
+      HANDLE_SYM_INST_CALL_cc_compute_all;
+
       /* all others */
     default: {
 #ifdef QCE_DEBUG_IR
