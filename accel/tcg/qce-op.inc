@@ -372,7 +372,7 @@ X_INST_MULTI_O1I1C1(BSWAP16, bswap16, res, v, flag)
 X_INST_MULTI_O1I1C1(BSWAP32, bswap32, res, v, flag)
 X_INST_SINGLE_O1I1C1(BSWAP64, bswap64, res, v, flag)
 
-X_INST_MULTI_O1I2C2(DEPOSIT, deposit, res, bits, into, pos, len)
+X_INST_MULTI_O1I2C2(DEPOSIT, deposit, res, into, from, pos, len)
 X_INST_MULTI_O1I1C2(EXTRACT, extract, res, from, pos, len)
 X_INST_MULTI_O1I1C2(SEXTRACT, sextract, res, from, pos, len)
 X_INST_MULTI_O1I2C1(EXTRACT2, extract2, res, v_b, v_t, pos)

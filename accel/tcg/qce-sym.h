@@ -7,5 +7,6 @@
 #include "qce-sym-ld-st.h"
 #include "qce-sym-mov.h"
 #include "qce-sym-uni.h"
+#include "qce-sym-misc.h"
 
 #endif /* QCE_SYM_H */

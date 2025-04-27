@@ -106,6 +106,7 @@ QCE_UNIT_TEST_EXPR_EPILOGUE
 #include "qce-expr-cmp-op.h"
 #include "qce-expr-uni-op.h"
 #include "qce-expr-ld-st.h"
+#include "qce-expr-misc.h"
 
 #ifndef QCE_RELEASE
 static inline void qce_unit_test_expr(void) {
@@ -173,6 +174,8 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(special_ld_then_st16s);
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32u_i64);
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32s_i64);
+
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(deposit);
 }
 #endif
 

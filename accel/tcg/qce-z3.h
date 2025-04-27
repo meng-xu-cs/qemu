@@ -608,6 +608,29 @@ static Z3_ast qce_Z3_mk_bveqv(Z3_context ctx, Z3_ast t1, Z3_ast t2) {
   DEFINE_SMT_Z3_OP4(32, name, func)                                            \
   DEFINE_SMT_Z3_OP4(64, name, func)
 
+#define DEFINE_SMT_Z3_deposit(bits)                                            \
+  static inline Z3_ast qce_smt_z3_bv##bits##_deposit(SolverZ3 *solver,         \
+                                                     Z3_ast into, Z3_ast from, \
+                                                     tcg_target_ulong pos,     \
+                                                     tcg_target_ulong len) {   \
+    __qce_smt_z3_type_check_bv##bits(solver, into);                            \
+    __qce_smt_z3_type_check_bv##bits(solver, from);                            \
+    Z3_ast result = Z3_mk_extract(solver->ctx, len-1, 0, from);                \
+    if (pos+len <= bits-1)                                                     \
+      result = Z3_mk_concat(solver->ctx,                                       \
+                            Z3_mk_extract(solver->ctx, bits-1, pos+len, into), \
+                            result);                                           \
+    if (pos > 0)                                                               \
+      result = Z3_mk_concat(solver->ctx,                                       \
+                            result,                                            \
+                            Z3_mk_extract(solver->ctx, pos-1, 0, into));       \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
+#define DEFINE_SMT_Z3_deposit_DUAL
+  DEFINE_SMT_Z3_deposit(32)
+  DEFINE_SMT_Z3_deposit(64)
+
 /*
  * Bit-vector
  */
@@ -756,6 +779,12 @@ DEFINE_SMT_Z3_OP2_DUAL(bvorc, qce_Z3_mk_bvorc)
 DEFINE_SMT_Z3_OP2_DUAL(bvnand, Z3_mk_bvnand)
 DEFINE_SMT_Z3_OP2_DUAL(bvnor, Z3_mk_bvnor)
 DEFINE_SMT_Z3_OP2_DUAL(bveqv, qce_Z3_mk_bveqv)
+
+/*
+ * Miscellaneous
+ */
+
+DEFINE_SMT_Z3_deposit_DUAL
 
 /*
  * Array

@@ -876,6 +876,10 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_brcond(32);
       HANDLE_SYM_INST_brcond(64);
 
+      /* miscellaneous */
+      HANDLE_SYM_INST_deposit(32);
+      HANDLE_SYM_INST_deposit(64);
+
       /* all others */
     default: {
 #ifdef QCE_DEBUG_IR
