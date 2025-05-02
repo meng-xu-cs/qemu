@@ -212,7 +212,7 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
 }
 
 #define DEFINE_SYM_INST_qemu_ld(bits)                                          \
-  static inline void qce_sym_inst_guest_ld_i##bits(                            \
+  static inline bool qce_sym_inst_guest_ld_i##bits(                            \
       CPUArchState *env, QCEState *state, QCEVar *addr, MemOpIdx flag,         \
       QCEVar *res) {                                                           \
     /* check the flags */                                                      \
@@ -223,6 +223,11 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
     QCEExpr expr_addr;                                                         \
     qce_state_get_var(env, state, addr, &expr_addr);                           \
     qce_debug_assert(expr_addr.type == QCE_EXPR_I64);                          \
+                                                                               \
+    /* check the address */                                                    \
+    if (!tlb_vaddr_to_host(env, (abi_ptr)expr_addr.v_i64, 0, mmu_idx)) {       \
+      return false;                                                            \
+    }                                                                          \
                                                                                \
     /* check the access */                                                     \
     __check_memop_validity(state, mo, &expr_addr, bits / 8);                   \
@@ -248,13 +253,15 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
                                                                                \
     /* put back the result */                                                  \
     qce_state_put_var(env, state, res, &expr_val);                             \
+                                                                               \
+    return true;                                                               \
   }
 
 DEFINE_SYM_INST_qemu_ld(32);
 DEFINE_SYM_INST_qemu_ld(64);
 
 #define DEFINE_SYM_INST_qemu_st(bits)                                          \
-  static inline void qce_sym_inst_guest_st_i##bits(                            \
+  static inline bool qce_sym_inst_guest_st_i##bits(                            \
       CPUArchState *env, QCEState *state, QCEVar *val, QCEVar *addr,           \
       MemOpIdx flag) {                                                         \
     /* check the flags */                                                      \
@@ -265,6 +272,11 @@ DEFINE_SYM_INST_qemu_ld(64);
     QCEExpr expr_addr;                                                         \
     qce_state_get_var(env, state, addr, &expr_addr);                           \
     qce_debug_assert(expr_addr.type == QCE_EXPR_I64);                          \
+                                                                               \
+    /* check the address */                                                    \
+    if (!tlb_vaddr_to_host(env, (abi_ptr)expr_addr.v_i64, 0, mmu_idx)) {       \
+      return false;                                                            \
+    }                                                                          \
                                                                                \
     /* check the access */                                                     \
     __check_memop_validity(state, mo, &expr_addr, bits / 8);                   \
@@ -291,6 +303,8 @@ DEFINE_SYM_INST_qemu_ld(64);
       qce_fatal("Waiting for a case [st] on symbolic address to support");     \
     }                                                                          \
     }                                                                          \
+                                                                               \
+    return true;                                                               \
   }
 
 DEFINE_SYM_INST_qemu_st(32);
@@ -298,17 +312,25 @@ DEFINE_SYM_INST_qemu_st(64);
 
 #define HANDLE_SYM_INST_qemu_ld(bits)                                          \
   case QCE_INST_GUEST_LD##bits: {                                              \
-    qce_sym_inst_guest_ld_i##bits(                                             \
+    bool success = qce_sym_inst_guest_ld_i##bits(                              \
         arch, &session->state, &inst->i_qemu_ld_i##bits.addr,                  \
         inst->i_qemu_ld_i##bits.flag, &inst->i_qemu_ld_i##bits.res);           \
+    if (!success) {                                                            \
+      qce_state_reset(&session->state);                                        \
+      goto end_of_loop;                                                        \
+    }                                                                          \
     break;                                                                     \
   }
 
 #define HANDLE_SYM_INST_qemu_st(bits)                                          \
   case QCE_INST_GUEST_ST##bits: {                                              \
-    qce_sym_inst_guest_st_i##bits(                                             \
+    bool success = qce_sym_inst_guest_st_i##bits(                              \
         arch, &session->state, &inst->i_qemu_st_i##bits.val,                   \
         &inst->i_qemu_st_i##bits.addr, inst->i_qemu_st_i##bits.flag);          \
+    if (!success) {                                                            \
+      qce_state_reset(&session->state);                                        \
+      goto end_of_loop;                                                        \
+    }                                                                          \
     break;                                                                     \
   }
 
