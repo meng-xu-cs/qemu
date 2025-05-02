@@ -413,6 +413,7 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
         log_cpu_exec(pc, cpu, tb);
     }
+    qce_on_tcg_tb_executed(tb, cpu);
 
     return tb->tc.ptr;
 }

@@ -742,7 +742,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       g_assert(cursor + 1 < entry->inst_count);
       g_assert(entry->insts[cursor + 1].kind == QCE_INST_GOTO_PTR);
 #endif
-      session->emulation_ctx.status = QCE_Emulation_Normal;
+      /*
+       * When encounter a call lookup_tb_ptr, we stop here to let QEMU execute
+       * first and dynamically decide which TB to jump to next, and QEMU will
+       * invoke QCE to execute the next TB once it has found it.
+       */
+      session->emulation_ctx.status = QCE_Emulation_TBChaining;
       goto end_of_loop;
     }
 
