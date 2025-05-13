@@ -746,6 +746,8 @@ DEFINE_SMT_Z3_OP2_RES2_DUAL(muls2, qce_Z3_mk_bvmuls2)
 DEFINE_SMT_Z3_OP2_DUAL(shl, Z3_mk_bvshl)
 DEFINE_SMT_Z3_OP2_DUAL(shr, Z3_mk_bvlshr)
 DEFINE_SMT_Z3_OP2_DUAL(sar, Z3_mk_bvashr)
+DEFINE_SMT_Z3_OP2_DUAL(rotl, Z3_mk_ext_rotate_left)
+DEFINE_SMT_Z3_OP2_DUAL(rotr, Z3_mk_ext_rotate_right)
 
 /*
  * Comparisons

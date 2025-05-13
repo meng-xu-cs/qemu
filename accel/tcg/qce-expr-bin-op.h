@@ -112,6 +112,20 @@ DEFINE_CONCRETE_BIN_OP_MULTIWORD_sub2_DUAL(sub2, -)
 // DEFINE_CONCRETE_BIN_OP_MULTIWORD_mulu2_DUAL(mulu2, *)
 DEFINE_CONCRETE_BIN_OP_MULTIWORD_muls2_DUAL(muls2, *)
 
+#define DEFINE_CONCRETE_BIN_OP_ROT(bits, name, op1, op2)                       \
+  static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
+      int##bits##_t val, int##bits##_t pos) {                                  \
+    return ((uint##bits##_t)val op1 pos) |                                     \
+        ((uint##bits##_t)val op2 (bits - pos));                                \
+}
+
+#define DEFINE_CONCRETE_BIN_OP_ROT_DUAL(name, op1, op2)                        \
+  DEFINE_CONCRETE_BIN_OP_ROT(32, name, op1, op2)                               \
+  DEFINE_CONCRETE_BIN_OP_ROT(64, name, op1, op2)
+
+DEFINE_CONCRETE_BIN_OP_ROT_DUAL(rotl, <<, >>)
+DEFINE_CONCRETE_BIN_OP_ROT_DUAL(rotr, >>, <<)
+
 /*
  * Templates
  */
@@ -321,6 +335,8 @@ DEFINE_EXPR_BIN_OP_MULTIWORD2_DUAL(muls2)
 DEFINE_EXPR_BIN_OP_DUAL(shl)
 DEFINE_EXPR_BIN_OP_DUAL(shr)
 DEFINE_EXPR_BIN_OP_DUAL(sar)
+DEFINE_EXPR_BIN_OP_DUAL(rotl)
+DEFINE_EXPR_BIN_OP_DUAL(rotr)
 
 /*
  * Bitwise
@@ -1487,6 +1503,100 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(bvnor)
   }                                                                            \
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(bveqv)
+
+#define QCE_UNIT_TEST_EXPR_rotl(bits)                                          \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(rotl_i##bits) {                                  \
+    /* rotl(0xF...F, 10) == 0xF...F */                                         \
+    QCEExpr v1m, v10, r;                                                       \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    qce_expr_init_v##bits(&v10, 10);                                           \
+    qce_expr_rotl_i##bits(&solver, &v1m, &v10, &r);                            \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == -1);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* rotl(0x56780...01234, 16) == 0x12345678 */                              \
+    QCEExpr v, v16, r;                                                         \
+    qce_expr_init_v##bits(&v, (int##bits##_t)0x5678<<(bits-16) | 0x1234);      \
+    qce_expr_init_v##bits(&v16, 16);                                           \
+    qce_expr_rotl_i##bits(&solver, &v, &v16, &r);                              \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0x12345678);                                         \
+  }                                                                            \
+  {                                                                            \
+    /* rotl(a, 0) == a */                                                      \
+    QCEExpr a, v0, r;                                                          \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_rotl_i##bits(&solver, &a, &v0, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(                                                   \
+             &solver, qce_smt_z3_bv##bits##_eq(                                \
+                          &solver, r.symbolic, a.symbolic)) ==                 \
+         SMT_Z3_PROVE_PROVED);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* rotl(0, a) == 0 */                                                      \
+    QCEExpr v0, a, r;                                                          \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_rotl_i##bits(&solver, &v0, &a, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0);                                                  \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(rotl)
+
+#define QCE_UNIT_TEST_EXPR_rotr(bits)                                          \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(rotr_i##bits) {                                  \
+    /* rotr(0xF...F, 10) == 0xF...F */                                         \
+    QCEExpr v1m, v10, r;                                                       \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    qce_expr_init_v##bits(&v10, 10);                                           \
+    qce_expr_rotr_i##bits(&solver, &v1m, &v10, &r);                            \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == -1);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* rotr(0x56780...01234, 16) == 0x123456780...0 */                         \
+    QCEExpr v, v16, r;                                                         \
+    qce_expr_init_v##bits(&v, (int##bits##_t)0x5678<<(bits-16) | 0x1234);      \
+    qce_expr_init_v##bits(&v16, 16);                                           \
+    qce_expr_rotr_i##bits(&solver, &v, &v16, &r);                              \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == (int##bits##_t)0x12345678<<(bits-32));               \
+  }                                                                            \
+  {                                                                            \
+    /* rotr(a, 0) == a */                                                      \
+    QCEExpr a, v0, r;                                                          \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_rotr_i##bits(&solver, &a, &v0, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(                                                   \
+             &solver, qce_smt_z3_bv##bits##_eq(                                \
+                          &solver, r.symbolic, a.symbolic)) ==                 \
+         SMT_Z3_PROVE_PROVED);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* rotr(0, a) == 0 */                                                      \
+    QCEExpr v0, a, r;                                                          \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_rotr_i##bits(&solver, &v0, &a, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0);                                                  \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(rotr)
 #endif
 
 #endif /* QCE_EXPR_BIN_OP_H */
