@@ -295,7 +295,7 @@ DEFINE_SYM_INST_qemu_ld(64);
     /* store the value */                                                      \
     switch (expr_addr.mode) {                                                  \
     case QCE_EXPR_CONCRETE: {                                                  \
-      qce_state_mem_put_i##bits(state, expr_addr.v_i64, mmu_idx,               \
+      qce_state_mem_put_i##bits(env, state, expr_addr.v_i64, mmu_idx,          \
                                 &expr_cell_updated);                           \
       break;                                                                   \
     }                                                                          \

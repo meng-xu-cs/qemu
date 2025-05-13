@@ -222,6 +222,158 @@ static inline QCECellHolder *qce_state_guest_mem_by_mmu(QCEState *state,
   return holder;
 }
 
+static inline void __unaligned_addr_get_i64(QCEState *state, intptr_t addr,
+                                            QCECellValue *val_l,
+                                            QCECellValue *val_m,
+                                            QCECellValue *val_h,
+                                            QCEExpr *expr) {
+  int8_t nbits_h = addr % QCE_CONCOLIC_REGISTER_SIZE * 8;
+  int8_t nbits_l = QCE_CONCOLIC_REGISTER_SIZE * 8 - nbits_h;
+
+  Z3_ast res_l, res_m, res_h;
+  switch (val_l->mode) {
+  case QCE_CELL_MODE_NULL: {
+    qce_fatal("Should never reach here");
+  }
+  case QCE_CELL_MODE_CONCRETE: {
+    switch (val_m->mode) {
+    case QCE_CELL_MODE_NULL:{
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      switch (val_h->mode) {
+      case QCE_CELL_MODE_NULL: {
+        qce_fatal("Should never reach here");
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        /* val_l.mode = concrete, val_m.mode = concrete, val_h.mode = concrete */
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = (uint64_t)(uint32_t)val_l->v_i32>>nbits_h |
+                      (uint64_t)(uint32_t)val_m->v_i32<<nbits_l |
+                      (uint64_t)(uint32_t)val_h->v_i32<<(nbits_l+32);
+        return;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        /* val_l.mode = concrete, val_m.mode = concrete, val_h.mode = symbolic */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l = Z3_mk_extract(
+            state->solver_z3.ctx, 31, nbits_h,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_l->v_i32));
+        res_m = qce_smt_z3_bv32_value(&state->solver_z3, val_m->v_i32);
+        res_h =
+            Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0, val_h->symbolic);
+        break;
+      }
+      }
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      switch (val_h->mode) {
+      case QCE_CELL_MODE_NULL: {
+        qce_fatal("Should never reach here");
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        /* val_l.mode = concrete, val_m.mode = symbolic, val_h.mode = concrete */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l = Z3_mk_extract(
+            state->solver_z3.ctx, 31, nbits_h,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_l->v_i32));
+        res_m = val_m->symbolic;
+        res_h = Z3_mk_extract(
+            state->solver_z3.ctx, nbits_h-1, 0,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_h->v_i32));
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        /* val_l.mode = concrete, val_m.mode = symbolic, val_h.mode = symbolic */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l = Z3_mk_extract(
+            state->solver_z3.ctx, 31, nbits_h,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_l->v_i32));
+        res_m = val_m->symbolic;
+        res_h =
+            Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0, val_h->symbolic);
+        break;
+      }
+      }
+      break;
+    }
+    }
+    break;
+  }
+  case QCE_CELL_MODE_SYMBOLIC: {
+    switch (val_m->mode) {
+    case QCE_CELL_MODE_NULL: {
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      switch (val_h->mode) {
+      case QCE_CELL_MODE_NULL: {
+        qce_fatal("Should never reach here");
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        /* val_l.mode = symbolic, val_m.mode = concrete, val_h.mode = concrete */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l =
+            Z3_mk_extract(state->solver_z3.ctx, 31, nbits_h, val_l->symbolic);
+        res_m = qce_smt_z3_bv32_value(&state->solver_z3, val_m->v_i32);
+        res_h = Z3_mk_extract(
+            state->solver_z3.ctx, nbits_h-1, 0,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_h->v_i32));
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        /* val_l.mode = symbolic, val_m.mode = concrete, val_h.mode = symbolic */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l =
+            Z3_mk_extract(state->solver_z3.ctx, 31, nbits_h, val_l->symbolic);
+        res_m = qce_smt_z3_bv32_value(&state->solver_z3, val_m->v_i32);
+        res_h =
+            Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0, val_h->symbolic);
+        break;
+      }
+      }
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      switch (val_h->mode) {
+      case QCE_CELL_MODE_NULL: {
+        qce_fatal("Should never reach here");
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        /* val_l.mode = symbolic, val_m.mode = symbolic, val_h.mode = concrete */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l =
+            Z3_mk_extract(state->solver_z3.ctx, 31, nbits_h, val_l->symbolic);
+        res_m = val_m->symbolic;
+        res_h = Z3_mk_extract(
+            state->solver_z3.ctx, nbits_h-1, 0,
+            qce_smt_z3_bv32_value(&state->solver_z3, val_h->v_i32));
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        /* val_l.mode = symbolic, val_m.mode = symbolic, val_h.mode = symbolic */
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        res_l =
+            Z3_mk_extract(state->solver_z3.ctx, 31, nbits_h, val_l->symbolic);
+        res_m = val_m->symbolic;
+        res_h =
+            Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0, val_h->symbolic);
+        break;
+      }
+      }
+      break;
+    }
+    }
+    break;
+  }
+  }
+  expr->symbolic = __qce_smt_z3_simplify(
+      &state->solver_z3,
+      Z3_mk_concat(state->solver_z3.ctx, res_h,
+                   Z3_mk_concat(state->solver_z3.ctx, res_m, res_l)));
+}
+
 /*
  * State: Env
  */
@@ -345,95 +497,125 @@ static inline void qce_state_env_get_i32(QCEState *state, intptr_t addr,
 }
 
 static inline void qce_state_env_get_i64(QCEState *state, intptr_t addr,
-                                         QCEExpr *expr) {
+                                         QCEExpr *expr)
+{
 #ifndef QCE_RELEASE
-  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("[qce_state_env_get_i64] misaligned address for env location");
-  }
+//  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0)
+//  {
+//    qce_fatal("[qce_state_env_get_i64] misaligned address for env location");
+//  }
 #endif
 
-  gpointer key_l = (gpointer)addr;
-  QCECellValue val_l;
-  qce_cell_holder_get_i32(&state->env, key_l, &val_l);
+  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+    /* do unaligned address access */
+    intptr_t addr_l = addr - addr % QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_m = addr_l + QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_h = addr_m + QCE_CONCOLIC_REGISTER_SIZE;
 
-  gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-  QCECellValue val_h;
-  qce_cell_holder_get_i32(&state->env, key_h, &val_h);
+    QCECellValue val_l, val_m, val_h;
+    qce_cell_holder_get_i32(&state->env, (gpointer)addr_l, &val_l);
+    qce_cell_holder_get_i32(&state->env, (gpointer)addr_m, &val_m);
+    qce_cell_holder_get_i32(&state->env, (gpointer)addr_h, &val_h);
 
-  switch (val_l.mode) {
-  case QCE_CELL_MODE_NULL: {
-    switch (val_h.mode) {
+    if (val_l.mode == QCE_CELL_MODE_NULL) {
+      val_l.mode = QCE_CELL_MODE_CONCRETE;
+      val_l.v_i32 = *(int32_t *)addr_l;
+    }
+    if (val_m.mode == QCE_CELL_MODE_NULL) {
+      val_m.mode = QCE_CELL_MODE_CONCRETE;
+      val_m.v_i32 = *(int32_t *)addr_m;
+    }
+    if (val_h.mode == QCE_CELL_MODE_NULL) {
+      val_h.mode = QCE_CELL_MODE_CONCRETE;
+      val_h.v_i32 = *(int32_t *)addr_h;
+    }
+
+    __unaligned_addr_get_i64(state, addr, &val_l, &val_m, &val_h, expr);
+  } else {
+    gpointer key_l = (gpointer)addr;
+    QCECellValue val_l;
+    qce_cell_holder_get_i32(&state->env, key_l, &val_l);
+
+    gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+    QCECellValue val_h;
+    qce_cell_holder_get_i32(&state->env, key_h, &val_h);
+
+    switch (val_l.mode) {
     case QCE_CELL_MODE_NULL: {
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)addr;
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)addr;
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        int32_t tmp_l = *(int32_t *)addr;
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){tmp_l, val_h.v_i32};
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        int32_t tmp_l = *(int32_t *)addr;
+        Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, tmp_l);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+        break;
+      }
+      }
       break;
     }
     case QCE_CELL_MODE_CONCRETE: {
-      int32_t tmp_l = *(int32_t *)addr;
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){tmp_l, val_h.v_i32};
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        int32_t tmp_h = *(int32_t *)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, tmp_h};
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, val_h.v_i32};
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+        break;
+      }
+      }
       break;
     }
     case QCE_CELL_MODE_SYMBOLIC: {
-      int32_t tmp_l = *(int32_t *)addr;
-      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, tmp_l);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        int32_t tmp_h = *(int32_t *)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+        Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, tmp_h);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic,
+                                   val_l.symbolic);
+        break;
+      }
+      }
       break;
     }
     }
-    break;
-  }
-  case QCE_CELL_MODE_CONCRETE: {
-    switch (val_h.mode) {
-    case QCE_CELL_MODE_NULL: {
-      int32_t tmp_h = *(int32_t *)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, tmp_h};
-      break;
-    }
-    case QCE_CELL_MODE_CONCRETE: {
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, val_h.v_i32};
-      break;
-    }
-    case QCE_CELL_MODE_SYMBOLIC: {
-      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
-      break;
-    }
-    }
-    break;
-  }
-  case QCE_CELL_MODE_SYMBOLIC: {
-    switch (val_h.mode) {
-    case QCE_CELL_MODE_NULL: {
-      int32_t tmp_h = *(int32_t *)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, tmp_h);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
-      break;
-    }
-    case QCE_CELL_MODE_CONCRETE: {
-      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
-      break;
-    }
-    case QCE_CELL_MODE_SYMBOLIC: {
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic,
-                                              val_l.symbolic);
-      break;
-    }
-    }
-    break;
-  }
   }
   expr->type = QCE_EXPR_I64;
 }
@@ -468,8 +650,9 @@ static inline void qce_state_mem_put_symbolic_i32(QCEState *state,
   qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr, ast);
 }
 
-static inline void qce_state_mem_put_i32(QCEState *state, intptr_t addr,
-                                         unsigned mmu_idx, QCEExpr *expr) {
+static inline void qce_state_mem_put_i32(CPUArchState *env, QCEState *state,
+                                         intptr_t addr, unsigned mmu_idx,
+                                         QCEExpr *expr) {
 #ifndef QCE_RELEASE
   assert(expr->type == QCE_EXPR_I32);
 #endif
@@ -485,23 +668,100 @@ static inline void qce_state_mem_put_i32(QCEState *state, intptr_t addr,
   }
 }
 
-static inline void qce_state_mem_put_concrete_i64(QCEState *state,
+static inline void qce_state_mem_put_concrete_i64(CPUArchState *env,
+                                                  QCEState *state,
                                                   intptr_t addr,
                                                   unsigned mmu_idx,
                                                   int64_t val) {
 #ifndef QCE_RELEASE
-  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("[qce_state_mem_put_concrete_i64] misaligned address for mem location");
-  }
+//  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+//    qce_fatal("[qce_state_mem_put_concrete_i64] misaligned address for mem location");
+//  }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
-  int32_t *cell = (int32_t *)&val;
 
-  gpointer key_l = (gpointer)addr;
-  qce_cell_holder_put_concrete_i32(mem, key_l, cell[0]);
+  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+    /* do unaligned address access */
+    intptr_t addr_l = addr - addr % QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_m = addr_l + QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_h = addr_m + QCE_CONCOLIC_REGISTER_SIZE;
 
-  gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-  qce_cell_holder_put_concrete_i32(mem, key_h, cell[1]);
+    int8_t nbits_l = (addr_m - addr) * 8;
+    int8_t nbits_h = QCE_CONCOLIC_REGISTER_SIZE * 8 - nbits_l;
+
+    QCECellValue val_l, val_h;
+    qce_cell_holder_get_i32(mem, (gpointer)addr_l, &val_l);
+    qce_cell_holder_get_i32(mem, (gpointer)addr_h, &val_h);
+
+    if (val_l.mode == QCE_CELL_MODE_NULL) {
+      val_l.mode = QCE_CELL_MODE_CONCRETE;
+      val_l.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_l, mmu_idx, 0);
+    }
+    if (val_h.mode == QCE_CELL_MODE_NULL) {
+      val_h.mode = QCE_CELL_MODE_CONCRETE;
+      val_h.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_h, mmu_idx, 0);
+    }
+
+    switch (val_l.mode) {
+    case QCE_CELL_MODE_NULL: {
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      int32_t updated_value = (int32_t)(val<<nbits_h) |
+                              (val_l.v_i32 & ((1<<nbits_h)-1));
+      qce_cell_holder_put_concrete_i32(mem, (gpointer)addr_l, updated_value);
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      Z3_ast res_l = Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0,
+                                   val_l.symbolic);
+      Z3_ast res_h =
+          Z3_mk_extract(state->solver_z3.ctx, 31, 32-nbits_l,
+                        qce_smt_z3_bv64_value(&state->solver_z3, val));
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_l, updated_value);
+      break;
+    }
+    }
+
+    qce_cell_holder_put_concrete_i32(mem, (gpointer)addr_m, val>>nbits_l);
+
+    switch (val_h.mode) {
+    case QCE_CELL_MODE_NULL: {
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      int32_t updated_value = (int32_t)((uint64_t)val>>(nbits_l+32)) |
+                              (val_h.v_i32 & (-1<<nbits_h));
+      qce_cell_holder_put_concrete_i32(mem, (gpointer)addr_h, updated_value);
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      Z3_ast res_l =
+          Z3_mk_extract(state->solver_z3.ctx, 63, 64-nbits_h,
+                        qce_smt_z3_bv64_value(&state->solver_z3, val));
+      Z3_ast res_h = Z3_mk_extract(state->solver_z3.ctx, 31, 32-nbits_l,
+                                   val_h.symbolic);
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_h, updated_value);
+      break;
+    }
+    }
+  } else {
+    int32_t* cell = (int32_t*)&val;
+
+    gpointer key_l = (gpointer)addr;
+    qce_cell_holder_put_concrete_i32(mem, key_l, cell[0]);
+
+    gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+    qce_cell_holder_put_concrete_i32(mem, key_h, cell[1]);
+  }
 }
 
 static inline void qce_state_mem_put_symbolic_i64(QCEState *state,
@@ -524,12 +784,13 @@ static inline void qce_state_mem_put_symbolic_i64(QCEState *state,
   qce_cell_holder_put_symbolic_i32(mem, key_h, ast_h);
 }
 
-static inline void qce_state_mem_put_i64(QCEState *state, intptr_t addr,
-                                         unsigned mmu_idx, QCEExpr *expr) {
+static inline void qce_state_mem_put_i64(CPUArchState *env, QCEState *state,
+                                         intptr_t addr, unsigned mmu_idx,
+                                         QCEExpr *expr) {
   qce_debug_assert(expr->type == QCE_EXPR_I64);
   switch (expr->mode) {
   case QCE_EXPR_CONCRETE: {
-    qce_state_mem_put_concrete_i64(state, addr, mmu_idx, expr->v_i64);
+    qce_state_mem_put_concrete_i64(env, state, addr, mmu_idx, expr->v_i64);
     break;
   }
   case QCE_EXPR_SYMBOLIC: {
@@ -576,96 +837,124 @@ static inline void qce_state_mem_get_i64(CPUArchState *env, QCEState *state,
                                          intptr_t addr, int mmu_idx,
                                          QCEExpr *expr) {
 #ifndef QCE_RELEASE
-  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("[qce_state_mem_get_i64] qce_state_mem_get_i64: misaligned address for mem location");
-  }
+//  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+//    qce_fatal("[qce_state_mem_get_i64] qce_state_mem_get_i64: misaligned address for mem location");
+//  }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
 
-  gpointer key_l = (gpointer)addr;
-  QCECellValue val_l;
-  qce_cell_holder_get_i32(mem, key_l, &val_l);
+  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+    /* do unaligned address access */
+    intptr_t addr_l = addr - addr % QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_m = addr_l + QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_h = addr_m + QCE_CONCOLIC_REGISTER_SIZE;
 
-  gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-  QCECellValue val_h;
-  qce_cell_holder_get_i32(mem, key_h, &val_h);
+    QCECellValue val_l, val_m, val_h;
+    qce_cell_holder_get_i32(mem, (gpointer)addr_l, &val_l);
+    qce_cell_holder_get_i32(mem, (gpointer)addr_m, &val_m);
+    qce_cell_holder_get_i32(mem, (gpointer)addr_h, &val_h);
 
-  switch (val_l.mode) {
-  case QCE_CELL_MODE_NULL: {
-    switch (val_h.mode) {
+    if (val_l.mode == QCE_CELL_MODE_NULL) {
+      val_l.mode = QCE_CELL_MODE_CONCRETE;
+      val_l.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_l, mmu_idx, 0);
+    }
+    if (val_m.mode == QCE_CELL_MODE_NULL) {
+      val_m.mode = QCE_CELL_MODE_CONCRETE;
+      val_m.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_m, mmu_idx, 0);
+    }
+    if (val_h.mode == QCE_CELL_MODE_NULL) {
+      val_h.mode = QCE_CELL_MODE_CONCRETE;
+      val_h.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_h, mmu_idx, 0);
+    }
+
+    __unaligned_addr_get_i64(state, addr, &val_l, &val_m, &val_h, expr);
+  } else {
+    gpointer key_l = (gpointer)addr;
+    QCECellValue val_l;
+    qce_cell_holder_get_i32(mem, key_l, &val_l);
+
+    gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+    QCECellValue val_h;
+    qce_cell_holder_get_i32(mem, key_h, &val_h);
+
+    switch (val_l.mode) {
     case QCE_CELL_MODE_NULL: {
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = cpu_ldq_le_mmuidx_ra(env, addr, mmu_idx, 0);
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = cpu_ldq_le_mmuidx_ra(env, addr, mmu_idx, 0);
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        int32_t tmp_l = cpu_ldl_le_mmuidx_ra(env, addr, mmu_idx, 0);
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){tmp_l, val_h.v_i32};
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        int32_t tmp_l = cpu_ldl_le_mmuidx_ra(env, addr, mmu_idx, 0);
+        Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, tmp_l);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+        break;
+      }
+      }
       break;
     }
     case QCE_CELL_MODE_CONCRETE: {
-      int32_t tmp_l = cpu_ldl_le_mmuidx_ra(env, addr, mmu_idx, 0);
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){tmp_l, val_h.v_i32};
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        int32_t tmp_h = cpu_ldl_le_mmuidx_ra(
+            env, addr + QCE_CONCOLIC_REGISTER_SIZE, mmu_idx, 0);
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, tmp_h};
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        expr->mode = QCE_EXPR_CONCRETE;
+        expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, val_h.v_i32};
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+        break;
+      }
+      }
       break;
     }
     case QCE_CELL_MODE_SYMBOLIC: {
-      int32_t tmp_l = cpu_ldl_le_mmuidx_ra(env, addr, mmu_idx, 0);
-      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, tmp_l);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
+      switch (val_h.mode) {
+      case QCE_CELL_MODE_NULL: {
+        int32_t tmp_h = cpu_ldl_le_mmuidx_ra(
+            env, addr + QCE_CONCOLIC_REGISTER_SIZE, mmu_idx, 0);
+        Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, tmp_h);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
+        break;
+      }
+      case QCE_CELL_MODE_CONCRETE: {
+        Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32);
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
+        break;
+      }
+      case QCE_CELL_MODE_SYMBOLIC: {
+        expr->mode = QCE_EXPR_SYMBOLIC;
+        expr->symbolic =
+            qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic,
+                                   val_l.symbolic);
+        break;
+      }
+      }
       break;
     }
     }
-    break;
-  }
-  case QCE_CELL_MODE_CONCRETE: {
-    switch (val_h.mode) {
-    case QCE_CELL_MODE_NULL: {
-      int32_t tmp_h = cpu_ldl_le_mmuidx_ra(
-          env, addr + QCE_CONCOLIC_REGISTER_SIZE, mmu_idx, 0);
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, tmp_h};
-      break;
-    }
-    case QCE_CELL_MODE_CONCRETE: {
-      expr->mode = QCE_EXPR_CONCRETE;
-      expr->v_i64 = *(int64_t *)(int32_t[]){val_l.v_i32, val_h.v_i32};
-      break;
-    }
-    case QCE_CELL_MODE_SYMBOLIC: {
-      Z3_ast expr_l = qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic, expr_l);
-      break;
-    }
-    }
-    break;
-  }
-  case QCE_CELL_MODE_SYMBOLIC: {
-    switch (val_h.mode) {
-    case QCE_CELL_MODE_NULL: {
-      int32_t tmp_h = cpu_ldl_le_mmuidx_ra(
-          env, addr + QCE_CONCOLIC_REGISTER_SIZE, mmu_idx, 0);
-      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, tmp_h);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
-      break;
-    }
-    case QCE_CELL_MODE_CONCRETE: {
-      Z3_ast expr_h = qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32);
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic =
-          qce_smt_z3_bv64_concat(&state->solver_z3, expr_h, val_l.symbolic);
-      break;
-    }
-    case QCE_CELL_MODE_SYMBOLIC: {
-      expr->mode = QCE_EXPR_SYMBOLIC;
-      expr->symbolic = qce_smt_z3_bv64_concat(&state->solver_z3, val_h.symbolic,
-                                              val_l.symbolic);
-      break;
-    }
-    }
-    break;
-  }
   }
   expr->type = QCE_EXPR_I64;
 }
@@ -1214,6 +1503,40 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_env_override_i64) {
 }
 QCE_UNIT_TEST_STATE_EPILOGUE
 
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_env_concrete_i64) {
+  // TODO: put value directly on an unaligned address after implementing unaligned memory access in env_put_concrete_i64
+  qce_state_env_put_concrete_i64(&state, (intptr_t)env + 16,
+                                 0x0123456789ABCDEF);
+  qce_state_env_put_concrete_i64(&state, (intptr_t)env + 24,
+                                 0x0123456789ABCDEF);
+
+  QCEExpr e1;
+  qce_state_env_get_i64(&state, (intptr_t)env + 17, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I64);
+  assert(e1.v_i64 == 0xEF0123456789ABCD);
+
+  QCEExpr e2;
+  qce_state_env_get_i64(&state, (intptr_t)env + 18, &e2);
+  assert(e2.mode == QCE_EXPR_CONCRETE);
+  assert(e2.type == QCE_EXPR_I64);
+  assert(e2.v_i64 == 0xCDEF0123456789AB);
+
+  QCEExpr e3;
+  qce_state_env_get_i64(&state, (intptr_t)env + 19, &e3);
+  assert(e3.mode == QCE_EXPR_CONCRETE);
+  assert(e3.type == QCE_EXPR_I64);
+  assert(e3.v_i64 == 0xABCDEF0123456789);
+
+  // TODO: ensure little-endian after implementing unaligned memory access in env_get_i32
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_env_symbolic_i64) {
+  // TODO: after implementing unaligned memory access in env_put_symbolic_i64
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
 QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_tmp_concrete_i64) {
   qce_state_tmp_put_concrete_i64(&state, 0, 0xFEDCBA9876543210);
   QCEExpr e2;
@@ -1313,7 +1636,8 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_mem_concrete_i64) {
   unsigned mmu_idx = 3;
   intptr_t vaddr = 0x1000;
 
-  qce_state_mem_put_concrete_i64(&state, vaddr, mmu_idx, 0x0123456789ABCDEF);
+  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu_idx,
+                                 0x0123456789ABCDEF);
   QCEExpr e1;
   qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e1);
   assert(e1.mode == QCE_EXPR_CONCRETE);
@@ -1380,7 +1704,8 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_mem_override_i64) {
   unsigned mmu_idx = 5;
   intptr_t vaddr = 0x4000;
 
-  qce_state_mem_put_concrete_i64(&state, vaddr, mmu_idx, 0x23456789ABCDEF01);
+  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu_idx,
+                                 0x23456789ABCDEF01);
   QCEExpr e1;
   qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e1);
   assert(e1.mode == QCE_EXPR_CONCRETE);
@@ -1429,13 +1754,119 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_mem_override_i64) {
 }
 QCE_UNIT_TEST_STATE_EPILOGUE
 
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_mem_concrete_i64) {
+  unsigned mmu_idx = 3;
+  intptr_t vaddr = 0x1002;
+
+  /*
+   * Since the QEMU memory access APIs in qce_state_mem_put_concrete_i64
+   * cannot read from an arbitrary invalid address, we need to forcefully
+   * initialize QCE state cells at these addresses.
+   */
+  intptr_t vaddr_l = vaddr - vaddr % QCE_CONCOLIC_REGISTER_SIZE;
+  intptr_t vaddr_m = vaddr_l + QCE_CONCOLIC_REGISTER_SIZE;
+  intptr_t vaddr_h = vaddr_m + QCE_CONCOLIC_REGISTER_SIZE;
+  qce_state_mem_put_concrete_i32(&state, vaddr_l, mmu_idx, 0);
+  qce_state_mem_put_concrete_i32(&state, vaddr_m, mmu_idx, 0);
+  qce_state_mem_put_concrete_i32(&state, vaddr_h, mmu_idx, 0);
+
+  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu_idx,
+                                 0x0123456789ABCDEF);
+  QCEExpr e1;
+  qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e1);
+  assert(e1.mode == QCE_EXPR_CONCRETE);
+  assert(e1.type == QCE_EXPR_I64);
+  assert(e1.v_i64 == 0x0123456789ABCDEF);
+
+  // TODO: ensure little-endian after implementing unaligned memory access in mem_get_i32
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
+QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_mem_symbolic_i64) {
+  unsigned mmu_idx = 4;
+  intptr_t vaddr = 0x2002;
+
+  intptr_t vaddr_l = vaddr - vaddr % QCE_CONCOLIC_REGISTER_SIZE;
+  intptr_t vaddr_m = vaddr_l + QCE_CONCOLIC_REGISTER_SIZE;
+  intptr_t vaddr_h = vaddr_m + QCE_CONCOLIC_REGISTER_SIZE;
+
+  enum Mode {
+    CCS, CSC, CSS, SCC, SCS, SSC, SSS, MOD_COUNT
+  };
+
+  Z3_ast ast = qce_smt_z3_bv32_value(&state.solver_z3, 0x01234567);
+
+  for (int mode = 0; mode < MOD_COUNT; mode++) {
+    switch (mode) {
+    case CCS: {
+        qce_state_mem_put_concrete_i32(&state, vaddr_l, mmu_idx, 0x01234567);
+        qce_state_mem_put_concrete_i32(&state, vaddr_m, mmu_idx, 0x01234567);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_h, mmu_idx, ast);
+        break;
+      }
+    case CSC: {
+        qce_state_mem_put_concrete_i32(&state, vaddr_l, mmu_idx, 0x01234567);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_m, mmu_idx, ast);
+        qce_state_mem_put_concrete_i32(&state, vaddr_h, mmu_idx, 0x01234567);
+        break;
+      }
+    case CSS: {
+        qce_state_mem_put_concrete_i32(&state, vaddr_l, mmu_idx, 0x01234567);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_m, mmu_idx, ast);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_h, mmu_idx, ast);
+        break;
+      }
+    case SCC: {
+        qce_state_mem_put_symbolic_i32(&state, vaddr_l, mmu_idx, ast);
+        qce_state_mem_put_concrete_i32(&state, vaddr_m, mmu_idx, 0x01234567);
+        qce_state_mem_put_concrete_i32(&state, vaddr_h, mmu_idx, 0x01234567);
+        break;
+      }
+    case SCS: {
+        qce_state_mem_put_symbolic_i32(&state, vaddr_l, mmu_idx, ast);
+        qce_state_mem_put_concrete_i32(&state, vaddr_m, mmu_idx, 0x01234567);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_h, mmu_idx, ast);
+        break;
+      }
+    case SSC: {
+        qce_state_mem_put_symbolic_i32(&state, vaddr_l, mmu_idx, ast);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_m, mmu_idx, ast);
+        qce_state_mem_put_concrete_i32(&state, vaddr_h, mmu_idx, 0x01234567);
+        break;
+      }
+    case SSS: {
+        qce_state_mem_put_symbolic_i32(&state, vaddr_l, mmu_idx, ast);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_m, mmu_idx, ast);
+        qce_state_mem_put_symbolic_i32(&state, vaddr_h, mmu_idx, ast);
+        break;
+      }
+    }
+    QCEExpr e;
+    qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e);
+    assert(e.mode == QCE_EXPR_SYMBOLIC);
+    assert(e.type == QCE_EXPR_I64);
+    assert(
+        qce_smt_z3_prove(
+            &state.solver_z3,
+            qce_smt_z3_bv64_eq(&state.solver_z3, e.symbolic,
+                               qce_smt_z3_bv64_value(
+                                   &state.solver_z3, 0x4567012345670123))) ==
+           SMT_Z3_PROVE_PROVED);
+  }
+
+  // TODO: put value directly on an unaligned address after implementing unaligned memory access in mem_put_symbolic_i64
+}
+QCE_UNIT_TEST_STATE_EPILOGUE
+
 QCE_UNIT_TEST_STATE_PROLOGUE(retrieve_mem_different_mmus) {
   unsigned mmu1_idx = 1;
   unsigned mmu2_idx = 2;
   intptr_t vaddr = 0x4000;
 
-  qce_state_mem_put_concrete_i64(&state, vaddr, mmu1_idx, 0x0123456789ABCDEF);
-  qce_state_mem_put_concrete_i64(&state, vaddr, mmu2_idx, 0xFEDCBA9876543210);
+  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu1_idx,
+                                 0x0123456789ABCDEF);
+  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu2_idx,
+                                 0xFEDCBA9876543210);
 
   QCEExpr e1;
   qce_state_mem_get_i64(env, &state, vaddr, mmu1_idx, &e1);
@@ -1492,6 +1923,9 @@ static inline void qce_unit_test_state(CPUArchState *env) {
   QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_symbolic_i64);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_tmp_override_i64);
 
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_env_concrete_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_env_symbolic_i64);
+
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_concrete_i32);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_symbolic_i32);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_override_i32);
@@ -1499,6 +1933,9 @@ static inline void qce_unit_test_state(CPUArchState *env) {
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_concrete_i64);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_symbolic_i64);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_mem_override_i64);
+
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_mem_concrete_i64);
+  QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_mem_symbolic_i64);
 
   QCE_UNIT_TEST_STATE_RUN(retrieve_mem_different_mmus);
   QCE_UNIT_TEST_STATE_RUN(retrieve_mem_concrete_special);
