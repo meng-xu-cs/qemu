@@ -103,6 +103,7 @@ QCE_UNIT_TEST_EXPR_EPILOGUE
  */
 
 #include "qce-expr-bin-op.h"
+#include "qce-expr-multiword-op.h"
 #include "qce-expr-cmp-op.h"
 #include "qce-expr-uni-op.h"
 #include "qce-expr-ld-st.h"
@@ -120,7 +121,7 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(add2);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(sub2);
 //  QCE_UNIT_TEST_EXPR_RUN_DUAL(mulu2);
-//  QCE_UNIT_TEST_EXPR_RUN_DUAL(muls2);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(muls2);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(special_a_add_then_sub);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(shl);
