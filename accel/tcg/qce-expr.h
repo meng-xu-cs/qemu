@@ -182,7 +182,10 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32s_i64);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(deposit);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(extract);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(sextract);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(extract2);
+  QCE_UNIT_TEST_EXPR_RUN(extr_i64_i32);
 }
 #endif
 

@@ -900,8 +900,17 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_deposit(32);
       HANDLE_SYM_INST_deposit(64);
 
+      HANDLE_SYM_INST_extract(EXTRACT, extract, 32)
+      HANDLE_SYM_INST_extract(EXTRACT, extract, 64)
+
+      HANDLE_SYM_INST_extract(SEXTRACT, sextract, 32)
+      HANDLE_SYM_INST_extract(SEXTRACT, sextract, 64)
+
       HANDLE_SYM_INST_extract2(32);
       HANDLE_SYM_INST_extract2(64);
+
+      HANDLE_SYM_INST_extr_i64_i32(L, l);
+      HANDLE_SYM_INST_extr_i64_i32(H, h);
 
       /* call instructions */
       HANDLE_SYM_INST_CALL_cc_compute_all;

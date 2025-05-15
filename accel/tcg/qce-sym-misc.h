@@ -27,6 +27,33 @@ DEFINE_SYM_INST_deposit(64)
     break;                                                                     \
 }
 
+#define DEFINE_SYM_INST_extract(name, bits)                                    \
+  static inline void qce_sym_inst_##name##_i##bits(                            \
+      CPUArchState *env, QCEState *state, QCEVar *from, tcg_target_ulong pos,  \
+      tcg_target_ulong len, QCEVar *res) {                                     \
+    QCEExpr expr_from;                                                         \
+    qce_state_get_var(env, state, from, &expr_from);                           \
+                                                                               \
+    QCEExpr expr_res;                                                          \
+    qce_expr_##name##_i##bits(&state->solver_z3, &expr_from, pos, len,         \
+                              &expr_res);                                      \
+    qce_state_put_var(env, state, res, &expr_res);                             \
+}
+
+DEFINE_SYM_INST_extract(extract, 32)
+DEFINE_SYM_INST_extract(extract, 64)
+DEFINE_SYM_INST_extract(sextract, 32)
+DEFINE_SYM_INST_extract(sextract, 64)
+
+#define HANDLE_SYM_INST_extract(key, name, bits)                               \
+  case QCE_INST_##key##_I##bits: {                                             \
+    qce_sym_inst_##name##_i##bits(                                             \
+        arch, &session->state,                                                 \
+        &inst->i_##name##_i##bits.from, inst->i_##name##_i##bits.pos,          \
+        inst->i_##name##_i##bits.len, &inst->i_##name##_i##bits.res);          \
+    break;                                                                     \
+}
+
 #define DEFINE_SYM_INST_extract2(bits)                                         \
   static inline void qce_sym_inst_extract2_i##bits(                            \
       CPUArchState *env, QCEState *state, QCEVar *v_b, QCEVar *v_t,            \
@@ -51,6 +78,29 @@ DEFINE_SYM_INST_extract2(64)
         arch, &session->state,                                                 \
         &inst->i_extract2_i##bits.v_b, &inst->i_extract2_i##bits.v_t,          \
         inst->i_extract2_i##bits.pos, &inst->i_extract2_i##bits.res);          \
+    break;                                                                     \
+}
+
+#define DEFINE_SYM_INST_extr_i64_i32(side)                                     \
+  static inline void qce_sym_inst_extr##side##_i64_i32(                        \
+      CPUArchState *env, QCEState *state, QCEVar *into, QCEVar *from) {        \
+    QCEExpr expr_from;                                                         \
+    qce_state_get_var(env, state, from, &expr_from);                           \
+                                                                               \
+    QCEExpr expr_into;                                                         \
+    qce_expr_extr##side##_i64_i32(&state->solver_z3,                           \
+                                   &expr_from, &expr_into);                    \
+    qce_state_put_var(env, state, into, &expr_into);                           \
+}
+
+DEFINE_SYM_INST_extr_i64_i32(l)
+DEFINE_SYM_INST_extr_i64_i32(h)
+
+#define HANDLE_SYM_INST_extr_i64_i32(SIDE, side)                               \
+  case QCE_INST_TRUNC##SIDE: {                                                 \
+    qce_sym_inst_extr##side##_i64_i32(arch, &session->state,                   \
+                                      &inst->i_extr##side##_i64_i32.into,      \
+                                      &inst->i_extr##side##_i64_i32.from);     \
     break;                                                                     \
 }
 

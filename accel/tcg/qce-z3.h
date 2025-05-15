@@ -664,6 +664,38 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
   DEFINE_SMT_Z3_deposit(32)
   DEFINE_SMT_Z3_deposit(64)
 
+#define DEFINE_SMT_Z3_extract(bits)                                            \
+  static inline Z3_ast qce_smt_z3_bv##bits##_extract(SolverZ3 *solver,         \
+                                                     Z3_ast val,               \
+                                                     tcg_target_ulong pos,     \
+                                                     tcg_target_ulong len) {   \
+    __qce_smt_z3_type_check_bv##bits(solver, val);                             \
+    Z3_ast result =                                                            \
+        Z3_mk_zero_ext(solver->ctx, bits-len,                                  \
+                       Z3_mk_extract(solver->ctx, pos+len-1, pos, val));       \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
+#define DEFINE_SMT_Z3_extract_DUAL
+  DEFINE_SMT_Z3_extract(32)
+  DEFINE_SMT_Z3_extract(64)
+
+#define DEFINE_SMT_Z3_sextract(bits)                                           \
+  static inline Z3_ast qce_smt_z3_bv##bits##_sextract(SolverZ3 *solver,        \
+                                                     Z3_ast val,               \
+                                                     tcg_target_ulong pos,     \
+                                                     tcg_target_ulong len) {   \
+    __qce_smt_z3_type_check_bv##bits(solver, val);                             \
+    Z3_ast result =                                                            \
+        Z3_mk_sign_ext(solver->ctx, bits-len,                                  \
+                       Z3_mk_extract(solver->ctx, pos+len-1, pos, val));       \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
+#define DEFINE_SMT_Z3_sextract_DUAL
+  DEFINE_SMT_Z3_sextract(32)
+  DEFINE_SMT_Z3_sextract(64)
+
 #define DEFINE_SMT_Z3_extract2(bits)                                           \
   static inline Z3_ast qce_smt_z3_bv##bits##_extract2(SolverZ3 *solver,        \
                                                      Z3_ast v_b, Z3_ast v_t,   \
@@ -678,6 +710,20 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
 #define DEFINE_SMT_Z3_extract2_DUAL
   DEFINE_SMT_Z3_extract2(32)
   DEFINE_SMT_Z3_extract2(64)
+
+#define DEFINE_SMT_Z3_extrl_i64_i32                                            \
+  static inline Z3_ast qce_smt_z3_extrl_i64_i32(SolverZ3 *solver, Z3_ast val) {\
+    __qce_smt_z3_type_check_bv64(solver, val);                                 \
+    return __qce_smt_z3_simplify(solver,                                       \
+                                 Z3_mk_extract(solver->ctx, 31, 0, val));      \
+  }
+
+#define DEFINE_SMT_Z3_extrh_i64_i32                                            \
+  static inline Z3_ast qce_smt_z3_extrh_i64_i32(SolverZ3 *solver, Z3_ast val) {\
+    __qce_smt_z3_type_check_bv64(solver, val);                                 \
+    return __qce_smt_z3_simplify(solver,                                       \
+                                 Z3_mk_extract(solver->ctx, 63, 32, val));     \
+  }
 
 /*
  * Bit-vector
@@ -838,7 +884,11 @@ DEFINE_SMT_Z3_OP2_DUAL(ctz, qce_Z3_mk_bvctz)
  */
 
 DEFINE_SMT_Z3_deposit_DUAL
+DEFINE_SMT_Z3_extract_DUAL
+DEFINE_SMT_Z3_sextract_DUAL
 DEFINE_SMT_Z3_extract2_DUAL
+DEFINE_SMT_Z3_extrl_i64_i32
+DEFINE_SMT_Z3_extrh_i64_i32
 
 /*
  * Array
