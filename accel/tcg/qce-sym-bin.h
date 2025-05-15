@@ -35,6 +35,11 @@ DEFINE_SYM_INST_BIN_OP(rotl, 64)
 DEFINE_SYM_INST_BIN_OP(rotr, 32)
 DEFINE_SYM_INST_BIN_OP(rotr, 64)
 
+DEFINE_SYM_INST_BIN_OP(clz, 32)
+DEFINE_SYM_INST_BIN_OP(clz, 64)
+DEFINE_SYM_INST_BIN_OP(ctz, 32)
+DEFINE_SYM_INST_BIN_OP(ctz, 64)
+
 #define HANDLE_SYM_INST_BIN_OP(key, name, bits)                                \
   case QCE_INST_##key##_I##bits: {                                             \
     qce_sym_inst_##name##_i##bits(                                             \

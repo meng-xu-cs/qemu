@@ -151,6 +151,8 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnand);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvnor);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bveqv);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(clz);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(ctz);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(st8);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(st8_symbolic);
@@ -180,6 +182,7 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32s_i64);
 
   QCE_UNIT_TEST_EXPR_RUN_DUAL(deposit);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(extract2);
 }
 #endif
 

@@ -523,6 +523,39 @@ static Z3_ast qce_Z3_mk_bveqv(Z3_context ctx, Z3_ast t1, Z3_ast t2) {
   return Z3_mk_bvxor(ctx, t1, Z3_mk_bvnot(ctx, t2));
 }
 
+static Z3_ast qce_Z3_mk_bvclz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
+  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, lhs));
+  Z3_sort sort = Z3_mk_bv_sort(ctx, nbits);
+
+  Z3_ast result = Z3_mk_int(ctx, nbits, sort);
+  for (int bit = 0; bit < nbits; ++bit) {
+    Z3_ast bit_is_zero = Z3_mk_eq(ctx, Z3_mk_extract(ctx, bit, bit, lhs),
+                                  Z3_mk_int(ctx, 0, Z3_mk_bv_sort(ctx, 1)));
+    result = Z3_mk_ite(ctx, bit_is_zero, result,
+                       Z3_mk_int(ctx, nbits-1-bit, sort));
+  }
+
+  Z3_ast lhs_is_zero = Z3_mk_eq(ctx, lhs, Z3_mk_int(ctx, 0, sort));
+  result = Z3_mk_ite(ctx, lhs_is_zero, rhs, result);
+  return result;
+}
+
+static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
+  unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, lhs));
+  Z3_sort sort = Z3_mk_bv_sort(ctx, nbits);
+
+  Z3_ast result = Z3_mk_int(ctx, nbits, sort);
+  for (int bit = nbits-1; bit >= 0; --bit) {
+    Z3_ast bit_is_zero = Z3_mk_eq(ctx, Z3_mk_extract(ctx, bit, bit, lhs),
+                                  Z3_mk_int(ctx, 0, Z3_mk_bv_sort(ctx, 1)));
+    result = Z3_mk_ite(ctx, bit_is_zero, result, Z3_mk_int(ctx, bit, sort));
+  }
+
+  Z3_ast lhs_is_zero = Z3_mk_eq(ctx, lhs, Z3_mk_int(ctx, 0, sort));
+  result = Z3_mk_ite(ctx, lhs_is_zero, rhs, result);
+  return result;
+}
+
 /*
  * Template
  */
@@ -630,6 +663,21 @@ static Z3_ast qce_Z3_mk_bveqv(Z3_context ctx, Z3_ast t1, Z3_ast t2) {
 #define DEFINE_SMT_Z3_deposit_DUAL
   DEFINE_SMT_Z3_deposit(32)
   DEFINE_SMT_Z3_deposit(64)
+
+#define DEFINE_SMT_Z3_extract2(bits)                                           \
+  static inline Z3_ast qce_smt_z3_bv##bits##_extract2(SolverZ3 *solver,        \
+                                                     Z3_ast v_b, Z3_ast v_t,   \
+                                                     tcg_target_ulong pos) {   \
+    __qce_smt_z3_type_check_bv##bits(solver, v_b);                             \
+    __qce_smt_z3_type_check_bv##bits(solver, v_t);                             \
+    Z3_ast result = Z3_mk_extract(solver->ctx, pos+bits-1, pos,                \
+                                  Z3_mk_concat(solver->ctx, v_t, v_b));        \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
+#define DEFINE_SMT_Z3_extract2_DUAL
+  DEFINE_SMT_Z3_extract2(32)
+  DEFINE_SMT_Z3_extract2(64)
 
 /*
  * Bit-vector
@@ -782,11 +830,15 @@ DEFINE_SMT_Z3_OP2_DUAL(bvnand, Z3_mk_bvnand)
 DEFINE_SMT_Z3_OP2_DUAL(bvnor, Z3_mk_bvnor)
 DEFINE_SMT_Z3_OP2_DUAL(bveqv, qce_Z3_mk_bveqv)
 
+DEFINE_SMT_Z3_OP2_DUAL(clz, qce_Z3_mk_bvclz)
+DEFINE_SMT_Z3_OP2_DUAL(ctz, qce_Z3_mk_bvctz)
+
 /*
  * Miscellaneous
  */
 
 DEFINE_SMT_Z3_deposit_DUAL
+DEFINE_SMT_Z3_extract2_DUAL
 
 /*
  * Array

@@ -54,6 +54,20 @@ DEFINE_CONCRETE_BIN_OP_LOGICAL_DUAL(bvnand, ~, |, ~)
 DEFINE_CONCRETE_BIN_OP_LOGICAL_DUAL(bvnor, ~, &, ~)
 DEFINE_CONCRETE_BIN_OP_LOGICAL_DUAL(bveqv, +, ^, ~)
 
+#define DEFINE_CONCRETE_BIN_OP_CZ(bits, name)                                  \
+  static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
+      int##bits##_t lhs, int##bits##_t rhs) {                                  \
+    return lhs ? (bits == 32 ?                                                 \
+                     __builtin_##name(lhs) : __builtin_##name##l(lhs)) : rhs;  \
+}
+
+#define DEFINE_CONCRETE_BIN_OP_CZ_DUAL(name)                                   \
+  DEFINE_CONCRETE_BIN_OP_CZ(32, name)                                          \
+  DEFINE_CONCRETE_BIN_OP_CZ(64, name)                                          \
+
+DEFINE_CONCRETE_BIN_OP_CZ_DUAL(clz)
+DEFINE_CONCRETE_BIN_OP_CZ_DUAL(ctz)
+
 #define DEFINE_CONCRETE_BIN_OP_ROT(bits, name, op1, op2)                       \
   static inline int##bits##_t __qce_concrete_bv##bits##_##name(                \
       int##bits##_t val, int##bits##_t pos) {                                  \
@@ -151,6 +165,9 @@ DEFINE_EXPR_BIN_OP_DUAL(bvorc)
 DEFINE_EXPR_BIN_OP_DUAL(bvnand)
 DEFINE_EXPR_BIN_OP_DUAL(bvnor)
 DEFINE_EXPR_BIN_OP_DUAL(bveqv)
+
+DEFINE_EXPR_BIN_OP_DUAL(clz)
+DEFINE_EXPR_BIN_OP_DUAL(ctz)
 
 /*
  * Testing
@@ -1062,6 +1079,98 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(bvnor)
   }                                                                            \
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(bveqv)
+
+#define QCE_UNIT_TEST_EXPR_clz(bits)                                           \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(clz_i##bits) {                                   \
+    /* clz(0, 1) == 1 */                                                       \
+    QCEExpr v0, v1, r;                                                         \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_clz_i##bits(&solver, &v0, &v1, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 1);                                                  \
+  }                                                                            \
+  {                                                                            \
+    /* clz(0xf0f, 1) == bits - 12 */                                           \
+    QCEExpr v, v1, r;                                                          \
+    qce_expr_init_v##bits(&v, 0xf0f);                                          \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_clz_i##bits(&solver, &v, &v1, &r);                                \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == bits-12);                                            \
+  }                                                                            \
+  {                                                                            \
+    /* clz(0, a) == a */                                                       \
+    QCEExpr v0, a, r;                                                          \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_clz_i##bits(&solver, &v0, &a, &r);                                \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(&solver, qce_smt_z3_bv##bits##_eq(                 \
+                                         &solver, r.symbolic, a.symbolic)) ==  \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  {                                                                            \
+    /* clz(0xf00f, a) == bits - 16 */                                          \
+    QCEExpr v, a, r;                                                           \
+    qce_expr_init_v##bits(&v, 0xf00f);                                         \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_clz_i##bits(&solver, &v, &a, &r);                                 \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == bits-16);                                            \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(clz)
+
+#define QCE_UNIT_TEST_EXPR_ctz(bits)                                           \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(ctz_i##bits) {                                   \
+    /* ctz(0, 1) == 1 */                                                       \
+    QCEExpr v0, v1, r;                                                         \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_ctz_i##bits(&solver, &v0, &v1, &r);                               \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 1);                                                  \
+  }                                                                            \
+  {                                                                            \
+    /* ctz(0xf0f0000, 1) == 16 */                                              \
+    QCEExpr v, v1, r;                                                          \
+    qce_expr_init_v##bits(&v, 0xf0f0000);                                      \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_ctz_i##bits(&solver, &v, &v1, &r);                                \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 16);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* ctz(0, a) == a */                                                       \
+    QCEExpr v0, a, r;                                                          \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_ctz_i##bits(&solver, &v0, &a, &r);                                \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(&solver, qce_smt_z3_bv##bits##_eq(                 \
+                                         &solver, r.symbolic, a.symbolic)) ==  \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  {                                                                            \
+    /* ctz(0xf0f000, a) == 12 */                                               \
+    QCEExpr v, a, r;                                                           \
+    qce_expr_init_v##bits(&v, 0xf0f000);                                       \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_ctz_i##bits(&solver, &v, &a, &r);                                 \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 12);                                                 \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(ctz)
 
 #define QCE_UNIT_TEST_EXPR_rotl(bits)                                          \
   QCE_UNIT_TEST_EXPR_PROLOGUE(rotl_i##bits) {                                  \

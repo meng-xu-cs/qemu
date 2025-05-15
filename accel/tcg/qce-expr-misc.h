@@ -16,6 +16,15 @@
 DEFINE_CONCRETE_deposit(32)
 DEFINE_CONCRETE_deposit(64)
 
+#define DEFINE_CONCRETE_extract2(bits)                                         \
+  static inline int##bits##_t __qce_concrete_bv##bits##_extract2(              \
+      int##bits##_t v_b, int##bits##_t v_t, tcg_target_ulong pos) {            \
+    return (v_t << (bits-pos)) | ((uint##bits##_t)v_b >> pos);                 \
+  }
+
+DEFINE_CONCRETE_extract2(32)
+DEFINE_CONCRETE_extract2(64)
+
 /*
  * Templates
  */
@@ -66,6 +75,53 @@ DEFINE_CONCRETE_deposit(64)
 
 DEFINE_EXPR_deposit(32)
 DEFINE_EXPR_deposit(64)
+
+#define DEFINE_EXPR_extract2(bits)                                             \
+  static inline void qce_expr_extract2_i##bits(                                \
+      SolverZ3 *solver, QCEExpr *v_low, QCEExpr *v_high, tcg_target_ulong pos, \
+      QCEExpr *result) {                                                       \
+    /* type checking */                                                        \
+    qce_expr_assert_type(v_low, I##bits);                                      \
+    qce_expr_assert_type(v_high, I##bits);                                     \
+    result->type = QCE_EXPR_I##bits;                                           \
+                                                                               \
+    /* base assignment */                                                      \
+    if (v_low->mode == QCE_EXPR_CONCRETE) {                                    \
+      if (v_high->mode == QCE_EXPR_CONCRETE) {                                 \
+        result->mode = QCE_EXPR_CONCRETE;                                      \
+        result->v_i##bits = __qce_concrete_bv##bits##_extract2(                \
+            v_low->v_i##bits, v_high->v_i##bits, pos);                         \
+      } else {                                                                 \
+        result->mode = QCE_EXPR_SYMBOLIC;                                      \
+        result->symbolic = qce_smt_z3_bv##bits##_extract2(                     \
+            solver, qce_smt_z3_bv##bits##_value(solver, v_low->v_i##bits),     \
+            v_high->symbolic, pos);                                            \
+      }                                                                        \
+    } else {                                                                   \
+      if (v_high->mode == QCE_EXPR_CONCRETE) {                                 \
+        result->mode = QCE_EXPR_SYMBOLIC;                                      \
+        result->symbolic = qce_smt_z3_bv##bits##_extract2(                     \
+            solver, v_low->symbolic,                                           \
+            qce_smt_z3_bv##bits##_value(solver, v_high->v_i##bits), pos);      \
+      } else {                                                                 \
+        result->mode = QCE_EXPR_SYMBOLIC;                                      \
+        result->symbolic = qce_smt_z3_bv##bits##_extract2(                     \
+            solver, v_low->symbolic, v_high->symbolic, pos);                   \
+      }                                                                        \
+    }                                                                          \
+                                                                               \
+    /* try to reduce symbolic to concrete */                                   \
+    if (result->mode == QCE_EXPR_SYMBOLIC) {                                   \
+      uint##bits##_t val = 0;                                                  \
+      if (qce_smt_z3_probe_bv##bits(solver, result->symbolic, &val)) {         \
+        result->mode = QCE_EXPR_CONCRETE;                                      \
+        result->v_i##bits = val;                                               \
+      }                                                                        \
+    }                                                                          \
+  }
+
+DEFINE_EXPR_extract2(32)
+DEFINE_EXPR_extract2(64)
 
 /*
  * Testing
@@ -124,6 +180,59 @@ DEFINE_EXPR_deposit(64)
   }                                                                            \
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(deposit)
+
+#define QCE_UNIT_TEST_EXPR_extract2(bits)                                      \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(extract2_i##bits) {                              \
+    /* extract2(-1, -1, 8) == -1 */                                            \
+    QCEExpr v1m, r;                                                            \
+    qce_expr_init_v##bits(&v1m, -1);                                           \
+    tcg_target_ulong pos = 8;                                                  \
+    qce_expr_extract2_i##bits(&solver, &v1m, &v1m, pos, &r);                   \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == -1);                                                 \
+  }                                                                            \
+  {                                                                            \
+    /* extract2(0x12345678, 0, 8) == 0x123456 */                               \
+    QCEExpr v_b, v_t, r;                                                       \
+    qce_expr_init_v##bits(&v_b, 0x12345678);                                   \
+    qce_expr_init_v##bits(&v_t, 0);                                            \
+    tcg_target_ulong pos = 8;                                                  \
+    qce_expr_extract2_i##bits(&solver, &v_b, &v_t, pos, &r);                   \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0x123456);                                           \
+  }                                                                            \
+  {                                                                            \
+    /* extract2(0xABCDEF, 0x123456, 24) == 0x123456 << (bits - 24)  */         \
+    QCEExpr v_b, v_t, r;                                                       \
+    qce_expr_init_v##bits(&v_b, 0xABCDEF);                                     \
+    qce_expr_init_v##bits(&v_t, 0x123456);                                     \
+    tcg_target_ulong pos = 24;                                                 \
+    qce_expr_extract2_i##bits(&solver, &v_b, &v_t, pos, &r);                   \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == (int##bits##_t)0x123456<<(bits-24));                 \
+  }                                                                            \
+  {                                                                            \
+    /* extract2(a, a, 15) == rotr(a, 15) */                                    \
+    QCEExpr a, r;                                                              \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    tcg_target_ulong pos = 15;                                                 \
+    qce_expr_extract2_i##bits(&solver, &a, &a, pos, &r);                       \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_SYMBOLIC);                                       \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r.symbolic,                           \
+                                qce_smt_z3_bv##bits##_rotr(                    \
+                                    &solver, a.symbolic,                       \
+                                    qce_smt_z3_bv##bits##_value(&solver,       \
+                                                                pos)))) ==     \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(extract2)
 #endif
 
 #endif /* QCE_EXPR_MISC_H */
