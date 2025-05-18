@@ -181,6 +181,9 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32u_i64);
   QCE_UNIT_TEST_EXPR_RUN(special_ld_then_st32s_i64);
 
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(bswap16);
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(bswap32);
+  QCE_UNIT_TEST_EXPR_RUN(bswap64_i64);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(deposit);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(extract);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(sextract);

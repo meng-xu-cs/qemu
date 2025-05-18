@@ -897,6 +897,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_brcond(64);
 
       /* miscellaneous */
+      HANDLE_SYM_INST_bswap(16, 32);
+      HANDLE_SYM_INST_bswap(32, 32);
+      HANDLE_SYM_INST_bswap(16, 64);
+      HANDLE_SYM_INST_bswap(32, 64);
+      HANDLE_SYM_INST_bswap(64, 64);
+
       HANDLE_SYM_INST_deposit(32);
       HANDLE_SYM_INST_deposit(64);
 

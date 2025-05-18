@@ -5,6 +5,22 @@
  * Utilities
  */
 
+#define DEFINE_CONCRETE_bswap(n, bits)                                         \
+  static inline int##bits##_t __qce_concrete_bv##bits##_bswap##n(              \
+      int##bits##_t val, tcg_target_ulong flag) {                              \
+    if (flag & TCG_BSWAP_OZ) {                                                 \
+      return (uint##bits##_t)__builtin_bswap##n(val);                          \
+    } else {                                                                   \
+      return (int##n##_t)__builtin_bswap##n(val);                              \
+    }                                                                          \
+  }
+
+DEFINE_CONCRETE_bswap(16, 32)
+DEFINE_CONCRETE_bswap(32, 32)
+DEFINE_CONCRETE_bswap(16, 64)
+DEFINE_CONCRETE_bswap(32, 64)
+DEFINE_CONCRETE_bswap(64, 64)
+
 #define DEFINE_CONCRETE_deposit(bits)                                          \
   static inline int##bits##_t __qce_concrete_bv##bits##_deposit(               \
       int##bits##_t into, int##bits##_t from, tcg_target_ulong pos,            \
@@ -52,6 +68,40 @@ static inline int32_t __qce_concrete_extrh_i64_i32(int64_t val) {
 /*
  * Templates
  */
+
+#define DEFINE_EXPR_bswap(n, bits)                                             \
+  static inline void qce_expr_bswap##n##_i##bits(                              \
+      SolverZ3 *solver, QCEExpr *opv, tcg_target_ulong flag, QCEExpr *result) {\
+    /* type checking */                                                        \
+    qce_expr_assert_type(opv, I##bits);                                        \
+    result->type = QCE_EXPR_I##bits;                                           \
+                                                                               \
+    /* base assignment */                                                      \
+    if (opv->mode == QCE_EXPR_CONCRETE) {                                      \
+      result->mode = QCE_EXPR_CONCRETE;                                        \
+      result->v_i##bits =                                                      \
+          __qce_concrete_bv##bits##_bswap##n(opv->v_i##bits, flag);            \
+    } else {                                                                   \
+      result->mode = QCE_EXPR_SYMBOLIC;                                        \
+      result->symbolic =                                                       \
+          qce_smt_z3_bv##bits##_bswap##n(solver, opv->symbolic, flag);         \
+    }                                                                          \
+                                                                               \
+    /* try to reduce symbolic to concrete */                                   \
+    if (result->mode == QCE_EXPR_SYMBOLIC) {                                   \
+      uint##bits##_t val = 0;                                                  \
+      if (qce_smt_z3_probe_bv##bits(solver, result->symbolic, &val)) {         \
+        result->mode = QCE_EXPR_CONCRETE;                                      \
+        result->v_i##bits = val;                                               \
+      }                                                                        \
+    }                                                                          \
+  }
+
+DEFINE_EXPR_bswap(16, 32)
+DEFINE_EXPR_bswap(32, 32)
+DEFINE_EXPR_bswap(16, 64)
+DEFINE_EXPR_bswap(32, 64)
+DEFINE_EXPR_bswap(64, 64)
 
 #define DEFINE_EXPR_deposit(bits)                                              \
   static inline void qce_expr_deposit_i##bits(                                 \
@@ -215,6 +265,89 @@ DEFINE_EXPR_extr_i64_i32(h)
  */
 
 #ifndef QCE_RELEASE
+#define QCE_UNIT_TEST_EXPR_bswap16(bits)                                       \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(bswap16_i##bits) {                               \
+    /* bswap16(0xF..F12F3, TCG_BSWAP_OZ) == 0xF312 */                          \
+    QCEExpr v, r;                                                              \
+    qce_expr_init_v##bits(&v, (int32_t)0xFFFF12F3);                            \
+    tcg_target_ulong flag = TCG_BSWAP_OZ;                                      \
+    qce_expr_bswap16_i##bits(&solver, &v, flag, &r);                           \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == 0xF312);                                             \
+  }                                                                            \
+  {                                                                            \
+    /* bswap16(0x12F3, TCG_BSWAP_OS) == 0xF...FF312 */                         \
+    QCEExpr v, r;                                                              \
+    qce_expr_init_v##bits(&v, 0x12F3);                                         \
+    tcg_target_ulong flag = TCG_BSWAP_OS;                                      \
+    qce_expr_bswap16_i##bits(&solver, &v, flag, &r);                           \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == (int32_t)0xFFFFF312);                                \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(bswap16)
+
+#define QCE_UNIT_TEST_EXPR_bswap32(bits)                                       \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(bswap32_i##bits) {                               \
+    /* bswap32(0xF..FF23456F8, TCG_BSWAP_OZ) == 0xF85634F2 */                  \
+    QCEExpr v, r;                                                              \
+    qce_expr_init_v##bits(&v, (int32_t)0xF23456F8);                            \
+    tcg_target_ulong flag = TCG_BSWAP_OZ;                                      \
+    qce_expr_bswap32_i##bits(&solver, &v, flag, &r);                           \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == (uint32_t)0xF85634F2);                               \
+  }                                                                            \
+  {                                                                            \
+    /* bswap32(0x123456F8, TCG_BSWAP_OS) == 0xF...FF8563412 */                 \
+    QCEExpr v, r;                                                              \
+    qce_expr_init_v##bits(&v, 0x123456F8);                                     \
+    tcg_target_ulong flag = TCG_BSWAP_OS;                                      \
+    qce_expr_bswap32_i##bits(&solver, &v, flag, &r);                           \
+    assert(r.type == QCE_EXPR_I##bits);                                        \
+    assert(r.mode == QCE_EXPR_CONCRETE);                                       \
+    assert(r.v_i##bits == (int32_t)0xF8563412);                                \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(bswap32)
+
+QCE_UNIT_TEST_EXPR_PROLOGUE(bswap64_i64) {
+  /* bswap64(0x0123456789ABCDEF, TCG_BSWAP_OZ) == 0XEFCDAB8967452301 */
+  QCEExpr v, r;
+  qce_expr_init_v64(&v, 0x0123456789ABCDEF);
+  tcg_target_ulong flag = TCG_BSWAP_OZ;
+  qce_expr_bswap64_i64(&solver, &v, flag, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == 0XEFCDAB8967452301);
+}
+{
+  /* bswap64(0x0123456789ABCDEF, TCG_BSWAP_OS) == 0XEFCDAB8967452301 */
+  QCEExpr v, r;
+  qce_expr_init_v64(&v, 0x0123456789ABCDEF);
+  tcg_target_ulong flag = TCG_BSWAP_OS;
+  qce_expr_bswap64_i64(&solver, &v, flag, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == 0XEFCDAB8967452301);
+}
+{
+  /* bswap64(bswap64(a, TCG_BSWAP_OZ), TCG_BSWAP_OS)  == a */
+  QCEExpr a, r;
+  qce_expr_init_s64(&solver, &a);
+  qce_expr_bswap64_i64(&solver, &a, TCG_BSWAP_OZ, &r);
+  qce_expr_bswap64_i64(&solver, &r, TCG_BSWAP_OS, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_SYMBOLIC);
+  assert(qce_smt_z3_prove(&solver,
+                          qce_smt_z3_bv64_eq(
+                              &solver, r.symbolic, a.symbolic)) ==
+         SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_EXPR_EPILOGUE
+
 #define QCE_UNIT_TEST_EXPR_deposit(bits)                                       \
   QCE_UNIT_TEST_EXPR_PROLOGUE(deposit_i##bits) {                               \
     /* deposit(-1, 2, 8, 4) == 0xf...f2ff */                                   \

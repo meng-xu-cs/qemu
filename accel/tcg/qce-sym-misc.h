@@ -1,6 +1,32 @@
 #ifndef QCE_SYM_MISC_H
 #define QCE_SYM_MISC_H
 
+#define DEFINE_SYM_INST_bswap(n, bits)                                         \
+  static inline void qce_sym_inst_bswap##n##_i##bits(                          \
+      CPUArchState *env, QCEState *state, QCEVar *v, tcg_target_ulong flag,    \
+      QCEVar *res) {                                                           \
+    QCEExpr expr_v;                                                            \
+    qce_state_get_var(env, state, v, &expr_v);                                 \
+                                                                               \
+    QCEExpr expr_res;                                                          \
+    qce_expr_bswap##n##_i##bits(&state->solver_z3, &expr_v, flag, &expr_res);  \
+    qce_state_put_var(env, state, res, &expr_res);                             \
+}
+
+DEFINE_SYM_INST_bswap(16, 32)
+DEFINE_SYM_INST_bswap(32, 32)
+DEFINE_SYM_INST_bswap(16, 64)
+DEFINE_SYM_INST_bswap(32, 64)
+DEFINE_SYM_INST_bswap(64, 64)
+
+#define HANDLE_SYM_INST_bswap(n, bits)                                         \
+  case QCE_INST_BSWAP##n##_I##bits: {                                          \
+    qce_sym_inst_bswap##n##_i##bits(                                           \
+        arch, &session->state, &inst->i_bswap##n##_i##bits.v,                  \
+        inst->i_bswap##n##_i##bits.flag, &inst->i_bswap##n##_i##bits.res);     \
+    break;                                                                     \
+}
+
 #define DEFINE_SYM_INST_deposit(bits)                                          \
   static inline void qce_sym_inst_deposit_i##bits(                             \
       CPUArchState *env, QCEState *state, QCEVar *into, QCEVar *from,          \

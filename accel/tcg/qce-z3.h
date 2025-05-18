@@ -641,6 +641,24 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
   DEFINE_SMT_Z3_MULTIWORD_OP2(32, name, func)                                  \
   DEFINE_SMT_Z3_MULTIWORD_OP2(64, name, func)
 
+#define DEFINE_SMT_Z3_bswap(n, bits)                                           \
+  static inline Z3_ast qce_smt_z3_bv##bits##_bswap##n(SolverZ3 *solver,        \
+                                                      Z3_ast val,              \
+                                                      tcg_target_ulong flag) { \
+    __qce_smt_z3_type_check_bv##bits(solver, val);                             \
+    Z3_ast result = Z3_mk_extract(solver->ctx, 7, 0, val);                     \
+    for (int bit = 8; bit < n; bit+=8) {                                       \
+      result = Z3_mk_concat(solver->ctx, result,                               \
+                            Z3_mk_extract(solver->ctx, bit+7, bit, val));      \
+    }                                                                          \
+    if (flag & TCG_BSWAP_OZ) {                                                 \
+      result = Z3_mk_zero_ext(solver->ctx, bits-n, result);                    \
+    } else {                                                                   \
+      result = Z3_mk_sign_ext(solver->ctx, bits-n, result);                    \
+    }                                                                          \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
 #define DEFINE_SMT_Z3_deposit(bits)                                            \
   static inline Z3_ast qce_smt_z3_bv##bits##_deposit(SolverZ3 *solver,         \
                                                      Z3_ast into, Z3_ast from, \
@@ -883,6 +901,11 @@ DEFINE_SMT_Z3_OP2_DUAL(ctz, qce_Z3_mk_bvctz)
  * Miscellaneous
  */
 
+DEFINE_SMT_Z3_bswap(16, 32)
+DEFINE_SMT_Z3_bswap(32, 32)
+DEFINE_SMT_Z3_bswap(16, 64)
+DEFINE_SMT_Z3_bswap(32, 64)
+DEFINE_SMT_Z3_bswap(64, 64)
 DEFINE_SMT_Z3_deposit_DUAL
 DEFINE_SMT_Z3_extract_DUAL
 DEFINE_SMT_Z3_sextract_DUAL
