@@ -919,7 +919,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_extr_i64_i32(H, h);
 
       /* call instructions */
-      HANDLE_SYM_INST_CALL_cc_compute_all;
+      HANDLE_SYM_INST_CALL_cc_compute(all);
+      HANDLE_SYM_INST_CALL_cc_compute(c);
+      HANDLE_SYM_INST_CALL_cc_compute_nz;
 
       /* all others */
     default: {
