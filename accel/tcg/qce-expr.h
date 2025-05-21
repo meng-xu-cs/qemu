@@ -18,9 +18,14 @@ typedef struct {
   };
 } QCEExpr;
 
+#define qce_expr_assert_mode(expr, mo)                                         \
+  if ((expr)->mode != QCE_EXPR_##mo) {                                         \
+    qce_fatal("[expr] mode mismatch: expect " #mo ", actual %d", (expr)->mode);\
+  }
+
 #define qce_expr_assert_type(expr, ty)                                         \
-  if (expr->type != QCE_EXPR_##ty) {                                           \
-    qce_fatal("[expr] type mismatch: expect " #ty ", actual %d", expr->type);  \
+  if ((expr)->type != QCE_EXPR_##ty) {                                         \
+    qce_fatal("[expr] type mismatch: expect " #ty ", actual %d", (expr)->type);\
   }
 
 // dual-mode representation of a predicate
