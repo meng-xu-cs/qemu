@@ -203,4 +203,333 @@ DEFINE_SYM_INST_CALL_gvec(lt8, <)
     break;                                                                     \
   }
 
+static inline uint32_t qce_cpu_cc_compute_all(CPUX86State *env,
+                                              QCEState *state) {
+  QCEExpr expr_cc_dst, expr_cc_src, expr_cc_src2, expr_cc_op;
+  qce_state_env_get_i64(state, (intptr_t)&env->cc_dst, &expr_cc_dst);
+  qce_state_env_get_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
+  qce_state_env_get_i64(state, (intptr_t)&env->cc_src2, &expr_cc_src2);
+  qce_state_env_get_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
+
+  return helper_cc_compute_all(expr_cc_dst.v_i64, expr_cc_src.v_i64,
+                               expr_cc_src2.v_i64, expr_cc_op.v_i32);
+}
+
+static inline uint32_t qce_cpu_compute_eflags(CPUX86State *env,
+                                              QCEState * state) {
+  QCEExpr expr_df, expr_eflags;
+  qce_state_env_get_i32(state, (intptr_t)&env->df, &expr_df);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+
+  uint32_t eflags = expr_eflags.v_i64;
+  if (tcg_enabled()) {
+    eflags |= qce_cpu_cc_compute_all(env, state) | (expr_df.v_i32 & DF_MASK);
+  }
+  return eflags;
+}
+
+static inline void qce_cpu_load_eflags(CPUX86State *env, QCEState * state,
+                                       int eflags, int update_mask) {
+  QCEExpr expr_cc_src, expr_cc_op, expr_df, expr_eflags;
+  qce_state_env_get_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
+  qce_state_env_get_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
+  qce_state_env_get_i32(state, (intptr_t)&env->df, &expr_df);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+
+  expr_cc_src.v_i64 = eflags & (CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
+  expr_cc_op.v_i32 = CC_OP_EFLAGS;
+  expr_df.v_i32 = 1 - (2 * ((eflags >> 10) & 1));
+  expr_eflags.v_i64 = (expr_eflags.v_i64 & ~update_mask) |
+      (eflags & update_mask) | 0x2;
+
+  qce_state_env_put_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
+  qce_state_env_put_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
+  qce_state_env_put_i32(state, (intptr_t)&env->df, &expr_df);
+  qce_state_env_put_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+}
+
+static inline void qce_cpu_x86_load_seg_cache(
+    CPUX86State *env, QCEState * state, X86Seg seg_reg, unsigned int selector,
+    target_ulong base, unsigned int limit, unsigned int flags) {
+  QCEExpr expr_sr_selector, expr_sr_base, expr_sr_limit, expr_sr_flags,
+          expr_hflags, expr_cs_flags, expr_ss_flags, expr_cr0, expr_eflags,
+          expr_ds_base, expr_es_base, expr_ss_base;
+  qce_state_env_get_i32(state, (intptr_t)&env->segs[seg_reg].selector,
+                        &expr_sr_selector);
+  qce_state_env_get_i64(state, (intptr_t)&env->segs[seg_reg].base,
+                        &expr_sr_base);
+  qce_state_env_get_i32(state, (intptr_t)&env->segs[seg_reg].limit,
+                        &expr_sr_limit);
+  qce_state_env_get_i32(state, (intptr_t)&env->segs[seg_reg].flags,
+                        &expr_sr_flags);
+  qce_state_env_get_i32(state, (intptr_t)&env->hflags, &expr_hflags);
+  qce_state_env_get_i32(state, (intptr_t)&env->segs[R_CS].flags,
+                        &expr_cs_flags);
+  qce_state_env_get_i32(state, (intptr_t)&env->segs[R_SS].flags,
+                        &expr_ss_flags);
+  qce_state_env_get_i64(state, (intptr_t)&env->cr[0], &expr_cr0);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+  qce_state_env_get_i64(state, (intptr_t)&env->segs[R_DS].base,
+                        &expr_ds_base);
+  qce_state_env_get_i64(state, (intptr_t)&env->segs[R_ES].base,
+                        &expr_es_base);
+  qce_state_env_get_i64(state, (intptr_t)&env->segs[R_SS].base,
+                        &expr_ss_base);
+
+  unsigned int new_hflags;
+
+  expr_sr_selector.v_i32 = selector;
+  expr_sr_base.v_i64 = base;
+  expr_sr_limit.v_i32 = limit;
+  expr_sr_flags.v_i32 = flags;
+
+  /* update the hidden flags */
+  {
+    if (seg_reg == R_CS) {
+#ifdef TARGET_X86_64
+      if ((expr_hflags.v_i32 & HF_LMA_MASK) && (flags & DESC_L_MASK)) {
+        /* long mode */
+        expr_hflags.v_i32 |= HF_CS32_MASK | HF_SS32_MASK | HF_CS64_MASK;
+        expr_hflags.v_i32 &= ~(HF_ADDSEG_MASK);
+      } else
+#endif
+      {
+        /* legacy / compatibility case */
+        new_hflags = (expr_cs_flags.v_i32 & DESC_B_MASK)
+            >> (DESC_B_SHIFT - HF_CS32_SHIFT);
+        expr_hflags.v_i32 = (expr_hflags.v_i32 &
+                             ~(HF_CS32_MASK | HF_CS64_MASK)) | new_hflags;
+      }
+    }
+    if (seg_reg == R_SS) {
+      int cpl = (flags >> DESC_DPL_SHIFT) & 3;
+#if HF_CPL_MASK != 3
+#error HF_CPL_MASK is hardcoded
+#endif
+      expr_hflags.v_i32 = (expr_hflags.v_i32 & ~HF_CPL_MASK) | cpl;
+      /* Possibly switch between BNDCFGS and BNDCFGU */
+      cpu_sync_bndcs_hflags(env);
+    }
+    new_hflags = (expr_ss_flags.v_i32 & DESC_B_MASK)
+        >> (DESC_B_SHIFT - HF_SS32_SHIFT);
+    if (expr_hflags.v_i32 & HF_CS64_MASK) {
+      /* zero base assumed for DS, ES and SS in long mode */
+    } else if (!(expr_cr0.v_i64 & CR0_PE_MASK) ||
+              (expr_eflags.v_i64 & VM_MASK) ||
+              !(expr_hflags.v_i32 & HF_CS32_MASK)) {
+      /* XXX: try to avoid this test. The problem comes from the
+         fact that is real mode or vm86 mode we only modify the
+         'base' and 'selector' fields of the segment cache to go
+         faster. A solution may be to force addseg to one in
+         translate-i386.c. */
+      new_hflags |= HF_ADDSEG_MASK;
+    } else {
+      new_hflags |= ((expr_ds_base.v_i64 |
+                      expr_es_base.v_i64 |
+                      expr_ss_base.v_i64) != 0) <<
+          HF_ADDSEG_SHIFT;
+    }
+    expr_hflags.v_i32 = (expr_hflags.v_i32 &
+                   ~(HF_SS32_MASK | HF_ADDSEG_MASK)) | new_hflags;
+  }
+
+  qce_state_env_put_i32(state, (intptr_t)&env->segs[seg_reg].selector,
+                        &expr_sr_selector);
+  qce_state_env_put_i64(state, (intptr_t)&env->segs[seg_reg].base,
+                        &expr_sr_base);
+  qce_state_env_put_i32(state, (intptr_t)&env->segs[seg_reg].limit,
+                        &expr_sr_limit);
+  qce_state_env_put_i32(state, (intptr_t)&env->segs[seg_reg].flags,
+                        &expr_sr_flags);
+  qce_state_env_put_i32(state, (intptr_t)&env->hflags, &expr_hflags);
+}
+
+static inline void qce_sym_inst_call_syscall(
+    CPUArchState *env, QCEState *state, QCEVar *next_eip) {
+  QCEExpr expr_next_eip;
+  qce_state_get_var(env, state, next_eip, &expr_next_eip);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_next_eip, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_next_eip, I32);
+
+  QCEExpr expr_efer, expr_star, expr_hflags, expr_rcx, expr_eip, expr_r11,
+          expr_eflags, expr_fmask, expr_lstar, expr_cstar;
+  qce_state_env_get_i64(state, (intptr_t)&env->efer, &expr_efer);
+  qce_state_env_get_i64(state, (intptr_t)&env->star, &expr_star);
+  qce_state_env_get_i32(state, (intptr_t)&env->hflags, &expr_hflags);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_ECX], &expr_rcx);
+  qce_state_env_get_i64(state, (intptr_t)&env->eip, &expr_eip);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[11], &expr_r11);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+  qce_state_env_get_i64(state, (intptr_t)&env->fmask, &expr_fmask);
+  qce_state_env_get_i64(state, (intptr_t)&env->lstar, &expr_lstar);
+  qce_state_env_get_i64(state, (intptr_t)&env->cstar, &expr_cstar);
+
+  int selector;
+
+  if (!(expr_efer.v_i64 & MSR_EFER_SCE)) {
+    qce_fatal("syscall raises an exception");
+//    raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
+  }
+  selector = ((uint64_t)expr_star.v_i64 >> 32) & 0xffff;
+#ifdef TARGET_X86_64
+  if (expr_hflags.v_i32 & HF_LMA_MASK) {
+    int code64;
+
+    expr_rcx.v_i64 = expr_eip.v_i64 + expr_next_eip.v_i32;
+    expr_r11.v_i64 = qce_cpu_compute_eflags(env, state) & ~RF_MASK;
+
+    code64 = expr_hflags.v_i32 & HF_CS64_MASK;
+
+    expr_eflags.v_i64 &= ~(expr_fmask.v_i64 | RF_MASK);
+    qce_cpu_load_eflags(env, state, expr_eflags.v_i64, 0);
+    qce_cpu_x86_load_seg_cache(env, state, R_CS, selector & 0xfffc,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_P_MASK |
+                                   DESC_S_MASK |
+                                   DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK |
+                                   DESC_L_MASK);
+    qce_cpu_x86_load_seg_cache(env, state, R_SS, (selector + 8) & 0xfffc,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                  DESC_S_MASK |
+                                  DESC_W_MASK | DESC_A_MASK);
+    if (code64) {
+      expr_eip.v_i64 = expr_lstar.v_i64;
+    } else {
+      expr_eip.v_i64 = expr_cstar.v_i64;
+    }
+  } else
+#endif
+  {
+    expr_rcx.v_i64 = (uint32_t)(expr_eip.v_i64 + expr_next_eip.v_i32);
+
+    expr_eflags.v_i64 &= ~(IF_MASK | RF_MASK | VM_MASK);
+    qce_cpu_x86_load_seg_cache(env, state, R_CS, selector & 0xfffc,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                  DESC_S_MASK |
+                                  DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK);
+    qce_cpu_x86_load_seg_cache(env, state, R_SS, (selector + 8) & 0xfffc,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                   DESC_S_MASK |
+                                   DESC_W_MASK | DESC_A_MASK);
+    expr_eip.v_i64 = (uint32_t)expr_star.v_i64;
+  }
+
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[R_ECX], &expr_rcx);
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[11], &expr_r11);
+  qce_state_env_put_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+  qce_state_env_put_i64(state, (intptr_t)&env->eip, &expr_eip);
+}
+
+#define HANDLE_SYM_INST_CALL_syscall                                           \
+  case QCE_INST_CALL_syscall: {                                                \
+    qce_sym_inst_call_syscall(                                                 \
+        arch, &session->state, &inst->i_call_syscall.next_eip);                \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_sysret(
+    CPUArchState *env, QCEState *state, QCEVar *dflag) {
+  QCEExpr expr_dflag;
+  qce_state_get_var(env, state, dflag, &expr_dflag);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_dflag, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_dflag, I32);
+
+  QCEExpr expr_efer, expr_hflags, expr_cr0, expr_star,
+          expr_r11, expr_eip, expr_rcx, expr_eflags;
+  qce_state_env_get_i64(state, (intptr_t)&env->efer, &expr_efer);
+  qce_state_env_get_i32(state, (intptr_t)&env->hflags, &expr_hflags);
+  qce_state_env_get_i64(state, (intptr_t)&env->cr[0], &expr_cr0);
+  qce_state_env_get_i64(state, (intptr_t)&env->star, &expr_star);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[11], &expr_r11);
+  qce_state_env_get_i64(state, (intptr_t)&env->eip, &expr_eip);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_ECX], &expr_rcx);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+
+  int cpl, selector;
+
+  if (!(expr_efer.v_i64 & MSR_EFER_SCE)) {
+    qce_fatal("sysret raises an exception");
+//    raise_exception_err_ra(env, EXCP06_ILLOP, 0, GETPC());
+  }
+  cpl = expr_hflags.v_i32 & HF_CPL_MASK;
+  if (!(expr_cr0.v_i64 & CR0_PE_MASK) || cpl != 0) {
+    qce_fatal("sysret raises an exception");
+//    raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
+  }
+  selector = ((uint64_t)expr_star.v_i64 >> 48) & 0xffff;
+  if (expr_hflags.v_i32 & HF_LMA_MASK) {
+    qce_cpu_load_eflags(env, state, (uint32_t)(expr_r11.v_i64), TF_MASK |
+                        AC_MASK | ID_MASK | IF_MASK | IOPL_MASK | VM_MASK
+                        | RF_MASK | NT_MASK);
+    if (expr_dflag.v_i32 == 2) {
+      qce_cpu_x86_load_seg_cache(env, state, R_CS, (selector + 16) | 3,
+                                 0, 0xffffffff,
+                                 DESC_G_MASK | DESC_P_MASK |
+                                    DESC_S_MASK | (3 << DESC_DPL_SHIFT) |
+                                    DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK |
+                                    DESC_L_MASK);
+      expr_eip.v_i64 = expr_rcx.v_i64;
+    } else {
+      qce_cpu_x86_load_seg_cache(env, state, R_CS, selector | 3,
+                                 0, 0xffffffff,
+                                 DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                    DESC_S_MASK | (3 << DESC_DPL_SHIFT) |
+                                    DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK);
+      expr_eip.v_i64 = (uint32_t)expr_rcx.v_i64;
+    }
+    qce_cpu_x86_load_seg_cache(env, state, R_SS, (selector + 8) | 3,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                  DESC_S_MASK | (3 << DESC_DPL_SHIFT) |
+                                  DESC_W_MASK | DESC_A_MASK);
+  } else {
+    expr_eflags.v_i64 |= IF_MASK;
+    qce_state_env_put_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+    qce_cpu_x86_load_seg_cache(env, state, R_CS, selector | 3,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                  DESC_S_MASK | (3 << DESC_DPL_SHIFT) |
+                                  DESC_CS_MASK | DESC_R_MASK | DESC_A_MASK);
+    expr_eip.v_i64 = (uint32_t)expr_rcx.v_i64;
+    qce_cpu_x86_load_seg_cache(env, state, R_SS, (selector + 8) | 3,
+                               0, 0xffffffff,
+                               DESC_G_MASK | DESC_B_MASK | DESC_P_MASK |
+                                  DESC_S_MASK | (3 << DESC_DPL_SHIFT) |
+                                  DESC_W_MASK | DESC_A_MASK);
+  }
+
+  qce_state_env_put_i64(state, (intptr_t)&env->eip, &expr_eip);
+}
+
+#define HANDLE_SYM_INST_CALL_sysret                                            \
+  case QCE_INST_CALL_sysret: {                                                 \
+    qce_sym_inst_call_sysret(                                                  \
+        arch, &session->state, &inst->i_call_sysret.dflag);                    \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_rechecking_single_step(CPUArchState *env,
+                                                            QCEState *state) {
+  QCEExpr expr_eflags;
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+
+  if ((expr_eflags.v_i64 & TF_MASK) != 0) {
+    qce_fatal("rechecking_single_step raises an exception");
+//    helper_single_step(env);
+  }
+}
+
+#define HANDLE_SYM_INST_CALL_rechecking_single_step                            \
+  case QCE_INST_CALL_rechecking_single_step: {                                 \
+    qce_sym_inst_call_rechecking_single_step(arch, &session->state);           \
+    break;                                                                     \
+  }
+
 #endif /* QCE_SYM_CALL_H */
