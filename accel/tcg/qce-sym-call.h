@@ -80,6 +80,70 @@ static inline void qce_sym_inst_call_cc_compute_nz(
     break;                                                                     \
 }
 
+static inline void qce_sym_inst_call_ld_i128(
+    CPUArchState *env, QCEState *state, QCEVar *addr, QCEVar *flag,
+    QCEVar *out_b, QCEVar *out_t) {
+  QCEExpr expr_addr, expr_flag;
+  qce_state_get_var(env, state, addr, &expr_addr);
+  qce_state_get_var(env, state, flag, &expr_flag);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_addr, CONCRETE);
+  qce_expr_assert_mode(&expr_flag, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_addr, I64);
+  qce_expr_assert_type(&expr_flag, I32);
+
+  QCEExpr expr_out_b, expr_out_t;
+  Int128 out = helper_ld_i128(env, expr_addr.v_i64, expr_flag.v_i32);
+  qce_expr_init_v64(&expr_out_b, int128_getlo(out));
+  qce_expr_init_v64(&expr_out_t, int128_gethi(out));
+  qce_state_put_var(env, state, out_b, &expr_out_b);
+  qce_state_put_var(env, state, out_t, &expr_out_t);
+}
+
+#define HANDLE_SYM_INST_CALL_ld_i128                                           \
+  case QCE_INST_CALL_ld_i128: {                                                \
+    qce_sym_inst_call_ld_i128(                                                 \
+        arch, &session->state,                                                 \
+        &inst->i_call_ld_i128.base, &inst->i_call_ld_i128.offset,              \
+        &inst->i_call_ld_i128.out_b, &inst->i_call_ld_i128.out_t);             \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_st_i128(
+    CPUArchState *env, QCEState *state, QCEVar *addr, QCEVar *flag,
+    QCEVar *in_b, QCEVar *in_t) {
+  QCEExpr expr_addr, expr_flag, expr_in_t, expr_in_b;
+  qce_state_get_var(env, state, addr, &expr_addr);
+  qce_state_get_var(env, state, flag, &expr_flag);
+  qce_state_get_var(env, state, in_b, &expr_in_b);
+  qce_state_get_var(env, state, in_t, &expr_in_t);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_addr, CONCRETE);
+  qce_expr_assert_mode(&expr_flag, CONCRETE);
+  qce_expr_assert_mode(&expr_in_b, CONCRETE);
+  qce_expr_assert_mode(&expr_in_t, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_addr, I64);
+  qce_expr_assert_type(&expr_flag, I32);
+  qce_expr_assert_type(&expr_in_b, I64);
+  qce_expr_assert_type(&expr_in_t, I64);
+
+  qce_debug_assert((get_memop(expr_flag.v_i32) & MO_SIZE) == MO_128);
+  unsigned mmu_idx = get_mmuidx(expr_flag.v_i32);
+  qce_state_mem_put_i64(env, state, expr_addr.v_i64, mmu_idx, &expr_in_b);
+  qce_state_mem_put_i64(env, state, expr_addr.v_i64 + 8, mmu_idx, &expr_in_t);
+}
+
+#define HANDLE_SYM_INST_CALL_st_i128                                           \
+  case QCE_INST_CALL_st_i128: {                                                \
+    qce_sym_inst_call_st_i128(                                                 \
+        arch, &session->state,                                                 \
+        &inst->i_call_st_i128.base, &inst->i_call_st_i128.offset,              \
+        &inst->i_call_st_i128.in_b, &inst->i_call_st_i128.in_t);               \
+    break;                                                                     \
+  }
+
 #define DEFINE_SYM_INST_CALL_gvec(name, op)                                    \
   static inline void qce_sym_inst_call_gvec_##name(                            \
       CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *a,                \
