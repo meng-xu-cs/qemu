@@ -678,4 +678,147 @@ static inline void qce_sym_inst_call_pshufd_xmm(
     break;                                                                     \
   }
 
+static void add128(uint64_t *plow, uint64_t *phigh, uint64_t a, uint64_t b) {
+  *plow += a;
+  /* carry test */
+  if (*plow < a) {
+    (*phigh)++;
+  }
+  *phigh += b;
+}
+
+static void neg128(uint64_t *plow, uint64_t *phigh) {
+  *plow = ~*plow;
+  *phigh = ~*phigh;
+  add128(plow, phigh, 1, 0);
+}
+
+/* return TRUE if overflow */
+static int div64(uint64_t *plow, uint64_t *phigh, uint64_t b) {
+  uint64_t q, r, a1, a0;
+  int i, qb, ab;
+
+  a0 = *plow;
+  a1 = *phigh;
+  if (a1 == 0) {
+    q = a0 / b;
+    r = a0 % b;
+    *plow = q;
+    *phigh = r;
+  } else {
+    if (a1 >= b) {
+      return 1;
+    }
+    /* XXX: use a better algorithm */
+    for (i = 0; i < 64; i++) {
+      ab = a1 >> 63;
+      a1 = (a1 << 1) | (a0 >> 63);
+      if (ab || a1 >= b) {
+        a1 -= b;
+        qb = 1;
+      } else {
+        qb = 0;
+      }
+      a0 = (a0 << 1) | qb;
+    }
+
+    *plow = a0;
+    *phigh = a1;
+  }
+  return 0;
+}
+
+/* return TRUE if overflow */
+static int idiv64(uint64_t *plow, uint64_t *phigh, int64_t b) {
+  int sa, sb;
+
+  sa = ((int64_t)*phigh < 0);
+  if (sa) {
+    neg128(plow, phigh);
+  }
+  sb = (b < 0);
+  if (sb) {
+    b = -b;
+  }
+  if (div64(plow, phigh, b) != 0) {
+    return 1;
+  }
+  if (sa ^ sb) {
+    if (*plow > (1ULL << 63)) {
+      return 1;
+    }
+    *plow = -*plow;
+  } else {
+    if (*plow >= (1ULL << 63)) {
+      return 1;
+    }
+  }
+  if (sa) {
+    *phigh = -*phigh;
+  }
+  return 0;
+}
+
+#define DEFINE_SYM_INST_CALL_divq_EAX(prefix)                                  \
+  static inline void qce_sym_inst_call_##prefix##divq_EAX(                     \
+      CPUArchState *env, QCEState *state, QCEVar *val) {                       \
+    QCEExpr expr_val;                                                          \
+    qce_state_get_var(env, state, val, &expr_val);                             \
+    /* mode checking */                                                        \
+    qce_expr_assert_mode(&expr_val, CONCRETE);                                 \
+    /* type checking */                                                        \
+    qce_expr_assert_type(&expr_val, I64);                                      \
+                                                                               \
+    QCEExpr expr_rax, expr_rdx;                                                \
+    qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);      \
+    qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);      \
+                                                                               \
+    if (expr_val.v_i64 == 0) {                                                 \
+      qce_fatal(#prefix"divq raises an exception");                            \
+      /*raise_exception_ra(env, EXCP00_DIVZ, GETPC());*/                       \
+    }                                                                          \
+    if (prefix##div64((uint64_t *)&expr_rax.v_i64, (uint64_t *)&expr_rdx.v_i64,\
+                      expr_val.v_i64)) {                                       \
+      qce_fatal(#prefix"divq raises an exception");                            \
+      /*raise_exception_ra(env, EXCP00_DIVZ, GETPC());*/                       \
+    }                                                                          \
+                                                                               \
+    qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);      \
+    qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);      \
+  }
+
+DEFINE_SYM_INST_CALL_divq_EAX()
+DEFINE_SYM_INST_CALL_divq_EAX(i)
+
+#define HANDLE_SYM_INST_CALL_div_EAX(name)                                      \
+  case QCE_INST_CALL_##name##_EAX: {                                            \
+    qce_sym_inst_call_##name##_EAX(arch, &session->state,                       \
+                                   &inst->i_call_##name##_EAX.val);             \
+    break;                                                                      \
+  }
+
+static inline void qce_sym_inst_call_read_eflags(
+    CPUArchState *env, QCEState *state, QCEVar *res) {
+  QCEExpr expr_df, expr_eflags;
+  qce_state_env_get_i32(state, (intptr_t)&env->df, &expr_df);
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+
+  uint32_t eflags;
+
+  eflags = qce_cpu_cc_compute_all(env, state);
+  eflags |= (expr_df.v_i32 & DF_MASK);
+  eflags |= expr_eflags.v_i64 & ~(VM_MASK | RF_MASK);
+
+  QCEExpr expr_res;
+  qce_expr_init_v64(&expr_res, (target_ulong)eflags);
+  qce_state_put_var(env, state, res, &expr_res);
+}
+
+#define HANDLE_SYM_INST_CALL_read_eflags                                       \
+  case QCE_INST_CALL_read_eflags: {                                            \
+    qce_sym_inst_call_read_eflags(arch, &session->state,                       \
+                                  &inst->i_call_read_eflags.res);              \
+    break;                                                                     \
+  }
+
 #endif /* QCE_SYM_CALL_H */

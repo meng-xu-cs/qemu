@@ -939,6 +939,11 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_CALL_punpck_xmm(lqdq);
       HANDLE_SYM_INST_CALL_pshufd_xmm;
 
+      HANDLE_SYM_INST_CALL_div_EAX(divq);
+      HANDLE_SYM_INST_CALL_div_EAX(idivq);
+
+      HANDLE_SYM_INST_CALL_read_eflags;
+
       /* all others */
     default: {
 #ifdef QCE_DEBUG_IR
