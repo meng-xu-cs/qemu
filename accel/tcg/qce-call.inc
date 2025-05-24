@@ -179,7 +179,7 @@ X_INST_O0I2(idivq_EAX, env, I64, val, I64)
 X_INST_O2I3(ld_i128, out_b, I64, out_t, I64, env, I64, base, I64, offset, I32)
 X_INST_O0I5(st_i128, env, I64, base, I64, in_b, I64, in_t, I64, offset, I32)
 
-X_INST_O0I3(pshufd_xmm, d, I64, s, I64, encodig, I32)
+X_INST_O0I3(pshufd_xmm, d, I64, s, I64, order, I32)
 X_INST_O0I4(pslldq_xmm, env, I64, d, I64, s, I64, c, I64)
 X_INST_O0I4(psrldq_xmm, env, I64, d, I64, s, I64, c, I64)
 X_INST_O0I4(punpckhdq_xmm, env, I64, d, I64, v, I64, s, I64)

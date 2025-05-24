@@ -934,6 +934,11 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_CALL_rechecking_single_step;
 
+      HANDLE_SYM_INST_CALL_punpck_xmm(hdq);
+      HANDLE_SYM_INST_CALL_punpck_xmm(ldq);
+      HANDLE_SYM_INST_CALL_punpck_xmm(lqdq);
+      HANDLE_SYM_INST_CALL_pshufd_xmm;
+
       /* all others */
     default: {
 #ifdef QCE_DEBUG_IR
