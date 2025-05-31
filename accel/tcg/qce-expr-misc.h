@@ -65,6 +65,14 @@ static inline int32_t __qce_concrete_extrh_i64_i32(int64_t val) {
   return (int32_t)(val >> 32);
 }
 
+static inline int64_t __qce_concrete_ext_i32_i64(int32_t val) {
+  return (int64_t)val;
+}
+
+static inline uint64_t __qce_concrete_extu_i32_i64(uint32_t val) {
+  return (uint64_t)val;
+}
+
 /*
  * Templates
  */
@@ -259,6 +267,36 @@ DEFINE_EXPR_extract2(64)
 
 DEFINE_EXPR_extr_i64_i32(l)
 DEFINE_EXPR_extr_i64_i32(h)
+
+#define DEFINE_EXPR_ext_i32_i64(sign)                                          \
+  static inline void qce_expr_ext##sign##_i32_i64(                             \
+      SolverZ3 *solver, QCEExpr *opv, QCEExpr *result) {                       \
+    /* type checking */                                                        \
+    qce_expr_assert_type(opv, I32);                                            \
+    result->type = QCE_EXPR_I64;                                               \
+                                                                               \
+    /* base assignment */                                                      \
+    if (opv->mode == QCE_EXPR_CONCRETE) {                                      \
+      result->mode = QCE_EXPR_CONCRETE;                                        \
+      result->v_i64 = __qce_concrete_ext##sign##_i32_i64(opv->v_i32);          \
+    } else {                                                                   \
+      result->mode = QCE_EXPR_SYMBOLIC;                                        \
+      result->symbolic =                                                       \
+          qce_smt_z3_ext##sign##_i32_i64(solver, opv->symbolic);               \
+    }                                                                          \
+                                                                               \
+    /* try to reduce symbolic to concrete */                                   \
+    if (result->mode == QCE_EXPR_SYMBOLIC) {                                   \
+      uint64_t val = 0;                                                        \
+      if (qce_smt_z3_probe_bv64(solver, result->symbolic, &val)) {             \
+        result->mode = QCE_EXPR_CONCRETE;                                      \
+        result->v_i64 = val;                                                   \
+      }                                                                        \
+    }                                                                          \
+  }
+
+DEFINE_EXPR_ext_i32_i64( )
+DEFINE_EXPR_ext_i32_i64(u)
 
 /*
  * Testing
@@ -614,6 +652,81 @@ QCE_UNIT_TEST_EXPR_PROLOGUE(extr_i64_i32) {
 }
 QCE_UNIT_TEST_EXPR_EPILOGUE
 
+QCE_UNIT_TEST_EXPR_PROLOGUE(ext_i32_i64) {
+  /* ext(-1) == -1 */
+  QCEExpr v1m, r;
+  qce_expr_init_v32(&v1m, -1);
+  qce_expr_ext_i32_i64(&solver, &v1m, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == -1);
+}
+{
+  /* ext(1) == 1 */
+  QCEExpr v1, r;
+  qce_expr_init_v32(&v1, 1);
+  qce_expr_ext_i32_i64(&solver, &v1, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == 1);
+}
+{
+  /* extrl(ext(a)) == a */
+  QCEExpr a, r;
+  qce_expr_init_s32(&solver, &a);
+  qce_expr_ext_i32_i64(&solver, &a, &r);
+  qce_expr_extrl_i64_i32(&solver, &r, &r);
+  assert(r.type == QCE_EXPR_I32);
+  assert(r.mode == QCE_EXPR_SYMBOLIC);
+  assert(qce_smt_z3_prove(&solver,
+                          qce_smt_z3_bv32_eq(
+                              &solver, r.symbolic, a.symbolic)) ==
+         SMT_Z3_PROVE_PROVED);
+}
+QCE_UNIT_TEST_EXPR_EPILOGUE
+
+QCE_UNIT_TEST_EXPR_PROLOGUE(extu_i32_i64) {
+  /* extu(-1) == 0xFFFFFFFF */
+  QCEExpr v1m, r;
+  qce_expr_init_v32(&v1m, -1);
+  qce_expr_extu_i32_i64(&solver, &v1m, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == 0xFFFFFFFF);
+}
+{
+  /* extu(1) == 1 */
+  QCEExpr v1, r;
+  qce_expr_init_v32(&v1, 1);
+  qce_expr_extu_i32_i64(&solver, &v1, &r);
+  assert(r.type == QCE_EXPR_I64);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i64 == 1);
+}
+{
+  /* extrl(extu(a)) == a */
+  QCEExpr a, r;
+  qce_expr_init_s32(&solver, &a);
+  qce_expr_extu_i32_i64(&solver, &a, &r);
+  qce_expr_extrl_i64_i32(&solver, &r, &r);
+  assert(r.type == QCE_EXPR_I32);
+  assert(r.mode == QCE_EXPR_SYMBOLIC);
+  assert(qce_smt_z3_prove(&solver,
+                          qce_smt_z3_bv32_eq(
+                              &solver, r.symbolic, a.symbolic)) ==
+         SMT_Z3_PROVE_PROVED);
+}
+{
+  /* extrh(extu(a)) == 0 */
+  QCEExpr a, r;
+  qce_expr_init_s32(&solver, &a);
+  qce_expr_extu_i32_i64(&solver, &a, &r);
+  qce_expr_extrh_i64_i32(&solver, &r, &r);
+  assert(r.type == QCE_EXPR_I32);
+  assert(r.mode == QCE_EXPR_CONCRETE);
+  assert(r.v_i32 == 0);
+}
+QCE_UNIT_TEST_EXPR_EPILOGUE
 #endif
 
 #endif /* QCE_EXPR_MISC_H */

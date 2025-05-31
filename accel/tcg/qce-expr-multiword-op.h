@@ -37,6 +37,24 @@ DEFINE_CONCRETE_MULTIWORD_OP_add2(64)
 DEFINE_CONCRETE_MULTIWORD_OP_sub2(32)
 DEFINE_CONCRETE_MULTIWORD_OP_sub2(64)
 
+#define DEFINE_CONCRETE_MULTIWORD_OP_mulu2(bits)                               \
+  static inline void __qce_concrete_bv##bits##_mulu2(                          \
+      uint##bits##_t lhs, uint##bits##_t rhs,                                  \
+      int##bits##_t *res_low, int##bits##_t *res_high) {                       \
+    union {                                                                    \
+      uint64_t type_i32;                                                       \
+      unsigned __int128 type_i64;                                              \
+    } v1, v2, res;                                                             \
+    v1.type_i##bits = lhs;                                                     \
+    v2.type_i##bits = rhs;                                                     \
+    res.type_i##bits = v1.type_i##bits * v2.type_i##bits;                      \
+    *res_low = res.type_i##bits;                                               \
+    *res_high = res.type_i##bits>>bits;                                        \
+}
+
+DEFINE_CONCRETE_MULTIWORD_OP_mulu2(32)
+DEFINE_CONCRETE_MULTIWORD_OP_mulu2(64)
+
 #define DEFINE_CONCRETE_MULTIWORD_OP_muls2(bits)                               \
   static inline void __qce_concrete_bv##bits##_muls2(                          \
       int##bits##_t lhs, int##bits##_t rhs,                                    \
@@ -198,7 +216,7 @@ DEFINE_CONCRETE_MULTIWORD_OP_muls2(64)
 
 DEFINE_EXPR_MULTIWORD_OP_DUAL(add2)
 DEFINE_EXPR_MULTIWORD_OP_DUAL(sub2)
-// DEFINE_EXPR_MULTIWORD_OP2_DUAL(mulu2)
+DEFINE_EXPR_MULTIWORD_OP2_DUAL(mulu2)
 DEFINE_EXPR_MULTIWORD_OP2_DUAL(muls2)
 
 /*
@@ -389,6 +407,93 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(add2)
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(sub2)
 
+#define QCE_UNIT_TEST_EXPR_mulu2(bits)                                         \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(mulu2_i##bits) {                                 \
+    /* 1 * 2 == 2 */                                                           \
+    QCEExpr v1, v2, r_b, r_t;                                                  \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_init_v##bits(&v2, 2);                                             \
+    qce_expr_mulu2_i##bits(&solver, &v1, &v2, &r_b, &r_t);                     \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_t.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_b.v_i##bits == 2);                                                \
+    assert(r_t.v_i##bits == 0);                                                \
+  }                                                                            \
+  {                                                                            \
+    /* INT##bits##_MAX * INT##bits##_MAX == 0x3f...f0...01 */                  \
+    QCEExpr vmax, r_b, r_t;                                                    \
+    qce_expr_init_v##bits(&vmax, INT##bits##_MAX);                             \
+    qce_expr_mulu2_i##bits(&solver, &vmax, &vmax, &r_b, &r_t);                 \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_t.mode == QCE_EXPR_CONCRETE);                                     \
+    if (bits == 32) {                                                          \
+      assert(r_b.v_i##bits == 1);                                              \
+      assert(r_t.v_i##bits == 0x3fffffff);                                     \
+    } else if (bits == 64) {                                                   \
+      assert(r_b.v_i##bits == 1);                                              \
+      assert(r_t.v_i##bits == 0x3fffffffffffffff);                             \
+    }                                                                          \
+  }                                                                            \
+  {                                                                            \
+    /* INT##bits##_MAX * INT##bits##_MIN == 0x3f...f80...0 */                  \
+    QCEExpr vmax, vmin, r_b, r_t;                                              \
+    qce_expr_init_v##bits(&vmax, INT##bits##_MAX);                             \
+    qce_expr_init_v##bits(&vmin, INT##bits##_MIN);                             \
+    qce_expr_mulu2_i##bits(&solver, &vmax, &vmin, &r_b, &r_t);                 \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_t.mode == QCE_EXPR_CONCRETE);                                     \
+    if (bits == 32) {                                                          \
+      assert(r_b.v_i##bits == 0x80000000);                                     \
+      assert(r_t.v_i##bits == 0x3fffffff);                                     \
+    } else if (bits == 64) {                                                   \
+      assert(r_b.v_i##bits == 0x8000000000000000);                             \
+      assert(r_t.v_i##bits == 0x3fffffffffffffff);                             \
+    }                                                                          \
+  }                                                                            \
+  {                                                                            \
+    /* a * b == b * a */                                                       \
+    QCEExpr a, b, r_b, r_t;                                                    \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_s##bits(&solver, &b);                                        \
+    qce_expr_mulu2_i##bits(&solver, &a, &b, &r_b, &r_t);                       \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_SYMBOLIC);                                     \
+    assert(r_t.mode == QCE_EXPR_SYMBOLIC);                                     \
+    QCEExpr r2_b, r2_t;                                                        \
+    qce_smt_z3_bv##bits##_mulu2(&solver, b.symbolic, a.symbolic,               \
+                                &r2_b.symbolic, &r2_t.symbolic);               \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r_b.symbolic, r2_b.symbolic)) ==      \
+           SMT_Z3_PROVE_PROVED);                                               \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r_t.symbolic, r2_t.symbolic)) ==      \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  {                                                                            \
+    /* a * 0 == 0 */                                                           \
+    QCEExpr a, v0, r_b, r_t;                                                   \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_mulu2_i##bits(&solver, &a, &v0, &r_b, &r_t);                      \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_t.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_b.v_i##bits == 0);                                                \
+    assert(r_t.v_i##bits == 0);                                                \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(mulu2)
+
 #define QCE_UNIT_TEST_EXPR_muls2(bits)                                         \
   QCE_UNIT_TEST_EXPR_PROLOGUE(muls2_i##bits) {                                 \
     /* 1 * 2 == 2 */                                                           \
@@ -418,6 +523,24 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(sub2)
     } else if (bits == 64) {                                                   \
       assert(r_b.v_i##bits == 1);                                              \
       assert(r_t.v_i##bits == 0x3fffffffffffffff);                             \
+    }                                                                          \
+  }                                                                            \
+  {                                                                            \
+    /* INT##bits##_MAX * INT##bits##_MIN == 0xc0...080...0 */                  \
+    QCEExpr vmax, vmin, r_b, r_t;                                              \
+    qce_expr_init_v##bits(&vmax, INT##bits##_MAX);                             \
+    qce_expr_init_v##bits(&vmin, INT##bits##_MIN);                             \
+    qce_expr_muls2_i##bits(&solver, &vmax, &vmin, &r_b, &r_t);                 \
+    assert(r_b.type == QCE_EXPR_I##bits);                                      \
+    assert(r_t.type == QCE_EXPR_I##bits);                                      \
+    assert(r_b.mode == QCE_EXPR_CONCRETE);                                     \
+    assert(r_t.mode == QCE_EXPR_CONCRETE);                                     \
+    if (bits == 32) {                                                          \
+      assert(r_b.v_i##bits == 0x80000000);                                     \
+      assert(r_t.v_i##bits == 0xc0000000);                                     \
+    } else if (bits == 64) {                                                   \
+      assert(r_b.v_i##bits == 0x8000000000000000);                             \
+      assert(r_t.v_i##bits == 0xc000000000000000);                             \
     }                                                                          \
   }                                                                            \
   {                                                                            \

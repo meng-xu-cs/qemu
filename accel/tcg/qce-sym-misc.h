@@ -130,4 +130,25 @@ DEFINE_SYM_INST_extr_i64_i32(h)
     break;                                                                     \
 }
 
+#define DEFINE_SYM_INST_ext_i32_i64(sign)                                      \
+  static inline void qce_sym_inst_ext##sign##_i32_i64(                         \
+      CPUArchState *env, QCEState *state, QCEVar *into, QCEVar *from) {        \
+    QCEExpr expr;                                                              \
+    qce_state_get_var(env, state, from, &expr);                                \
+    QCEExpr res;                                                               \
+    qce_expr_ext##sign##_i32_i64(&state->solver_z3, &expr, &res);              \
+    qce_state_put_var(env, state, into, &res);                                 \
+  }
+
+DEFINE_SYM_INST_ext_i32_i64( )
+DEFINE_SYM_INST_ext_i32_i64(u)
+
+#define HANDLE_SYM_INST_ext_i32_i64(sign, SIGN)                                \
+  case QCE_INST_EXT##SIGN: {                                                   \
+    qce_sym_inst_ext##sign##_i32_i64(arch, &session->state,                    \
+                                        &inst->i_ext##sign##_i32_i64.into,     \
+                                        &inst->i_ext##sign##_i32_i64.from);    \
+    break;                                                                     \
+  }
+
 #endif /* QCE_SYM_MISC_H */

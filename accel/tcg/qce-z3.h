@@ -486,17 +486,18 @@ static void qce_Z3_mk_bvsub2(Z3_context ctx,
   *t0_high = Z3_mk_extract(ctx, 2*nbits-1, nbits, t0);
 }
 
-// static void qce_Z3_mk_bvmulu2(Z3_context ctx, Z3_ast t1, Z3_ast t2, Z3_ast t0[]) {
-//   unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, t1));
+ static void qce_Z3_mk_bvmulu2(Z3_context ctx, Z3_ast lhs, Z3_ast rhs,
+                               Z3_ast *res_low, Z3_ast *res_high) {
+   unsigned int nbits = Z3_get_bv_sort_size(ctx, Z3_get_sort(ctx, lhs));
 
-//   t1 = Z3_mk_sign_ext(ctx, nbits, t1);
-//   t2 = Z3_mk_sign_ext(ctx, nbits, t2);
+   lhs = Z3_mk_zero_ext(ctx, nbits, lhs);
+   rhs = Z3_mk_zero_ext(ctx, nbits, rhs);
 
-//   Z3_ast result = Z3_mk_bvmul(ctx, t1, t2);
+   Z3_ast res = Z3_mk_bvmul(ctx, lhs, rhs);
 
-//   t0[0] = Z3_mk_extract(ctx, nbits-1, 0, result);
-//   t0[1] = Z3_mk_extract(ctx, 2*nbits-1, nbits, result);
-// }
+   *res_low = Z3_mk_extract(ctx, nbits-1, 0, res);
+   *res_high = Z3_mk_extract(ctx, 2*nbits-1, nbits, res);
+ }
 
 static void qce_Z3_mk_bvmuls2(Z3_context ctx, Z3_ast lhs, Z3_ast rhs,
                               Z3_ast *res_low, Z3_ast *res_high) {
@@ -743,6 +744,18 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
                                  Z3_mk_extract(solver->ctx, 63, 32, val));     \
   }
 
+#define DEFINE_SMT_Z3_ext_i32_i64                                              \
+  static inline Z3_ast qce_smt_z3_ext_i32_i64(SolverZ3 *solver, Z3_ast val) {  \
+    __qce_smt_z3_type_check_bv32(solver, val);                                 \
+    return __qce_smt_z3_simplify(solver, Z3_mk_sign_ext(solver->ctx, 32, val));\
+  }
+
+#define DEFINE_SMT_Z3_extu_i32_i64                                             \
+  static inline Z3_ast qce_smt_z3_extu_i32_i64(SolverZ3 *solver, Z3_ast val) { \
+    __qce_smt_z3_type_check_bv32(solver, val);                                 \
+    return __qce_smt_z3_simplify(solver, Z3_mk_zero_ext(solver->ctx, 32, val));\
+  }
+
 /*
  * Bit-vector
  */
@@ -848,7 +861,7 @@ DEFINE_SMT_Z3_OP1_DUAL(neg, Z3_mk_bvneg)
 
 DEFINE_SMT_Z3_MULTIWORD_OP_DUAL(add2, qce_Z3_mk_bvadd2)
 DEFINE_SMT_Z3_MULTIWORD_OP_DUAL(sub2, qce_Z3_mk_bvsub2)
-//DEFINE_SMT_Z3_MULTIWORD_OP2_DUAL(mulu2, qce_Z3_mk_bvmulu2)
+DEFINE_SMT_Z3_MULTIWORD_OP2_DUAL(mulu2, qce_Z3_mk_bvmulu2)
 DEFINE_SMT_Z3_MULTIWORD_OP2_DUAL(muls2, qce_Z3_mk_bvmuls2)
 
 /*
@@ -912,6 +925,8 @@ DEFINE_SMT_Z3_sextract_DUAL
 DEFINE_SMT_Z3_extract2_DUAL
 DEFINE_SMT_Z3_extrl_i64_i32
 DEFINE_SMT_Z3_extrh_i64_i32
+DEFINE_SMT_Z3_ext_i32_i64
+DEFINE_SMT_Z3_extu_i32_i64
 
 /*
  * Array

@@ -674,6 +674,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     switch (inst->kind) {
       /* ignored */
     case QCE_INST_DISCARD:
+    case QCE_INST_MB:
       break;
 
       /* markers */
@@ -800,14 +801,14 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_UNI_OP(NEG, neg, 64);
 
       /* multiword arithmetics */
-//      HANDLE_SYM_INST_MULTIWORD_OP(ADD2, add2, 32);
-//      HANDLE_SYM_INST_MULTIWORD_OP(ADD2, add2, 64);
+      HANDLE_SYM_INST_MULTIWORD_OP(ADD2, add2, 32);
+      HANDLE_SYM_INST_MULTIWORD_OP(ADD2, add2, 64);
 
-//      HANDLE_SYM_INST_MULTIWORD_OP(SUB2, sub2, 32);
-//      HANDLE_SYM_INST_MULTIWORD_OP(SUB2, sub2, 64);
+      HANDLE_SYM_INST_MULTIWORD_OP(SUB2, sub2, 32);
+      HANDLE_SYM_INST_MULTIWORD_OP(SUB2, sub2, 64);
 
-//       HANDLE_SYM_INST_MULTIWORD_OP2(MULU2, mulu2, 32);
-//       HANDLE_SYM_INST_MULTIWORD_OP2(MULU2, mulu2, 64);
+      HANDLE_SYM_INST_MULTIWORD_OP2(MULU2, mulu2, 32);
+      HANDLE_SYM_INST_MULTIWORD_OP2(MULU2, mulu2, 64);
 
       HANDLE_SYM_INST_MULTIWORD_OP2(MULS2, muls2, 32);
       HANDLE_SYM_INST_MULTIWORD_OP2(MULS2, muls2, 64);
@@ -917,6 +918,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_extr_i64_i32(L, l);
       HANDLE_SYM_INST_extr_i64_i32(H, h);
+
+      HANDLE_SYM_INST_ext_i32_i64( , S);
+      HANDLE_SYM_INST_ext_i32_i64(u, U);
 
       /* call instructions */
       HANDLE_SYM_INST_CALL_cc_compute(all);

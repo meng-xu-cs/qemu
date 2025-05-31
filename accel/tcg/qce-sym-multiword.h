@@ -49,8 +49,8 @@ DEFINE_SYM_INST_MULTIWORD_OP(sub2, 64)
     qce_state_put_var(env, state, res_t, &expr_res_t);                         \
 }
 
-// DEFINE_SYM_INST_MULTIWORD_OP2(mulu2, 32)
-// DEFINE_SYM_INST_MULTIWORD_OP2(mulu2, 64)
+DEFINE_SYM_INST_MULTIWORD_OP2(mulu2, 32)
+DEFINE_SYM_INST_MULTIWORD_OP2(mulu2, 64)
 DEFINE_SYM_INST_MULTIWORD_OP2(muls2, 32)
 DEFINE_SYM_INST_MULTIWORD_OP2(muls2, 64)
 
