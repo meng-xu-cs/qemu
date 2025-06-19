@@ -790,6 +790,78 @@ static int idiv64(uint64_t *plow, uint64_t *phigh, int64_t b) {
 DEFINE_SYM_INST_CALL_divq_EAX()
 DEFINE_SYM_INST_CALL_divq_EAX(i)
 
+static inline void qce_sym_inst_call_divl_EAX(
+    CPUArchState *env, QCEState *state, QCEVar *val) {
+  QCEExpr expr_val;
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_val, I64);
+
+  QCEExpr expr_rax, expr_rdx;
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);
+
+  unsigned int den, r;
+  uint64_t num, q;
+
+  num = ((uint32_t)expr_rax.v_i64) |
+        ((uint64_t)((uint32_t)expr_rdx.v_i64) << 32);
+  den = expr_val.v_i64;
+  if (den == 0) {
+    qce_fatal("divl raises an exception");
+//    raise_exception_ra(env, EXCP00_DIVZ, GETPC());
+  }
+  q = (num / den);
+  r = (num % den);
+  if (q > 0xffffffff) {
+    qce_fatal("divl raises an exception");
+//    raise_exception_ra(env, EXCP00_DIVZ, GETPC());
+  }
+  expr_rax.v_i64 = (uint32_t)q;
+  expr_rdx.v_i64 = (uint32_t)r;
+
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);
+}
+
+static inline void qce_sym_inst_call_idivl_EAX(
+    CPUArchState *env, QCEState *state, QCEVar *val) {
+  QCEExpr expr_val;
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_val, I64);
+
+  QCEExpr expr_rax, expr_rdx;
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);
+  qce_state_env_get_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);
+
+  int den, r;
+  int64_t num, q;
+
+  num = ((uint32_t)expr_rax.v_i64) |
+        ((uint64_t)((uint32_t)expr_rdx.v_i64) << 32);
+  den = expr_val.v_i64;
+  if (den == 0) {
+    qce_fatal("idivl raises an exception");
+//    raise_exception_ra(env, EXCP00_DIVZ, GETPC());
+  }
+  q = (num / den);
+  r = (num % den);
+  if (q != (int32_t)q) {
+    qce_fatal("idivl raises an exception");
+//    raise_exception_ra(env, EXCP00_DIVZ, GETPC());
+  }
+  expr_rax.v_i64 = (uint32_t)q;
+  expr_rdx.v_i64 = (uint32_t)r;
+
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EAX], &expr_rax);
+  qce_state_env_put_i64(state, (intptr_t)&env->regs[R_EDX], &expr_rdx);
+}
+
 #define HANDLE_SYM_INST_CALL_div_EAX(name)                                      \
   case QCE_INST_CALL_##name##_EAX: {                                            \
     qce_sym_inst_call_##name##_EAX(arch, &session->state,                       \
@@ -818,6 +890,41 @@ static inline void qce_sym_inst_call_read_eflags(
   case QCE_INST_CALL_read_eflags: {                                            \
     qce_sym_inst_call_read_eflags(arch, &session->state,                       \
                                   &inst->i_call_read_eflags.res);              \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_fclex(CPUArchState *env,
+                                           QCEState *state) {
+  QCEExpr expr_fpu;
+  qce_state_env_get_i32(state, (intptr_t)&env->fpus, &expr_fpu);
+
+  uint16_t fpus = (uint16_t)expr_fpu.v_i32;
+  fpus &= 0x7f00;
+  expr_fpu.v_i32 &= 0xffff0000;
+  expr_fpu.v_i32 |= (uint32_t)fpus;
+
+  qce_state_env_put_i32(state, (intptr_t)&env->fpus, &expr_fpu);
+}
+
+#define HANDLE_SYM_INST_CALL_fclex                                             \
+  case QCE_INST_CALL_fclex: {                                                  \
+    qce_sym_inst_call_fclex(arch, &session->state);                            \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_emms(CPUArchState *env,
+                                          QCEState *state) {
+  QCEExpr expr_fptags;
+  qce_state_env_get_i64(state, (intptr_t)&env->fptags, &expr_fptags);
+
+  expr_fptags.v_i64 = 0x0101010101010101;
+
+  qce_state_env_put_i64(state, (intptr_t)&env->fptags, &expr_fptags);
+}
+
+#define HANDLE_SYM_INST_CALL_emms                                              \
+  case QCE_INST_CALL_emms: {                                                   \
+    qce_sym_inst_call_emms(arch, &session->state);                             \
     break;                                                                     \
   }
 
