@@ -152,7 +152,7 @@ VM_IVSHMEM_SIZE = 16 * MB_IN_BYTES
 VM_MONITOR_SOCKET = "monitor"
 
 # testing constants
-TESTING_DEFAULT_KERNEL = "v6.11.7-miniconfig"
+TESTING_DEFAULT_KERNEL = "v6.15.0-miniconfig"
 
 # docker constants
 DOCKER_SRC_DIR = "/src"

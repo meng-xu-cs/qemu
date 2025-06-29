@@ -32,6 +32,8 @@
 // command selector
 #define SGX_EDBGWR 0x05
 #define SGX_EDBGRD 0x06
+#define SGX_ELDB 0x07
+#define SGX_ELDU 0x08
 
 // exposed type
 struct QCEContext;
@@ -51,7 +53,7 @@ void qce_session_reload(void);
 
 // tracing
 void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
-                     uint8_t *blob);
+                     uint8_t *blob, pid_t init_tid);
 void qce_trace_stop(tcg_target_ulong addr, tcg_target_ulong size,
                     uint8_t *blob);
 

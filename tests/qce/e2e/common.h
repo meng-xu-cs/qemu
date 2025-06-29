@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/syscall.h>
 
 int harness(char *blob, size_t size) /* */;
 

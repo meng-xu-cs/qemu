@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <linux/netlink.h>
+#include <sys/syscall.h>
 
 // globals
 

@@ -8,6 +8,9 @@
 #define QCE_CONCOLIC_REGISTER_SIZE sizeof(int32_t)
 static_assert(sizeof(intptr_t) == 2 * QCE_CONCOLIC_REGISTER_SIZE);
 
+#define KERNEL_ADDR_LOWER_BOUND 0XFFFF800000000000
+#define KERNEL_ADDR_UPPER_BOUND 0XFFFFFFFFFFFFFFFF
+
 typedef enum {
   QCE_CELL_MODE_NULL = 0, // must be 0 here
   QCE_CELL_MODE_CONCRETE = 1,
@@ -186,6 +189,11 @@ gboolean qce_gtree_cell_holder_destroy_on_iter(gpointer _key, gpointer value,
 
 // dual-mode representation of the machine state
 typedef struct {
+  // current running thread id
+  pid_t current;
+  // count of the active threads
+  int thread_count;
+
   // z3 context
   SolverZ3 solver_z3;
 
@@ -195,7 +203,9 @@ typedef struct {
   GTree *mem;        // on guest
 } QCEState;
 
-static inline void qce_state_init(QCEState *state) {
+static inline void qce_state_init(QCEState *state, pid_t init_tid) {
+  state->current = init_tid;
+  state->thread_count = 1;
   qce_smt_z3_init(&state->solver_z3);
   qce_cell_holder_init(&state->env);
   qce_cell_holder_init(&state->tmp);
@@ -210,9 +220,16 @@ static inline void qce_state_fini(QCEState *state) {
   qce_smt_z3_fini(&state->solver_z3);
 }
 
-static inline QCECellHolder *qce_state_guest_mem_by_mmu(QCEState *state,
-                                                        intptr_t mmu_idx) {
-  gpointer key = *(gpointer *)&mmu_idx;
+static inline bool qce_state_has_active_thread(QCEState *state) {
+  return state->thread_count != 0;
+}
+
+static inline QCECellHolder *qce_state_guest_mem_by_tid(QCEState *state,
+                                                        intptr_t addr) {
+  gpointer key = KERNEL_ADDR_LOWER_BOUND <= addr &&
+                 KERNEL_ADDR_UPPER_BOUND >= addr ?
+                 (gpointer)0 :
+                 *(gpointer *)&state->current;
   QCECellHolder *holder = g_tree_lookup(state->mem, key);
   if (holder == NULL) {
     holder = g_malloc0(sizeof(QCECellHolder));
@@ -633,7 +650,7 @@ static inline void qce_state_mem_put_concrete_i32(QCEState *state,
     qce_fatal("[qce_state_mem_put_concrete_i32] misaligned address for mem location");
   }
 #endif
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
   qce_cell_holder_put_concrete_i32(mem, (gpointer)addr, val);
 }
 
@@ -646,7 +663,7 @@ static inline void qce_state_mem_put_symbolic_i32(QCEState *state,
     qce_fatal("[qce_state_mem_put_symbolic_i32] misaligned address for mem location");
   }
 #endif
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
   qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr, ast);
 }
 
@@ -678,7 +695,7 @@ static inline void qce_state_mem_put_concrete_i64(CPUArchState *env,
 //    qce_fatal("[qce_state_mem_put_concrete_i64] misaligned address for mem location");
 //  }
 #endif
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
 
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     /* do unaligned address access */
@@ -773,7 +790,7 @@ static inline void qce_state_mem_put_symbolic_i64(QCEState *state,
     qce_fatal("[qce_state_mem_put_symbolic_i64] misaligned address for mem location");
   }
 #endif
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
 
   gpointer key_l = (gpointer)addr;
   Z3_ast ast_l = qce_smt_z3_bv64_extract_l(&state->solver_z3, ast);
@@ -809,7 +826,7 @@ static inline void qce_state_mem_get_i32(CPUArchState *env, QCEState *state,
   }
 #endif
 
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
   QCECellValue val;
   qce_cell_holder_get_i32(mem, (gpointer)addr, &val);
 
@@ -841,7 +858,7 @@ static inline void qce_state_mem_get_i64(CPUArchState *env, QCEState *state,
 //    qce_fatal("[qce_state_mem_get_i64] qce_state_mem_get_i64: misaligned address for mem location");
 //  }
 #endif
-  QCECellHolder *mem = qce_state_guest_mem_by_mmu(state, mmu_idx);
+  QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
 
   if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
     /* do unaligned address access */
@@ -1292,7 +1309,7 @@ static inline void qce_state_assert_path_constraint(QCEState *state,
   static inline void qce_unit_test_state_##name(CPUArchState *env) {           \
     qce_debug("[test][state] " #name);                                         \
     QCEState state;                                                            \
-    qce_state_init(&state);
+    qce_state_init(&state, 0);
 
 #define QCE_UNIT_TEST_STATE_EPILOGUE                                           \
   qce_state_fini(&state);                                                      \
@@ -1858,27 +1875,41 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_mem_symbolic_i64) {
 }
 QCE_UNIT_TEST_STATE_EPILOGUE
 
-QCE_UNIT_TEST_STATE_PROLOGUE(retrieve_mem_different_mmus) {
-  unsigned mmu1_idx = 1;
-  unsigned mmu2_idx = 2;
-  intptr_t vaddr = 0x4000;
+QCE_UNIT_TEST_STATE_PROLOGUE(retrieve_mem_different_tid) {
+  unsigned mmu_idx = 5;
+  intptr_t vaddr_user_1 = 0x4000;
+  intptr_t vaddr_user_2 = 0x5000;
+  intptr_t vaddr_kernel = 0XFFFF800000006000;
 
-  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu1_idx,
+  state.current = 1;
+  qce_state_mem_put_concrete_i64(env, &state, vaddr_user_1, mmu_idx,
                                  0x0123456789ABCDEF);
-  qce_state_mem_put_concrete_i64(env, &state, vaddr, mmu2_idx,
+  state.current = 2;
+  qce_state_mem_put_concrete_i64(env, &state, vaddr_user_2, mmu_idx,
                                  0xFEDCBA9876543210);
+  qce_state_mem_put_concrete_i64(env, &state, vaddr_kernel, mmu_idx,
+                                 0xABCDEF0123456789);
 
+  state.current = 1;
   QCEExpr e1;
-  qce_state_mem_get_i64(env, &state, vaddr, mmu1_idx, &e1);
+  qce_state_mem_get_i64(env, &state, vaddr_user_1, mmu_idx, &e1);
   assert(e1.mode == QCE_EXPR_CONCRETE);
   assert(e1.type == QCE_EXPR_I64);
   assert(e1.v_i64 == 0x0123456789ABCDEF);
 
+  state.current = 2;
   QCEExpr e2;
-  qce_state_mem_get_i64(env, &state, vaddr, mmu2_idx, &e2);
+  qce_state_mem_get_i64(env, &state, vaddr_user_2, mmu_idx, &e2);
   assert(e2.mode == QCE_EXPR_CONCRETE);
   assert(e2.type == QCE_EXPR_I64);
   assert(e2.v_i64 == 0xFEDCBA9876543210);
+
+  state.current = 3;
+  QCEExpr e3;
+  qce_state_mem_get_i64(env, &state, vaddr_kernel, mmu_idx, &e3);
+  assert(e3.mode == QCE_EXPR_CONCRETE);
+  assert(e3.type == QCE_EXPR_I64);
+  assert(e3.v_i64 == 0xABCDEF0123456789);
 }
 QCE_UNIT_TEST_STATE_EPILOGUE
 
@@ -1937,7 +1968,7 @@ static inline void qce_unit_test_state(CPUArchState *env) {
   QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_mem_concrete_i64);
   QCE_UNIT_TEST_STATE_RUN(put_then_get_unaligned_addr_mem_symbolic_i64);
 
-  QCE_UNIT_TEST_STATE_RUN(retrieve_mem_different_mmus);
+  QCE_UNIT_TEST_STATE_RUN(retrieve_mem_different_tid);
   QCE_UNIT_TEST_STATE_RUN(retrieve_mem_concrete_special);
 }
 #endif

@@ -366,9 +366,10 @@ def patch_harness(src: str, dst: str) -> None:
 long __r = 1;
 {}* __blob = {};
 {} __size = {};
+pid_t __tid = syscall(SYS_gettid);
 asm volatile ("encls"
     : "=a"(__r)
-    : "a"(0x5), "b"(__size), "c"(__blob)
+    : "a"(0x5), "b"(__size), "c"(__blob), "d"(__tid)
     : "memory");
 if (__r) {{ exit(1); }}
 {} __v = harness(__blob, __size);

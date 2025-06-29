@@ -338,7 +338,7 @@ void qce_session_reload(void) {
 }
 
 void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
-                     uint8_t *blob) {
+                     uint8_t *blob, pid_t init_tid) {
   assert_qce_initialized();
 
   // sanity check
@@ -359,7 +359,7 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
   session->blob_content = blob;
 
   // initialize symbolic states
-  qce_state_init(&session->state);
+  qce_state_init(&session->state, init_tid);
 
   // prepare the output directory
   checked_mkdir("%s/%ld", g_qce->output_dir, session->id);
@@ -385,8 +385,14 @@ void qce_trace_stop(tcg_target_ulong addr, tcg_target_ulong size,
                     uint8_t *blob) {
   assert_qce_initialized();
 
-  // sanity check
   QCESession *session = g_qce->session;
+
+  // when there are still active threads, we should continue emulating
+  if (qce_state_has_active_thread(&session->state)) {
+    return;
+  }
+
+  // sanity check
   if (unlikely(session == NULL)) {
     qce_fatal("no active session exists");
   }
@@ -754,9 +760,51 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       /* QCE control (via sgx instructions) */
     case QCE_INST_CALL_sgx: {
-      // when we hit an SGX instruction, we know tracing is about to finish
-      session->mode = QCE_Tracing_StopPending;
-      goto end_of_loop;
+      QCEState *state = &session->state;
+      QCEExpr expr_nr;
+      qce_state_env_get_i64(state, (intptr_t)&arch->regs[R_EAX], &expr_nr);
+      qce_expr_assert_mode(&expr_nr, CONCRETE);
+      switch (expr_nr.v_i64) {
+        // thread termination: decrease the active thread counter
+      case SGX_EDBGRD: {
+        // when there is no active threads, we know tracing is about to finish
+        if (--state->thread_count == 0) {
+          session->mode = QCE_Tracing_StopPending;
+          goto end_of_loop;
+        }
+        break;
+      }
+        // context switch: update the current running thread id
+      case SGX_ELDB: {
+        QCEExpr expr_rbx, expr_rcx;
+        qce_state_env_get_i64(state, (intptr_t)&arch->regs[R_EBX], &expr_rbx);
+        qce_state_env_get_i64(state, (intptr_t)&arch->regs[R_ECX], &expr_rcx);
+        qce_expr_assert_mode(&expr_rbx, CONCRETE);
+        qce_expr_assert_mode(&expr_rcx, CONCRETE);
+        pid_t prev = (pid_t)expr_rbx.v_i64;
+        pid_t next = (pid_t)expr_rcx.v_i64;
+        g_assert(prev == state->current);
+        state->current = next;
+        break;
+      }
+        // fork: increase the active thread counter
+      case SGX_ELDU: {
+        QCEExpr expr_rcx;
+        qce_state_env_get_i64(state, (intptr_t)&arch->regs[R_ECX], &expr_rcx);
+        qce_expr_assert_mode(&expr_rcx, CONCRETE);
+        pid_t next = (pid_t)expr_rcx.v_i64;
+        g_assert(next == state->current);
+        ++state->thread_count;
+        break;
+      }
+      default: {
+        qce_fatal("invalid SGX command number: %ld", expr_nr.v_i64);
+      }
+      }
+      QCEExpr expr_ret;
+      qce_expr_init_v64(&expr_ret, 0);
+      qce_state_env_put_i64(&session->state, (intptr_t)&arch->regs[R_EAX], &expr_ret);
+      break;
     }
 
       /* assignment */

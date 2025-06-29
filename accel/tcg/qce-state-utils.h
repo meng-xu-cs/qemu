@@ -55,7 +55,7 @@ static gboolean qce_state_mem_verify_concrete(gpointer key, gpointer value,
 static gboolean qce_state_mem_verify(gpointer key, gpointer value,
                                      gpointer user_data) {
   struct UserData *data = (struct UserData *)user_data;
-  data->mmu_idx = *(unsigned *)&key;
+  data->mmu_idx = *(unsigned *)&key == 0 ? 4 : 2;
   QCECellHolder *holder = (QCECellHolder *)value;
   data->holder = holder;
   g_tree_foreach(holder->meta, qce_state_mem_verify_concrete, data);

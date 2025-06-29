@@ -2264,6 +2264,10 @@ void helper_sgx(CPUX86State *env)
       trace_start = false;
       break;
     }
+    case SGX_ELDB:
+    case SGX_ELDU: {
+      goto end;
+    }
     default: {
       qce_fatal("invalid SGX command number: %ld", nr);
       goto error;
@@ -2282,11 +2286,13 @@ void helper_sgx(CPUX86State *env)
 
   /* mark the trace to start or stop */
   if (trace_start) {
-    qce_trace_start(addr, len, blob);
+    pid_t init_tid = (pid_t)env->regs[R_EDX];
+    qce_trace_start(addr, len, blob, init_tid);
   } else {
     qce_trace_stop(addr, len, blob);
   }
 
+end:
   /* done with this routine */
   env->regs[R_EAX] = 0;
   return;

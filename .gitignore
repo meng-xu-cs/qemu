@@ -24,3 +24,4 @@ GTAGS
 *.patch
 *.gcov
 tests/qce/e2e/debug/
+/linux/
