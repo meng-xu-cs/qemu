@@ -733,7 +733,7 @@ static inline void qce_state_mem_put_concrete_i64(CPUArchState *env,
       Z3_ast res_l = Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0,
                                    val_l.symbolic);
       Z3_ast res_h =
-          Z3_mk_extract(state->solver_z3.ctx, 31, 32-nbits_l,
+          Z3_mk_extract(state->solver_z3.ctx, nbits_l-1, 0,
                         qce_smt_z3_bv64_value(&state->solver_z3, val));
       Z3_ast updated_value =
           __qce_smt_z3_simplify(&state->solver_z3,
@@ -781,24 +781,110 @@ static inline void qce_state_mem_put_concrete_i64(CPUArchState *env,
   }
 }
 
-static inline void qce_state_mem_put_symbolic_i64(QCEState *state,
+static inline void qce_state_mem_put_symbolic_i64(CPUArchState *env,
+                                                  QCEState *state,
                                                   intptr_t addr,
                                                   unsigned mmu_idx,
                                                   Z3_ast ast) {
 #ifndef QCE_RELEASE
-  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
-    qce_fatal("[qce_state_mem_put_symbolic_i64] misaligned address for mem location");
-  }
+//  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+//    qce_fatal("[qce_state_mem_put_symbolic_i64] misaligned address for mem location");
+//  }
 #endif
   QCECellHolder *mem = qce_state_guest_mem_by_tid(state, addr);
 
-  gpointer key_l = (gpointer)addr;
-  Z3_ast ast_l = qce_smt_z3_bv64_extract_l(&state->solver_z3, ast);
-  qce_cell_holder_put_symbolic_i32(mem, key_l, ast_l);
+  if (addr % QCE_CONCOLIC_REGISTER_SIZE != 0) {
+    /* do unaligned address access */
+    intptr_t addr_l = addr - addr % QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_m = addr_l + QCE_CONCOLIC_REGISTER_SIZE;
+    intptr_t addr_h = addr_m + QCE_CONCOLIC_REGISTER_SIZE;
 
-  gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
-  Z3_ast ast_h = qce_smt_z3_bv64_extract_h(&state->solver_z3, ast);
-  qce_cell_holder_put_symbolic_i32(mem, key_h, ast_h);
+    int8_t nbits_l = (addr_m - addr) * 8;
+    int8_t nbits_h = QCE_CONCOLIC_REGISTER_SIZE * 8 - nbits_l;
+
+    QCECellValue val_l, val_h;
+    qce_cell_holder_get_i32(mem, (gpointer)addr_l, &val_l);
+    qce_cell_holder_get_i32(mem, (gpointer)addr_h, &val_h);
+
+    if (val_l.mode == QCE_CELL_MODE_NULL) {
+      val_l.mode = QCE_CELL_MODE_CONCRETE;
+      val_l.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_l, mmu_idx, 0);
+    }
+    if (val_h.mode == QCE_CELL_MODE_NULL) {
+      val_h.mode = QCE_CELL_MODE_CONCRETE;
+      val_h.v_i32 = cpu_ldl_le_mmuidx_ra(env, addr_h, mmu_idx, 0);
+    }
+
+    switch (val_l.mode) {
+    case QCE_CELL_MODE_NULL: {
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      Z3_ast res_l =
+          Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0,
+                        qce_smt_z3_bv32_value(&state->solver_z3, val_l.v_i32));
+      Z3_ast res_h = Z3_mk_extract(state->solver_z3.ctx, nbits_l-1, 0, ast);
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_l, updated_value);
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      Z3_ast res_l = Z3_mk_extract(state->solver_z3.ctx, nbits_h-1, 0,
+                                   val_l.symbolic);
+      Z3_ast res_h = Z3_mk_extract(state->solver_z3.ctx, nbits_l-1, 0, ast);
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_l, updated_value);
+      break;
+    }
+    }
+
+    Z3_ast ast_m =
+        Z3_mk_extract(state->solver_z3.ctx, nbits_l+31, nbits_l, ast);
+    qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_m, ast_m);
+
+    switch (val_h.mode) {
+    case QCE_CELL_MODE_NULL: {
+      qce_fatal("Should never reach here");
+    }
+    case QCE_CELL_MODE_CONCRETE: {
+      Z3_ast res_l = Z3_mk_extract(state->solver_z3.ctx, 63, 64-nbits_h, ast);
+      Z3_ast res_h =
+          Z3_mk_extract(state->solver_z3.ctx, 31, 32-nbits_l,
+                        qce_smt_z3_bv32_value(&state->solver_z3, val_h.v_i32));
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_h, updated_value);
+      break;
+    }
+    case QCE_CELL_MODE_SYMBOLIC: {
+      Z3_ast res_l = Z3_mk_extract(state->solver_z3.ctx, 63, 64-nbits_h, ast);
+      Z3_ast res_h = Z3_mk_extract(state->solver_z3.ctx, 31, 32-nbits_l,
+                                   val_h.symbolic);
+      Z3_ast updated_value =
+          __qce_smt_z3_simplify(&state->solver_z3,
+                                Z3_mk_concat(state->solver_z3.ctx,
+                                             res_h, res_l));
+      qce_cell_holder_put_symbolic_i32(mem, (gpointer)addr_h, updated_value);
+      break;
+    }
+    }
+  } else {
+    gpointer key_l = (gpointer)addr;
+    Z3_ast ast_l = qce_smt_z3_bv64_extract_l(&state->solver_z3, ast);
+    qce_cell_holder_put_symbolic_i32(mem, key_l, ast_l);
+
+    gpointer key_h = (gpointer)(addr + QCE_CONCOLIC_REGISTER_SIZE);
+    Z3_ast ast_h = qce_smt_z3_bv64_extract_h(&state->solver_z3, ast);
+    qce_cell_holder_put_symbolic_i32(mem, key_h, ast_h);
+  }
 }
 
 static inline void qce_state_mem_put_i64(CPUArchState *env, QCEState *state,
@@ -811,7 +897,7 @@ static inline void qce_state_mem_put_i64(CPUArchState *env, QCEState *state,
     break;
   }
   case QCE_EXPR_SYMBOLIC: {
-    qce_state_mem_put_symbolic_i64(state, addr, mmu_idx, expr->symbolic);
+    qce_state_mem_put_symbolic_i64(env, state, addr, mmu_idx, expr->symbolic);
     break;
   }
   }
@@ -1682,7 +1768,7 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_mem_symbolic_i64) {
   intptr_t vaddr = 0x2000;
 
   Z3_ast ast = qce_smt_z3_bv64_value(&state.solver_z3, 0xABCDEF0123456789);
-  qce_state_mem_put_symbolic_i64(&state, vaddr, mmu_idx, ast);
+  qce_state_mem_put_symbolic_i64(env, &state, vaddr, mmu_idx, ast);
   QCEExpr e;
   qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e);
   assert(e.mode == QCE_EXPR_SYMBOLIC);
@@ -1871,7 +1957,20 @@ QCE_UNIT_TEST_STATE_PROLOGUE(put_then_get_unaligned_addr_mem_symbolic_i64) {
            SMT_Z3_PROVE_PROVED);
   }
 
-  // TODO: put value directly on an unaligned address after implementing unaligned memory access in mem_put_symbolic_i64
+  Z3_ast ast2 = qce_smt_z3_bv64_value(&state.solver_z3, 0x0123456789ABCDEF);
+  qce_state_mem_put_symbolic_i64(env, &state, vaddr, mmu_idx, ast2);
+
+  QCEExpr e2;
+  qce_state_mem_get_i64(env, &state, vaddr, mmu_idx, &e2);
+  assert(e2.mode == QCE_EXPR_SYMBOLIC);
+  assert(e2.type == QCE_EXPR_I64);
+  assert(
+      qce_smt_z3_prove(
+          &state.solver_z3,
+          qce_smt_z3_bv64_eq(&state.solver_z3, e2.symbolic,
+                             qce_smt_z3_bv64_value(
+                                 &state.solver_z3, 0x0123456789ABCDEF))) ==
+      SMT_Z3_PROVE_PROVED);
 }
 QCE_UNIT_TEST_STATE_EPILOGUE
 
