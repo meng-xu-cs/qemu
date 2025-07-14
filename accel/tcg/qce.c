@@ -989,6 +989,8 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_CALL_punpck_xmm(hdq);
       HANDLE_SYM_INST_CALL_punpck_xmm(ldq);
       HANDLE_SYM_INST_CALL_punpck_xmm(lqdq);
+      HANDLE_SYM_INST_CALL_punpck_xmm(lbw);
+      HANDLE_SYM_INST_CALL_punpck_xmm(lwd);
       HANDLE_SYM_INST_CALL_pshufd_xmm;
 
       HANDLE_SYM_INST_CALL_div_EAX(divq);

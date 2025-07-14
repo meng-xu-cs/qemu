@@ -557,6 +557,8 @@ static inline void qce_sym_inst_call_rechecking_single_step(CPUArchState *env,
 #define Reg ZMMReg
 #define LANE_WIDTH (SHIFT ? 16 : 8)
 #define PACK_WIDTH (LANE_WIDTH / 2)
+#define B(n) ZMM_B(n)
+#define W(n) ZMM_W(n)
 #define L(n) ZMM_L(n)
 #define Q(n) ZMM_Q(n)
 
@@ -630,10 +632,104 @@ static inline void qce_sym_inst_call_punpcklqdq_xmm(
     qce_expr_assert_mode(&expr_from_v, CONCRETE);
     qce_expr_assert_mode(&expr_from_s, CONCRETE);
     QCEExpr expr_into_d;
-    qce_expr_init_v64(&expr_into_d, expr_from_v.v_i32);
+    qce_expr_init_v64(&expr_into_d, expr_from_v.v_i64);
     qce_state_env_put_i64(state, (intptr_t)&ptr_d->Q(i), &expr_into_d);
-    qce_expr_init_v64(&expr_into_d, expr_from_s.v_i32);
+    qce_expr_init_v64(&expr_into_d, expr_from_s.v_i64);
     qce_state_env_put_i64(state, (intptr_t)&ptr_d->Q(i + 1), &expr_into_d);
+  }
+}
+
+static inline void qce_sym_inst_call_punpcklbw_xmm(
+    CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *v, QCEVar *s) {
+  QCEExpr expr_d, expr_v, expr_s;
+  qce_state_get_var(env, state, d, &expr_d);
+  qce_state_get_var(env, state, v, &expr_v);
+  qce_state_get_var(env, state, s, &expr_s);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_d, CONCRETE);
+  qce_expr_assert_mode(&expr_v, CONCRETE);
+  qce_expr_assert_mode(&expr_s, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_d, I64);
+  qce_expr_assert_type(&expr_v, I64);
+  qce_expr_assert_type(&expr_s, I64);
+
+  Reg *ptr_v = (Reg *)expr_v.v_i64;
+  Reg *ptr_s = (Reg *)expr_s.v_i64;
+  Reg *ptr_d = (Reg *)expr_d.v_i64;
+
+  uint8_t r[PACK_WIDTH * 2];
+  int j, i;
+
+  for (j = 0; j < 8 << SHIFT; ) {
+    g_assert(PACK_WIDTH % 4 == 0);
+    for (i = 0; i < PACK_WIDTH; i+=4) {
+      QCEExpr expr_from_v, expr_from_s;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_v->B(j + i), &expr_from_v);
+      qce_state_env_get_i32(state, (intptr_t)&ptr_s->B(j + i), &expr_from_s);
+      qce_expr_assert_mode(&expr_from_v, CONCRETE);
+      qce_expr_assert_mode(&expr_from_s, CONCRETE);
+      for (uint8_t byte = 0; byte < 4; ++byte) {
+        r[2 * (i + byte)] = ((uint8_t *)&expr_from_v.v_i32)[byte];
+        r[2 * (i + byte) + 1] = ((uint8_t *)&expr_from_s.v_i32)[byte];
+      }
+    }
+    g_assert(PACK_WIDTH * 2 % 4 == 0);
+    for (i = 0; i < PACK_WIDTH * 2; i+=4, j+=4) {
+      QCEExpr expr_into_d;
+      qce_expr_init_v32(&expr_into_d, 0);
+      for (uint8_t byte = 0; byte < 4; ++byte) {
+        ((uint8_t *)&expr_into_d.v_i32)[byte] = r[i + byte];
+      }
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->B(j), &expr_into_d);
+    }
+  }
+}
+
+static inline void qce_sym_inst_call_punpcklwd_xmm(
+    CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *v, QCEVar *s) {
+  QCEExpr expr_d, expr_v, expr_s;
+  qce_state_get_var(env, state, d, &expr_d);
+  qce_state_get_var(env, state, v, &expr_v);
+  qce_state_get_var(env, state, s, &expr_s);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_d, CONCRETE);
+  qce_expr_assert_mode(&expr_v, CONCRETE);
+  qce_expr_assert_mode(&expr_s, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_d, I64);
+  qce_expr_assert_type(&expr_v, I64);
+  qce_expr_assert_type(&expr_s, I64);
+
+  Reg *ptr_v = (Reg *)expr_v.v_i64;
+  Reg *ptr_s = (Reg *)expr_s.v_i64;
+  Reg *ptr_d = (Reg *)expr_d.v_i64;
+
+  uint16_t r[PACK_WIDTH];
+  int j, i;
+
+  for (j = 0; j < 4 << SHIFT; ) {
+    g_assert(PACK_WIDTH / 2 % 2 == 0);
+    for (i = 0; i < PACK_WIDTH / 2; i+=2) {
+      QCEExpr expr_from_v, expr_from_s;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_v->W(j + i), &expr_from_v);
+      qce_state_env_get_i32(state, (intptr_t)&ptr_s->W(j + i), &expr_from_s);
+      qce_expr_assert_mode(&expr_from_v, CONCRETE);
+      qce_expr_assert_mode(&expr_from_s, CONCRETE);
+      for (uint8_t byte = 0; byte < 2; ++byte) {
+        r[2 * (i + byte)] = ((uint16_t *)&expr_from_v.v_i32)[byte];
+        r[2 * (i + byte) + 1] = ((uint16_t *)&expr_from_s.v_i32)[byte];
+      }
+    }
+    g_assert(PACK_WIDTH % 2 == 0);
+    for (i = 0; i < PACK_WIDTH; i+=2, j+=2) {
+      QCEExpr expr_into_d;
+      qce_expr_init_v32(&expr_into_d, 0);
+      for (uint8_t byte = 0; byte < 2; ++byte) {
+        ((uint16_t *)&expr_into_d.v_i32)[byte] = r[i + byte];
+      }
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->W(j), &expr_into_d);
+    }
   }
 }
 
