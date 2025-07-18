@@ -1,6 +1,34 @@
 #ifndef QCE_SYM_GUEST_LD_ST_H
 #define QCE_SYM_GUEST_LD_ST_H
 
+typedef enum {
+  MMIO_CANNOT_ACCESS = 0,
+  VALID = 1,
+} QCEAddressFlag;
+
+static inline QCEAddressFlag __check_addr_validity(
+    CPUArchState *env,QCEState *state, QCEExpr *addr, unsigned mmu_idx,
+    MMUAccessType access_type) {
+  /*
+   * If an MMIO address is accessed when can_do_io is not set to true,
+   * QEMU will rewind and recompile the current TB. We need to stop
+   * and exit the TB.
+   */
+  void *host;
+  int flag = probe_access_flags(env, (vaddr)addr->v_i64, 0, access_type,
+                                mmu_idx, true, &host, 0);
+  if (flag == TLB_MMIO) {
+    QCEExpr expr_can_do_io;
+    qce_state_env_get_i32(state, (intptr_t)&env_cpu(env)->neg.can_do_io,
+                          &expr_can_do_io);
+#ifndef QCE_RELEASE
+    qce_expr_assert_mode(&expr_can_do_io, CONCRETE);
+#endif
+    if (!(int16_t)expr_can_do_io.v_i32) return MMIO_CANNOT_ACCESS;
+  }
+  return VALID;
+}
+
 #ifndef QCE_RELEASE
 static inline void __check_memop_validity(QCEState *state, MemOp mo,
                                           QCEExpr *addr,
@@ -212,7 +240,7 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
 }
 
 #define DEFINE_SYM_INST_qemu_ld(bits)                                          \
-  static inline bool qce_sym_inst_guest_ld_i##bits(                            \
+  static inline QCEAddressFlag qce_sym_inst_guest_ld_i##bits(                  \
       CPUArchState *env, QCEState *state, QCEVar *addr, MemOpIdx flag,         \
       QCEVar *res) {                                                           \
     /* check the flags */                                                      \
@@ -225,8 +253,10 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
     qce_debug_assert(expr_addr.type == QCE_EXPR_I64);                          \
                                                                                \
     /* check the address */                                                    \
-    if (!tlb_vaddr_to_host(env, (abi_ptr)expr_addr.v_i64, 0, mmu_idx)) {       \
-      return false;                                                            \
+    QCEAddressFlag addr_flag =                                                 \
+        __check_addr_validity(env, state, &expr_addr, mmu_idx, 0);             \
+    if (addr_flag == MMIO_CANNOT_ACCESS) {                                     \
+      return addr_flag;                                                        \
     }                                                                          \
                                                                                \
     /* check the access */                                                     \
@@ -254,14 +284,14 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
     /* put back the result */                                                  \
     qce_state_put_var(env, state, res, &expr_val);                             \
                                                                                \
-    return true;                                                               \
+    return addr_flag;                                                          \
   }
 
 DEFINE_SYM_INST_qemu_ld(32);
 DEFINE_SYM_INST_qemu_ld(64);
 
 #define DEFINE_SYM_INST_qemu_st(bits)                                          \
-  static inline bool qce_sym_inst_guest_st_i##bits(                            \
+  static inline QCEAddressFlag qce_sym_inst_guest_st_i##bits(                  \
       CPUArchState *env, QCEState *state, QCEVar *val, QCEVar *addr,           \
       MemOpIdx flag) {                                                         \
     /* check the flags */                                                      \
@@ -274,8 +304,10 @@ DEFINE_SYM_INST_qemu_ld(64);
     qce_debug_assert(expr_addr.type == QCE_EXPR_I64);                          \
                                                                                \
     /* check the address */                                                    \
-    if (!tlb_vaddr_to_host(env, (abi_ptr)expr_addr.v_i64, 0, mmu_idx)) {       \
-      return false;                                                            \
+    QCEAddressFlag addr_flag =                                                 \
+        __check_addr_validity(env, state, &expr_addr, mmu_idx, 1);             \
+    if (addr_flag == MMIO_CANNOT_ACCESS) {                                     \
+      return addr_flag;                                                        \
     }                                                                          \
                                                                                \
     /* check the access */                                                     \
@@ -304,7 +336,7 @@ DEFINE_SYM_INST_qemu_ld(64);
     }                                                                          \
     }                                                                          \
                                                                                \
-    return true;                                                               \
+    return addr_flag;                                                          \
   }
 
 DEFINE_SYM_INST_qemu_st(32);
@@ -312,10 +344,11 @@ DEFINE_SYM_INST_qemu_st(64);
 
 #define HANDLE_SYM_INST_qemu_ld(bits)                                          \
   case QCE_INST_GUEST_LD##bits: {                                              \
-    bool success = qce_sym_inst_guest_ld_i##bits(                              \
+    QCEAddressFlag addr_flag = qce_sym_inst_guest_ld_i##bits(                  \
         arch, &session->state, &inst->i_qemu_ld_i##bits.addr,                  \
         inst->i_qemu_ld_i##bits.flag, &inst->i_qemu_ld_i##bits.res);           \
-    if (!success) {                                                            \
+    if (addr_flag == MMIO_CANNOT_ACCESS) {                                     \
+      session->emulation_ctx.status = QCE_Emulation_Normal;                    \
       qce_state_reset(&session->state);                                        \
       goto end_of_loop;                                                        \
     }                                                                          \
@@ -324,10 +357,11 @@ DEFINE_SYM_INST_qemu_st(64);
 
 #define HANDLE_SYM_INST_qemu_st(bits)                                          \
   case QCE_INST_GUEST_ST##bits: {                                              \
-    bool success = qce_sym_inst_guest_st_i##bits(                              \
+    QCEAddressFlag addr_flag = qce_sym_inst_guest_st_i##bits(                  \
         arch, &session->state, &inst->i_qemu_st_i##bits.val,                   \
         &inst->i_qemu_st_i##bits.addr, inst->i_qemu_st_i##bits.flag);          \
-    if (!success) {                                                            \
+    if (addr_flag == MMIO_CANNOT_ACCESS) {                                     \
+      session->emulation_ctx.status = QCE_Emulation_Normal;                    \
       qce_state_reset(&session->state);                                        \
       goto end_of_loop;                                                        \
     }                                                                          \
