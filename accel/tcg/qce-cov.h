@@ -13,7 +13,7 @@ static inline vaddr cov_bit_eval_clear(vaddr cov) {
 
 gint qce_gtree_cov_cmp(gconstpointer a, gconstpointer b);
 gint qce_gtree_cov_cmp(gconstpointer a, gconstpointer b) {
-  return (intptr_t)a - (intptr_t)b;
+  return ((uintptr_t)a > (uintptr_t)b) - ((uintptr_t)a < (uintptr_t)b);
 }
 
 gboolean qce_gtree_cov_destroy_on_iter(gpointer _key, gpointer value,

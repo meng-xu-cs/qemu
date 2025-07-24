@@ -54,7 +54,7 @@ typedef struct {
 
 gint qce_gtree_addr_key_cmp(gconstpointer a, gconstpointer b);
 gint qce_gtree_addr_key_cmp(gconstpointer a, gconstpointer b) {
-  return (intptr_t)a - (intptr_t)b;
+  return ((uintptr_t)a > (uintptr_t)b) - ((uintptr_t)a < (uintptr_t)b);
 }
 
 static inline void qce_cell_holder_init(QCECellHolder *holder) {
@@ -171,7 +171,7 @@ static inline void qce_cell_holder_get_i64(QCECellHolder *holder, gpointer key,
 
 gint qce_gtree_mmu_idx_cmp(gconstpointer a, gconstpointer b);
 gint qce_gtree_mmu_idx_cmp(gconstpointer a, gconstpointer b) {
-  return (intptr_t)a - (intptr_t)b;
+  return ((uintptr_t)a > (uintptr_t)b) - ((uintptr_t)a < (uintptr_t)b);
 }
 
 gboolean qce_gtree_cell_holder_destroy_on_iter(gpointer _key, gpointer value,
