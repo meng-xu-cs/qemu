@@ -642,6 +642,20 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
   DEFINE_SMT_Z3_MULTIWORD_OP2(32, name, func)                                  \
   DEFINE_SMT_Z3_MULTIWORD_OP2(64, name, func)
 
+#define DEFINE_SMT_Z3_ite(bits)                                                \
+  static inline Z3_ast qce_smt_z3_bv##bits##_ite(SolverZ3 *solver, Z3_ast cond,\
+                                                 Z3_ast tval, Z3_ast fval) {   \
+    __qce_smt_z3_type_check_bool(solver, cond);                                \
+    __qce_smt_z3_type_check_bv##bits(solver, tval);                            \
+    __qce_smt_z3_type_check_bv##bits(solver, fval);                            \
+    return __qce_smt_z3_simplify(solver,                                       \
+                                 Z3_mk_ite(solver->ctx, cond, tval, fval));    \
+}
+
+#define DEFINE_SMT_Z3_ite_DUAL                                                 \
+  DEFINE_SMT_Z3_ite(32)                                                        \
+  DEFINE_SMT_Z3_ite(64)
+
 #define DEFINE_SMT_Z3_bswap(n, bits)                                           \
   static inline Z3_ast qce_smt_z3_bv##bits##_bswap##n(SolverZ3 *solver,        \
                                                       Z3_ast val,              \
@@ -890,6 +904,8 @@ DEFINE_SMT_Z3_OP2_DUAL(ult, Z3_mk_bvult)
 DEFINE_SMT_Z3_OP2_DUAL(ule, Z3_mk_bvule)
 DEFINE_SMT_Z3_OP2_DUAL(uge, Z3_mk_bvuge)
 DEFINE_SMT_Z3_OP2_DUAL(ugt, Z3_mk_bvugt)
+
+DEFINE_SMT_Z3_ite_DUAL
 
 /*
  * Bitwise

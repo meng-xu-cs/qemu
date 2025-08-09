@@ -147,6 +147,8 @@ static inline void qce_unit_test_expr(void) {
   QCE_UNIT_TEST_EXPR_RUN_DUAL(uge);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(ugt);
 
+  QCE_UNIT_TEST_EXPR_RUN_DUAL(ite);
+
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvand);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvor);
   QCE_UNIT_TEST_EXPR_RUN_DUAL(bvxor);

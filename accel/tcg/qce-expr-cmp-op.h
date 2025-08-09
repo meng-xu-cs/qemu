@@ -88,6 +88,57 @@ DEFINE_CONCRETE_CMP_OP_UNSIGNED_DUAL(ugt, >)
   DEFINE_EXPR_CMP_OP(32, name)                                                 \
   DEFINE_EXPR_CMP_OP(64, name)
 
+#define DEFINE_EXPR_ite(bits)                                                  \
+  static inline void qce_expr_ite_i##bits(SolverZ3 *solver, QCEPred *cond,     \
+                                          QCEExpr *tval, QCEExpr *fval,        \
+                                          QCEExpr *result) {                   \
+    /* type checking */                                                        \
+    qce_expr_assert_type(tval, I##bits);                                       \
+    qce_expr_assert_type(fval, I##bits);                                       \
+                                                                               \
+    /* base assignment */                                                      \
+    if (cond->mode == QCE_PRED_CONCRETE) {                                     \
+      memcpy(result, cond->concrete ? tval : fval, sizeof(QCEExpr));           \
+      return;                                                                  \
+    }                                                                          \
+    result->mode = QCE_EXPR_SYMBOLIC;                                          \
+    result->type = QCE_EXPR_I##bits;                                           \
+    if (tval->mode == QCE_EXPR_CONCRETE) {                                     \
+      if (fval->mode == QCE_EXPR_CONCRETE) {                                   \
+        result->symbolic = qce_smt_z3_bv##bits##_ite(                          \
+            solver, cond->symbolic,                                            \
+            qce_smt_z3_bv##bits##_value(solver, tval->v_i##bits),              \
+            qce_smt_z3_bv##bits##_value(solver, fval->v_i##bits));             \
+      } else {                                                                 \
+        result->symbolic = qce_smt_z3_bv##bits##_ite(                          \
+            solver, cond->symbolic,                                            \
+            qce_smt_z3_bv##bits##_value(solver, tval->v_i##bits),              \
+            fval->symbolic);                                                   \
+      }                                                                        \
+    } else {                                                                   \
+      if (fval->mode == QCE_EXPR_CONCRETE) {                                   \
+        result->symbolic = qce_smt_z3_bv##bits##_ite(                          \
+            solver, cond->symbolic,                                            \
+            tval->symbolic,                                                    \
+            qce_smt_z3_bv##bits##_value(solver, fval->v_i##bits));             \
+      } else {                                                                 \
+        result->symbolic = qce_smt_z3_bv##bits##_ite(                          \
+            solver, cond->symbolic, tval->symbolic, fval->symbolic);           \
+      }                                                                        \
+    }                                                                          \
+                                                                               \
+    /* try to reduce symbolic to concrete */                                   \
+    uint##bits##_t val = 0;                                                    \
+    if (qce_smt_z3_probe_bv##bits(solver, result->symbolic, &val)) {           \
+      result->mode = QCE_EXPR_CONCRETE;                                        \
+      result->v_i##bits = val;                                                 \
+    }                                                                          \
+  }
+
+#define DEFINE_EXPR_ite_DUAL                                                   \
+  DEFINE_EXPR_ite(32)                                                          \
+  DEFINE_EXPR_ite(64)
+
 /*
  * Comparison
  */
@@ -104,6 +155,8 @@ DEFINE_EXPR_CMP_OP_DUAL(ult)
 DEFINE_EXPR_CMP_OP_DUAL(ule)
 DEFINE_EXPR_CMP_OP_DUAL(uge)
 DEFINE_EXPR_CMP_OP_DUAL(ugt)
+
+DEFINE_EXPR_ite_DUAL
 
 /*
  * Testing
@@ -845,6 +898,88 @@ QCE_UNIT_TEST_EXPR_DEF_DUAL(uge)
   }                                                                            \
   QCE_UNIT_TEST_EXPR_EPILOGUE
 QCE_UNIT_TEST_EXPR_DEF_DUAL(ugt)
+
+#define QCE_UNIT_TEST_EXPR_ite(bits)                                           \
+  QCE_UNIT_TEST_EXPR_PROLOGUE(ite_i##bits) {                                   \
+    QCEExpr v0, v1, a;                                                         \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+                                                                               \
+    QCEPred c;                                                                 \
+    c.mode = QCE_PRED_CONCRETE;                                                \
+                                                                               \
+    /* 0 ? 0 : a == a */                                                       \
+    QCEExpr r1;                                                                \
+    c.concrete = 0;                                                            \
+    qce_expr_ite_i##bits(&solver, &c, &v0, &a, &r1);                           \
+    assert(r1.type == QCE_EXPR_I##bits);                                       \
+    assert(r1.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r1.symbolic, a.symbolic)) ==          \
+           SMT_Z3_PROVE_PROVED);                                               \
+                                                                               \
+    /* 1 ? 0 : 1 == 0 */                                                       \
+    QCEExpr r2;                                                                \
+    c.concrete = 1;                                                            \
+    qce_expr_ite_i##bits(&solver, &c, &v0, &v1, &r2);                          \
+    assert(r2.type == QCE_EXPR_I##bits);                                       \
+    assert(r2.mode == QCE_EXPR_CONCRETE);                                      \
+    assert(r2.v_i##bits == 0);                                                 \
+  }                                                                            \
+  {                                                                            \
+    QCEExpr v0, v1, a, b;                                                      \
+    qce_expr_init_v##bits(&v0, 0);                                             \
+    qce_expr_init_v##bits(&v1, 1);                                             \
+    qce_expr_init_s##bits(&solver, &a);                                        \
+    qce_expr_init_s##bits(&solver, &b);                                        \
+                                                                               \
+    QCEPred c1, c2;                                                            \
+    qce_expr_uge_i##bits(&solver, &a, &b, &c1);                                \
+    qce_expr_ult_i##bits(&solver, &a, &b, &c2);                                \
+                                                                               \
+    /* a >=u b ? 0 : 1 <==> a <u b ? 1 : 0  */                                 \
+    QCEExpr r1, r2;                                                            \
+    qce_expr_ite_i##bits(&solver, &c1, &v0, &v1, &r1);                         \
+    qce_expr_ite_i##bits(&solver, &c2, &v1, &v0, &r2);                         \
+    assert(r1.type == QCE_EXPR_I##bits);                                       \
+    assert(r2.type == QCE_EXPR_I##bits);                                       \
+    assert(r1.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(r2.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r1.symbolic, r2.symbolic)) ==         \
+           SMT_Z3_PROVE_PROVED);                                               \
+                                                                               \
+    /* a >=u b ? 0 : a <==> a <u b ? a : 0  */                                 \
+    QCEExpr r3, r4;                                                            \
+    qce_expr_ite_i##bits(&solver, &c1, &v0, &a, &r3);                          \
+    qce_expr_ite_i##bits(&solver, &c2, &a, &v0, &r4);                          \
+    assert(r3.type == QCE_EXPR_I##bits);                                       \
+    assert(r4.type == QCE_EXPR_I##bits);                                       \
+    assert(r3.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(r4.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r3.symbolic, r4.symbolic)) ==         \
+           SMT_Z3_PROVE_PROVED);                                               \
+                                                                               \
+    /* a >=u b ? a : b <==> a <u b ? b : a  */                                 \
+    QCEExpr r5, r6;                                                            \
+    qce_expr_ite_i##bits(&solver, &c1, &a, &b, &r5);                           \
+    qce_expr_ite_i##bits(&solver, &c2, &b, &a, &r6);                           \
+    assert(r5.type == QCE_EXPR_I##bits);                                       \
+    assert(r6.type == QCE_EXPR_I##bits);                                       \
+    assert(r5.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(r6.mode == QCE_EXPR_SYMBOLIC);                                      \
+    assert(qce_smt_z3_prove(&solver,                                           \
+                            qce_smt_z3_bv##bits##_eq(                          \
+                                &solver, r5.symbolic, r6.symbolic)) ==         \
+           SMT_Z3_PROVE_PROVED);                                               \
+  }                                                                            \
+  QCE_UNIT_TEST_EXPR_EPILOGUE
+QCE_UNIT_TEST_EXPR_DEF_DUAL(ite)
 #endif
 
 #endif /* QCE_EXPR_CMP_OP_H */

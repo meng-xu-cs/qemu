@@ -163,8 +163,8 @@ DEFINE_SYM_INST_brcond(64);
     break;                                                                     \
   }
 
-#define DEFINE_SYM_INST_cond_mov(bits)                                         \
-  static inline void qce_sym_inst_cond_mov_i##bits(                            \
+#define DEFINE_SYM_INST_COND_MOV(bits)                                         \
+  static inline void qce_sym_inst_COND_MOV_i##bits(                            \
       CPUArchState *env, QCEState *state, QCEExpr *expr_v1, QCEExpr *expr_v2,  \
       QCEVar *c1, QCEVar *c2, tcg_target_ulong cond, QCEVar *res) {            \
     QCEExpr expr_c1, expr_c2;                                                  \
@@ -238,29 +238,21 @@ DEFINE_SYM_INST_brcond(64);
       qce_fatal("unknown condition: %lx", cond);                               \
     }                                                                          \
                                                                                \
-    QCEExpr *expr_res;                                                         \
-    if (pred.mode == QCE_PRED_CONCRETE) {                                      \
-      expr_res = pred.concrete ? expr_v1 : expr_v2;                            \
-    } else {                                                                   \
-      /* concretize the predicate */                                           \
-      QCESession *session = g_qce->session;                                    \
-      bool concretized = qce_smt_z3_concretize_bool(                           \
-          &state->solver_z3, session->blob_addr, session->blob_size,           \
-          session->blob_content, pred.symbolic);                               \
-      expr_res = concretized ? expr_v1 : expr_v2;                              \
-    }                                                                          \
-    qce_state_put_var(env, state, res, expr_res);                              \
+    QCEExpr expr_res;                                                          \
+    qce_expr_ite_i##bits(&state->solver_z3, &pred, expr_v1, expr_v2,           \
+                         &expr_res);                                           \
+    qce_state_put_var(env, state, res, &expr_res);                             \
   }
 
-DEFINE_SYM_INST_cond_mov(32)
-DEFINE_SYM_INST_cond_mov(64)
+DEFINE_SYM_INST_COND_MOV(32)
+DEFINE_SYM_INST_COND_MOV(64)
 
 #define HANDLE_SYM_INST_setcond(bits)                                          \
   case QCE_INST_SETCOND_I##bits: {                                             \
     QCEExpr expr_v1, expr_v2;                                                  \
     qce_expr_init_v##bits(&expr_v1, 1);                                        \
     qce_expr_init_v##bits(&expr_v2, 0);                                        \
-    qce_sym_inst_cond_mov_i##bits(                                             \
+    qce_sym_inst_COND_MOV_i##bits(                                             \
         arch, &session->state, &expr_v1, &expr_v2,                             \
         &inst->i_setcond_i##bits.c1, &inst->i_setcond_i##bits.c2,              \
         inst->i_setcond_i##bits.cond, &inst->i_setcond_i##bits.res);           \
@@ -272,7 +264,7 @@ DEFINE_SYM_INST_cond_mov(64)
     QCEExpr expr_v1, expr_v2;                                                  \
     qce_expr_init_v##bits(&expr_v1, -1);                                       \
     qce_expr_init_v##bits(&expr_v2, 0);                                        \
-    qce_sym_inst_cond_mov_i##bits(                                             \
+    qce_sym_inst_COND_MOV_i##bits(                                             \
         arch, &session->state, &expr_v1, &expr_v2,                             \
         &inst->i_negsetcond_i##bits.c1, &inst->i_negsetcond_i##bits.c2,        \
         inst->i_negsetcond_i##bits.cond, &inst->i_negsetcond_i##bits.res);     \
@@ -286,7 +278,7 @@ DEFINE_SYM_INST_cond_mov(64)
                       &inst->i_movcond_i##bits.v1, &expr_v1);                  \
     qce_state_get_var(arch, &session->state,                                   \
                       &inst->i_movcond_i##bits.v2, &expr_v2);                  \
-    qce_sym_inst_cond_mov_i##bits(                                             \
+    qce_sym_inst_COND_MOV_i##bits(                                             \
         arch, &session->state, &expr_v1, &expr_v2,                             \
         &inst->i_movcond_i##bits.c1,&inst->i_movcond_i##bits.c2,               \
         inst->i_movcond_i##bits.cond, &inst->i_movcond_i##bits.res);           \
