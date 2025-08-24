@@ -73,6 +73,15 @@ static inline uint64_t __qce_concrete_extu_i32_i64(uint32_t val) {
   return (uint64_t)val;
 }
 
+#define DEFINE_CONCRETE_parity(bits)                                           \
+  static inline int##bits##_t __qce_concrete_bv##bits##_parity(                \
+      int##bits##_t operand) {                                                 \
+    return __builtin_parity(operand);                                          \
+  }
+
+DEFINE_CONCRETE_parity(32)
+DEFINE_CONCRETE_parity(64)
+
 /*
  * Templates
  */
@@ -297,6 +306,8 @@ DEFINE_EXPR_extr_i64_i32(h)
 
 DEFINE_EXPR_ext_i32_i64( )
 DEFINE_EXPR_ext_i32_i64(u)
+
+DEFINE_EXPR_UNI_OP_DUAL(parity)
 
 /*
  * Testing

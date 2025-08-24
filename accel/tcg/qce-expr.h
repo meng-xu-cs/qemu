@@ -72,6 +72,32 @@ static inline void qce_expr_init_s64(SolverZ3 *solver, QCEExpr *expr) {
 }
 #endif
 
+static inline void qce_expr_init_from_pred_i32(SolverZ3 *solver,
+                                               QCEExpr *expr,
+                                               QCEPred *pred) {
+  expr->type = QCE_EXPR_I32;
+  if (pred->mode == QCE_PRED_CONCRETE) {
+    expr->mode = QCE_EXPR_CONCRETE;
+    expr->v_i32 = pred->concrete;
+  } else {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    expr->symbolic = qce_smt_z3_bv32_normalize(solver, pred->symbolic);
+  }
+}
+
+static inline void qce_expr_init_from_pred_i64(SolverZ3 *solver,
+                                               QCEExpr *expr,
+                                               QCEPred *pred) {
+  expr->type = QCE_EXPR_I64;
+  if (pred->mode == QCE_PRED_CONCRETE) {
+    expr->mode = QCE_EXPR_CONCRETE;
+    expr->v_i64 = pred->concrete;
+  } else {
+    expr->mode = QCE_EXPR_SYMBOLIC;
+    expr->symbolic = qce_smt_z3_bv64_normalize(solver, pred->symbolic);
+  }
+}
+
 /*
  * Testing
  */

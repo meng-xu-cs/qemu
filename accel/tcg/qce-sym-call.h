@@ -4,36 +4,1153 @@
 #include "exec/helper-proto.h"
 #include "tcg/tcg-gvec-desc.h"
 
-#define DEFINE_SYM_INST_CALL_cc_compute(name)                                  \
-  static inline void qce_sym_inst_call_cc_compute_##name(                      \
-        CPUArchState *env, QCEState *state, QCEVar *dst, QCEVar *src1,         \
-        QCEVar *src2, QCEVar *opc, QCEVar *res) {                              \
-    QCEExpr expr_dst, expr_src1, expr_src2, expr_opc;                          \
-    qce_state_get_var(env, state, dst, &expr_dst);                             \
-    qce_state_get_var(env, state, src1, &expr_src1);                           \
-    qce_state_get_var(env, state, src2, &expr_src2);                           \
-    qce_state_get_var(env, state, opc, &expr_opc);                             \
-    /* mode checking */                                                        \
-    qce_expr_assert_mode(&expr_dst, CONCRETE);                                 \
-    qce_expr_assert_mode(&expr_src1, CONCRETE);                                \
-    qce_expr_assert_mode(&expr_src2, CONCRETE);                                \
-    qce_expr_assert_mode(&expr_opc, CONCRETE);                                 \
-    /* type checking */                                                        \
-    qce_expr_assert_type(&expr_dst, I64);                                      \
-    qce_expr_assert_type(&expr_src1, I64);                                     \
-    qce_expr_assert_type(&expr_src2, I64);                                     \
-    qce_expr_assert_type(&expr_opc, I32);                                      \
+static inline void qce_compute_pf(QCEState *state, QCEExpr *x,
+                                  QCEExpr *result) {
+  qce_expr_extract_i64(&state->solver_z3, x, 0, 8, result);
+  qce_expr_extrl_i64_i32(&state->solver_z3, result, result);
+  qce_expr_parity_i32(&state->solver_z3, result, result);
+  QCEPred pred;
+  QCEExpr expr_v0;
+  qce_expr_init_v32(&expr_v0, 0);
+  qce_expr_eq_i32(&state->solver_z3, result, &expr_v0, &pred);
+  qce_expr_init_from_pred_i32(&state->solver_z3, result, &pred);
+  QCEExpr expr_cc_p;
+  qce_expr_init_v32(&expr_cc_p, CC_P);
+  qce_expr_mul_i32(&state->solver_z3, result, &expr_cc_p, result);
+}
+
+static inline void qce_lshift(QCEState *state, QCEExpr *x,
+                              int n, QCEExpr *result) {
+  if (n >= 0) {
+    QCEExpr expr_n;
+    qce_expr_init_v64(&expr_n, n);
+    qce_expr_shl_i64(&state->solver_z3, x, &expr_n, result);
+  } else {
+    QCEExpr expr_nm;
+    qce_expr_init_v64(&expr_nm, -n);
+    qce_expr_sar_i64(&state->solver_z3, x, &expr_nm, result);
+  }
+}
+
+#define DEFINE_CC_COMPUTE_ALL_HELPERS(suffix, bits)                            \
+  static inline void compute_all_mul##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
                                                                                \
-    QCEExpr expr_res;                                                          \
-    expr_res.type = QCE_EXPR_I64;                                              \
-    expr_res.mode = QCE_EXPR_CONCRETE;                                         \
-    expr_res.v_i64 = helper_cc_compute_##name(expr_dst.v_i64, expr_src1.v_i64, \
-                                              expr_src2.v_i64, expr_opc.v_i32);\
-    qce_state_put_var(env, state, res, &expr_res);                             \
+    uint32_t af;                                                               \
+    QCEExpr expr_cf, expr_pf, expr_zf, expr_sf, expr_of;                       \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0;                                                           \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_ne_i64(&state->solver_z3, expr_src1, &expr_v0, &pred);            \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    af = 0;                                                                    \
+                                                                               \
+    QCEExpr expr_cc_z;                                                         \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_cc_o;                                                         \
+    qce_expr_init_v32(&expr_cc_o, CC_O);                                       \
+    qce_expr_mul_i32(&state->solver_z3, &expr_cf, &expr_cc_o, &expr_of);       \
+                                                                               \
+    qce_expr_init_v32(expr_res, af);                                           \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_add##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    QCEExpr expr_src2;                                                         \
+    qce_expr_sub_i64(&state->solver_z3, expr_dst, expr_src1, &expr_src2);      \
+    qce_expr_extract_i64(&state->solver_z3, &expr_src2, 0, bits, &expr_src2);  \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_ult_i64(&state->solver_z3, expr_dst, expr_src1, &pred);           \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_cc_a;                                                         \
+    qce_expr_init_v64(&expr_cc_a, CC_A);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, expr_src1, &expr_af);      \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, &expr_src2, &expr_af);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_cc_a, &expr_af);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_v1m, expr_cc_o, expr_tmp;                                     \
+    qce_expr_init_v64(&expr_v1m, -1);                                          \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, &expr_src2, &expr_of);    \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_of, &expr_v1m, &expr_of);      \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, expr_dst, &expr_tmp);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_tmp, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_adc##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_src3, QCEExpr *expr_res) {                                 \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+    qce_expr_extract_i64(&state->solver_z3, expr_src3, 0, bits, expr_src3);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    QCEExpr expr_src13, expr_src2;                                             \
+    qce_expr_add_i64(&state->solver_z3, expr_src1, expr_src3, &expr_src13);    \
+    qce_expr_sub_i64(&state->solver_z3, expr_dst, &expr_src13, &expr_src2);    \
+    qce_expr_extract_i64(&state->solver_z3, &expr_src2, 0, bits, &expr_src2);  \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_ult_i64(&state->solver_z3, expr_dst, &expr_src13, &pred);         \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_v0x10;                                                        \
+    qce_expr_init_v64(&expr_v0x10, 0x10);                                      \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, expr_src1, &expr_af);      \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, &expr_src2, &expr_af);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_v0x10, &expr_af);    \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEExpr expr_v0, expr_v6;                                                  \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_v6, 6);                                            \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_shl_i32(&state->solver_z3, &expr_zf, &expr_v6, &expr_zf);         \
+                                                                               \
+    QCEExpr expr_v0x80;                                                        \
+    qce_expr_init_v64(&expr_v0x80, 0x80);                                      \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_v0x80, &expr_sf);    \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_v1m, expr_cc_o, expr_tmp;                                     \
+    qce_expr_init_v64(&expr_v1m, -1);                                          \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, &expr_src2, &expr_of);    \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_of, &expr_v1m, &expr_of);      \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, expr_dst, &expr_tmp);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_tmp, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_sub##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src2,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src2, 0, bits, expr_src2);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    QCEExpr expr_src1;                                                         \
+    qce_expr_add_i64(&state->solver_z3, expr_dst, expr_src2, &expr_src1);      \
+    qce_expr_extract_i64(&state->solver_z3, &expr_src1, 0, bits, &expr_src1);  \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_ult_i64(&state->solver_z3, &expr_src1, expr_src2, &pred);         \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_cc_a;                                                         \
+    qce_expr_init_v64(&expr_cc_a, CC_A);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, &expr_src1, &expr_af);     \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, expr_src2, &expr_af);      \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_cc_a, &expr_af);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v32(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+    qce_expr_bvand_i32(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+                                                                               \
+    QCEExpr expr_cc_o, expr_tmp;                                               \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_src1, expr_src2, &expr_of);    \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_src1, expr_dst, &expr_tmp);    \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_tmp, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_sbb##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src2,                  \
+      QCEExpr *expr_src3, QCEExpr *expr_res) {                                 \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src2, 0, bits, expr_src2);    \
+    qce_expr_extract_i64(&state->solver_z3, expr_src3, 0, bits, expr_src3);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    QCEExpr expr_src23, expr_src1;                                             \
+    qce_expr_add_i64(&state->solver_z3, expr_src2, expr_src3, &expr_src23);    \
+    qce_expr_add_i64(&state->solver_z3, expr_dst, &expr_src23, &expr_src1);    \
+    qce_expr_extract_i64(&state->solver_z3, &expr_src1, 0, bits, &expr_src1);  \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_ult_i64(&state->solver_z3, &expr_src1, &expr_src23, &pred);       \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_v0x10;                                                        \
+    qce_expr_init_v64(&expr_v0x10, 0x10);                                      \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, &expr_src1, &expr_af);     \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, expr_src2, &expr_af);      \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_v0x10, &expr_af);    \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEExpr expr_v0, expr_v6;                                                  \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_v6, 6);                                            \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_shl_i32(&state->solver_z3, &expr_zf, &expr_v6, &expr_zf);         \
+                                                                               \
+    QCEExpr expr_v0x80;                                                        \
+    qce_expr_init_v64(&expr_v0x80, 0x80);                                      \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_v0x80, &expr_sf);    \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_cc_o, expr_tmp;                                               \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_src1, expr_src2, &expr_of);    \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_src1, expr_dst, &expr_tmp);    \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_tmp, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_logic##suffix(                                \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    uint32_t cf, af, of;                                                       \
+    QCEExpr expr_pf, expr_zf, expr_sf;                                         \
+                                                                               \
+    cf = 0;                                                                    \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    af = 0;                                                                    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    of = 0;                                                                    \
+                                                                               \
+    qce_expr_init_v32(expr_res, cf+af+of);                                     \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_inc##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    qce_expr_extrl_i64_i32(&state->solver_z3, expr_src1, &expr_cf);            \
+                                                                               \
+    QCEExpr expr_v1, expr_src2;                                                \
+    qce_expr_init_v64(&expr_v1, 1);                                            \
+    qce_expr_sub_i64(&state->solver_z3, expr_dst, &expr_v1, expr_src1);        \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+    qce_expr_init_v64(&expr_src2, 1);                                          \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_cc_a;                                                         \
+    qce_expr_init_v64(&expr_cc_a, CC_A);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, expr_src1, &expr_af);      \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, &expr_src2, &expr_af);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_cc_a, &expr_af);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_sign_mask, expr_cc_o;                                         \
+    qce_expr_init_v64(&expr_sign_mask, ((uint##bits##_t)1) << (bits- 1));      \
+    qce_expr_init_v32(&expr_cc_o, CC_O);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_sign_mask, &pred);      \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_of, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);       \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_dec##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEExpr expr_cf, expr_pf, expr_af, expr_zf, expr_sf, expr_of;              \
+                                                                               \
+    qce_expr_extrl_i64_i32(&state->solver_z3, expr_src1, &expr_cf);            \
+                                                                               \
+    QCEExpr expr_v1, expr_src2;                                                \
+    qce_expr_init_v64(&expr_v1, 1);                                            \
+    qce_expr_add_i64(&state->solver_z3, expr_dst, &expr_v1, expr_src1);        \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+    qce_expr_init_v64(&expr_src2, 1);                                          \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    QCEExpr expr_cc_a;                                                         \
+    qce_expr_init_v64(&expr_cc_a, CC_A);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_dst, expr_src1, &expr_af);      \
+    qce_expr_bvxor_i64(&state->solver_z3, &expr_af, &expr_src2, &expr_af);     \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_af, &expr_cc_a, &expr_af);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_af, &expr_af);             \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_sign_mask, expr_cc_o;                                         \
+    qce_expr_init_v64(&expr_sign_mask, (((uint##bits##_t)1) << (bits- 1)) - 1);\
+    qce_expr_init_v32(&expr_cc_o, CC_O);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_sign_mask, &pred);      \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_of, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);       \
+                                                                               \
+    qce_expr_init_v32(expr_res, 0);                                            \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_af, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_shl##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    uint32_t af;                                                               \
+    QCEExpr expr_cf, expr_pf, expr_zf, expr_sf, expr_of;                       \
+                                                                               \
+    QCEExpr expr_v, expr_cc_c;                                                 \
+    qce_expr_init_v64(&expr_v, bits-1);                                        \
+    qce_expr_init_v64(&expr_cc_c, CC_C);                                       \
+    qce_expr_shr_i64(&state->solver_z3, expr_src1, &expr_v, &expr_cf);         \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_cf, &expr_cc_c, &expr_cf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_cf, &expr_cf);             \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    af = 0;                                                                    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_cc_o;                                                         \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, expr_dst, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, af);                                           \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_sar##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    uint32_t af;                                                               \
+    QCEExpr expr_cf, expr_pf, expr_zf, expr_sf, expr_of;                       \
+                                                                               \
+    QCEExpr expr_v1;                                                           \
+    qce_expr_init_v64(&expr_v1, 1);                                            \
+    qce_expr_bvand_i64(&state->solver_z3, expr_src1, &expr_v1, &expr_cf);      \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_cf, &expr_cf);             \
+                                                                               \
+    qce_compute_pf(state, expr_dst, &expr_pf);                                 \
+                                                                               \
+    af = 0;                                                                    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0, expr_cc_z;                                                \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    QCEExpr expr_cc_o;                                                         \
+    qce_expr_init_v64(&expr_cc_o, CC_O);                                       \
+    qce_expr_bvxor_i64(&state->solver_z3, expr_src1, expr_dst, &expr_of);      \
+    qce_lshift(state, &expr_of, 12-bits, &expr_of);                            \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_of, &expr_cc_o, &expr_of);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_of, &expr_of);             \
+                                                                               \
+    qce_expr_init_v32(expr_res, af);                                           \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_pf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_of, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_bmilg##suffix(                                \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    uint32_t pf, af, of;                                                       \
+    QCEExpr expr_cf, expr_zf, expr_sf;                                         \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0;                                                           \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_eq_i64(&state->solver_z3, expr_src1, &expr_v0, &pred);            \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    pf = 0;                                                                    \
+    af = 0;                                                                    \
+                                                                               \
+    QCEExpr expr_cc_z;                                                         \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    of = 0;                                                                    \
+                                                                               \
+    qce_expr_init_v32(expr_res, pf+af+of);                                     \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
+  }                                                                            \
+                                                                               \
+  static inline void compute_all_blsi##suffix(                                 \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    uint32_t pf, af, of;                                                       \
+    QCEExpr expr_cf, expr_zf, expr_sf;                                         \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0;                                                           \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_ne_i64(&state->solver_z3, expr_src1, &expr_v0, &pred);            \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_cf, &pred);           \
+                                                                               \
+    pf = 0;                                                                    \
+    af = 0;                                                                    \
+                                                                               \
+    QCEExpr expr_cc_z;                                                         \
+    qce_expr_init_v32(&expr_cc_z, CC_Z);                                       \
+    qce_expr_eq_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);             \
+    qce_expr_init_from_pred_i32(&state->solver_z3, &expr_zf, &pred);           \
+    qce_expr_mul_i32(&state->solver_z3, &expr_zf, &expr_cc_z, &expr_zf);       \
+                                                                               \
+    QCEExpr expr_cc_s;                                                         \
+    qce_expr_init_v64(&expr_cc_s, CC_S);                                       \
+    qce_lshift(state, expr_dst, 8-bits, &expr_sf);                             \
+    qce_expr_bvand_i64(&state->solver_z3, &expr_sf, &expr_cc_s, &expr_sf);     \
+    qce_expr_extrl_i64_i32(&state->solver_z3, &expr_sf, &expr_sf);             \
+                                                                               \
+    of = 0;                                                                    \
+                                                                               \
+    qce_expr_init_v32(expr_res, pf+af+of);                                     \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_cf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_zf, expr_res);         \
+    qce_expr_add_i32(&state->solver_z3, expr_res, &expr_sf, expr_res);         \
+    qce_expr_extu_i32_i64(&state->solver_z3, expr_res, expr_res);              \
   }
 
-DEFINE_SYM_INST_CALL_cc_compute(all)
-DEFINE_SYM_INST_CALL_cc_compute(c)
+DEFINE_CC_COMPUTE_ALL_HELPERS(b, 8)
+DEFINE_CC_COMPUTE_ALL_HELPERS(w, 16)
+DEFINE_CC_COMPUTE_ALL_HELPERS(l, 32)
+DEFINE_CC_COMPUTE_ALL_HELPERS(q, 64)
+
+static inline void qce_helper_cc_compute_all(
+    QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,
+    QCEExpr *expr_src2, QCEExpr *expr_opc, QCEExpr *expr_res) {
+  switch (expr_opc->v_i32) {
+  default: /* should never happen */ {
+    qce_expr_init_v64(expr_res, 0);
+    break;
+  }
+
+  case CC_OP_EFLAGS: {
+    memcpy(expr_res, expr_src1, sizeof(QCEExpr));
+    break;
+  }
+  case CC_OP_POPCNT: {
+    QCEExpr expr_v0, expr_cc_z;
+    qce_expr_init_v64(&expr_v0, 0);
+    qce_expr_init_v64(&expr_cc_z, CC_Z);
+    QCEPred pred;
+    qce_expr_ne_i64(&state->solver_z3, expr_dst, &expr_v0, &pred);
+    qce_expr_ite_i64(&state->solver_z3, &pred, &expr_v0, &expr_cc_z, expr_res);
+    break;
+  }
+
+  case CC_OP_MULB:
+    compute_all_mulb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_MULW:
+    compute_all_mulw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_MULL:
+    compute_all_mull(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_MULQ:
+    compute_all_mulq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_ADDB:
+    compute_all_addb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_ADDW:
+    compute_all_addw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_ADDL:
+    compute_all_addl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_ADDQ:
+    compute_all_addq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_ADCB:
+    compute_all_adcb(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_ADCW:
+    compute_all_adcw(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_ADCL:
+    compute_all_adcl(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_ADCQ:
+    compute_all_adcq(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+
+  case CC_OP_SUBB:
+    compute_all_subb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SUBW:
+    compute_all_subw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SUBL:
+    compute_all_subl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SUBQ:
+    compute_all_subq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_SBBB:
+    compute_all_sbbb(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_SBBW:
+    compute_all_sbbw(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_SBBL:
+    compute_all_sbbl(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+  case CC_OP_SBBQ:
+    compute_all_sbbq(state, expr_dst, expr_src1, expr_src2, expr_res);
+    break;
+
+  case CC_OP_LOGICB:
+    compute_all_logicb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_LOGICW:
+    compute_all_logicw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_LOGICL:
+    compute_all_logicl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_LOGICQ:
+    compute_all_logicq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_INCB:
+    compute_all_incb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_INCW:
+    compute_all_incw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_INCL:
+    compute_all_incl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_INCQ:
+    compute_all_incq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_DECB:
+    compute_all_decb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_DECW:
+    compute_all_decw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_DECL:
+    compute_all_decl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_DECQ:
+    compute_all_decq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_SHLB:
+    compute_all_shlb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SHLW:
+    compute_all_shlw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SHLL:
+    compute_all_shll(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SHLQ:
+    compute_all_shlq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_SARB:
+    compute_all_sarb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SARW:
+    compute_all_sarw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SARL:
+    compute_all_sarl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_SARQ:
+    compute_all_sarq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_BMILGB:
+    compute_all_bmilgb(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BMILGW:
+    compute_all_bmilgw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BMILGL:
+    compute_all_bmilgl(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BMILGQ:
+    compute_all_bmilgq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_BLSIB:
+    compute_all_blsib(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BLSIW:
+    compute_all_blsiw(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BLSIL:
+    compute_all_blsil(state, expr_dst, expr_src1, expr_res);
+    break;
+  case CC_OP_BLSIQ:
+    compute_all_blsiq(state, expr_dst, expr_src1, expr_res);
+    break;
+
+  case CC_OP_ADCX: {
+    QCEExpr expr_v, expr_tmp1, expr_tmp2;
+    qce_expr_init_v64(&expr_v, ~CC_C);
+    qce_expr_bvand_i64(&state->solver_z3, expr_src1, &expr_v, &expr_tmp1);
+    qce_expr_init_v64(&expr_v, CC_C);
+    qce_expr_mul_i64(&state->solver_z3, expr_dst, &expr_v, &expr_tmp2);
+    qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, expr_res);
+    break;
+  }
+  case CC_OP_ADOX: {
+    QCEExpr expr_v, expr_tmp1, expr_tmp2;
+    qce_expr_init_v64(&expr_v, ~CC_O);
+    qce_expr_bvand_i64(&state->solver_z3, expr_src1, &expr_v, &expr_tmp1);
+    qce_expr_init_v64(&expr_v, CC_O);
+    qce_expr_mul_i64(&state->solver_z3, expr_src2, &expr_v, &expr_tmp2);
+    qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, expr_res);
+    break;
+  }
+  case CC_OP_ADCOX: {
+    QCEExpr expr_v, expr_tmp1, expr_tmp2, expr_tmp3;
+    qce_expr_init_v64(&expr_v, ~(CC_C | CC_O));
+    qce_expr_bvand_i64(&state->solver_z3, expr_src1, &expr_v, &expr_tmp1);
+    qce_expr_init_v64(&expr_v, CC_C);
+    qce_expr_mul_i64(&state->solver_z3, expr_dst, &expr_v, &expr_tmp2);
+    qce_expr_init_v64(&expr_v, CC_O);
+    qce_expr_mul_i64(&state->solver_z3, expr_src2, &expr_v, &expr_tmp3);
+    qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, expr_res);
+    qce_expr_bvor_i64(&state->solver_z3, expr_res, &expr_tmp3, expr_res);
+    break;
+  }
+  }
+}
+
+static inline void qce_sym_inst_call_cc_compute_all(
+    CPUArchState *env, QCEState *state, QCEVar *dst, QCEVar *src1,
+    QCEVar *src2, QCEVar *opc, QCEVar *res) {
+  QCEExpr expr_dst, expr_src1, expr_src2, expr_opc;
+  qce_state_get_var(env, state, dst, &expr_dst);
+  qce_state_get_var(env, state, src1, &expr_src1);
+  qce_state_get_var(env, state, src2, &expr_src2);
+  qce_state_get_var(env, state, opc, &expr_opc);
+  /* mode checking */
+//  qce_expr_assert_mode(&expr_src1, CONCRETE);
+//  qce_expr_assert_mode(&expr_src2, CONCRETE);
+  qce_expr_assert_mode(&expr_opc, CONCRETE);
+  if (expr_src1.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("cc_compute_all: src1 symbolic");
+  }
+  if (expr_src2.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("cc_compute_all: src2 symbolic");
+  }
+  /* type checking */
+  qce_expr_assert_type(&expr_dst, I64);
+  qce_expr_assert_type(&expr_src1, I64);
+  qce_expr_assert_type(&expr_src2, I64);
+  qce_expr_assert_type(&expr_opc, I32);
+
+  QCEExpr expr_res;
+  qce_helper_cc_compute_all(state, &expr_dst, &expr_src1, &expr_src2,
+                            &expr_opc, &expr_res);
+  qce_state_put_var(env, state, res, &expr_res);
+}
+
+#define DEFINE_CC_COMPUTE_C_HELPERS(suffix, bits)                              \
+  static inline void compute_c_add##suffix(                                    \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_ult_i64(&state->solver_z3, expr_dst, expr_src1, &pred);           \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_adc##suffix(                                    \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_src3, QCEExpr *expr_res) {                                 \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src3);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_src13;                                                        \
+    qce_expr_add_i64(&state->solver_z3, expr_src1, expr_src3, &expr_src13);    \
+    qce_expr_ult_i64(&state->solver_z3, expr_dst, &expr_src13, &pred);         \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_sub##suffix(                                    \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src2,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src2, 0, bits, expr_src2);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    qce_expr_add_i64(&state->solver_z3, expr_dst, expr_src2, expr_res);        \
+    qce_expr_ult_i64(&state->solver_z3, expr_res, expr_src2, &pred);           \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_sbb##suffix(                                    \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src2,                  \
+      QCEExpr *expr_src3, QCEExpr *expr_res) {                                 \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src2, 0, bits, expr_src2);    \
+    qce_expr_extract_i64(&state->solver_z3, expr_src3, 0, bits, expr_src3);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_src23, expr_src1;                                             \
+    qce_expr_add_i64(&state->solver_z3, expr_src2, expr_src3, &expr_src23);    \
+    qce_expr_add_i64(&state->solver_z3, expr_dst, &expr_src23, &expr_src1);    \
+    qce_expr_extract_i64(&state->solver_z3, &expr_src1, 0, bits, &expr_src1);  \
+    qce_expr_ult_i64(&state->solver_z3, &expr_src1, &expr_src23, &pred);       \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_shl##suffix(                                    \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEExpr expr_v, expr_cc_c;                                                 \
+    qce_expr_init_v64(&expr_v, bits-1);                                        \
+    qce_expr_init_v64(&expr_cc_c, CC_C);                                       \
+    qce_expr_shr_i64(&state->solver_z3, expr_src1, &expr_v, expr_res);         \
+    qce_expr_bvand_i64(&state->solver_z3, expr_res, &expr_cc_c, expr_res);     \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_bmilg##suffix(                                  \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0;                                                           \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_eq_i64(&state->solver_z3, expr_src1, &expr_v0, &pred);            \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }                                                                            \
+                                                                               \
+  static inline void compute_c_blsi##suffix(                                   \
+      QCEState *state, QCEExpr *expr_dst, QCEExpr *expr_src1,                  \
+      QCEExpr *expr_res) {                                                     \
+    qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
+    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
+                                                                               \
+    QCEPred pred;                                                              \
+    QCEExpr expr_v0;                                                           \
+    qce_expr_init_v64(&expr_v0, 0);                                            \
+    qce_expr_ne_i64(&state->solver_z3, expr_src1, &expr_v0, &pred);            \
+    qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
+  }
+
+DEFINE_CC_COMPUTE_C_HELPERS(b, 8)
+DEFINE_CC_COMPUTE_C_HELPERS(w, 16)
+DEFINE_CC_COMPUTE_C_HELPERS(l, 32)
+DEFINE_CC_COMPUTE_C_HELPERS(q, 64)
+
+static inline void qce_sym_inst_call_cc_compute_c(
+    CPUArchState *env, QCEState *state, QCEVar *dst, QCEVar *src1,
+    QCEVar *src2, QCEVar *opc, QCEVar *res) {
+  QCEExpr expr_dst, expr_src1, expr_src2, expr_opc;
+  qce_state_get_var(env, state, dst, &expr_dst);
+  qce_state_get_var(env, state, src1, &expr_src1);
+  qce_state_get_var(env, state, src2, &expr_src2);
+  qce_state_get_var(env, state, opc, &expr_opc);
+  /* mode checking */
+//  qce_expr_assert_mode(&expr_src2, CONCRETE);
+  qce_expr_assert_mode(&expr_opc, CONCRETE);
+  if (expr_src2.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("cc_compute_c: src2 symbolic");
+  }
+  /* type checking */
+  qce_expr_assert_type(&expr_dst, I64);
+  qce_expr_assert_type(&expr_src1, I64);
+  qce_expr_assert_type(&expr_src2, I64);
+  qce_expr_assert_type(&expr_opc, I32);
+
+  QCEExpr expr_res;
+  switch (expr_opc.v_i32) {
+  default: /* should never happen */
+  case CC_OP_LOGICB:
+  case CC_OP_LOGICW:
+  case CC_OP_LOGICL:
+  case CC_OP_LOGICQ:
+  case CC_OP_POPCNT: {
+    qce_expr_init_v64(&expr_res, 0);
+    break;
+  }
+
+  case CC_OP_EFLAGS:
+  case CC_OP_SARB:
+  case CC_OP_SARW:
+  case CC_OP_SARL:
+  case CC_OP_SARQ:
+  case CC_OP_ADOX:{
+    QCEExpr expr_v1;
+    qce_expr_init_v64(&expr_v1, 1);
+    qce_expr_bvand_i64(&state->solver_z3, &expr_src1, &expr_v1, &expr_res);
+    break;
+  }
+
+  case CC_OP_INCB:
+  case CC_OP_INCW:
+  case CC_OP_INCL:
+  case CC_OP_INCQ:
+  case CC_OP_DECB:
+  case CC_OP_DECW:
+  case CC_OP_DECL:
+  case CC_OP_DECQ: {
+    qce_state_put_var(env, state, res, &expr_src1);
+    return;
+  }
+
+  case CC_OP_MULB:
+  case CC_OP_MULW:
+  case CC_OP_MULL:
+  case CC_OP_MULQ: {
+    QCEPred pred;
+    QCEExpr expr_v0;
+    qce_expr_init_v64(&expr_v0, 0);
+    qce_expr_ne_i64(&state->solver_z3, &expr_src1, &expr_v0, &pred);
+    qce_expr_init_from_pred_i64(&state->solver_z3, &expr_res, &pred);
+    break;
+  }
+
+  case CC_OP_ADCX:
+  case CC_OP_ADCOX: {
+    qce_state_put_var(env, state, res, &expr_dst);
+    return;
+  }
+
+  case CC_OP_ADDB:
+    compute_c_addb(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_ADDW:
+    compute_c_addw(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_ADDL:
+    compute_c_addl(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_ADDQ:
+    compute_c_addq(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+
+  case CC_OP_ADCB:
+    compute_c_adcb(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_ADCW:
+    compute_c_adcw(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_ADCL:
+    compute_c_adcl(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_ADCQ:
+    compute_c_adcq(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+
+  case CC_OP_SUBB:
+    compute_c_subb(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SUBW:
+    compute_c_subw(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SUBL:
+    compute_c_subl(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SUBQ:
+    compute_c_subq(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+
+  case CC_OP_SBBB:
+    compute_c_sbbb(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_SBBW:
+    compute_c_sbbw(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_SBBL:
+    compute_c_sbbl(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+  case CC_OP_SBBQ:
+    compute_c_sbbq(state, &expr_dst, &expr_src1, &expr_src2, &expr_res);
+    break;
+
+  case CC_OP_SHLB:
+    compute_c_shlb(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SHLW:
+    compute_c_shlw(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SHLL:
+    compute_c_shll(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_SHLQ:
+    compute_c_shlq(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+
+  case CC_OP_BMILGB:
+    compute_c_bmilgb(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BMILGW:
+    compute_c_bmilgw(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BMILGL:
+    compute_c_bmilgl(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BMILGQ:
+    compute_c_bmilgq(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+
+  case CC_OP_BLSIB:
+    compute_c_blsib(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BLSIW:
+    compute_c_blsiw(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BLSIL:
+    compute_c_blsil(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  case CC_OP_BLSIQ:
+    compute_c_blsiq(state, &expr_dst, &expr_src1, &expr_res);
+    break;
+  }
+
+  qce_state_put_var(env, state, res, &expr_res);
+}
 
 #define HANDLE_SYM_INST_CALL_cc_compute(name)                                  \
   case QCE_INST_CALL_cc_compute_##name: {                                      \
@@ -55,8 +1172,6 @@ static inline void qce_sym_inst_call_cc_compute_nz(
   qce_state_get_var(env, state, src, &expr_src);
   qce_state_get_var(env, state, opc, &expr_opc);
   /* mode checking */
-  qce_expr_assert_mode(&expr_dst, CONCRETE);
-  qce_expr_assert_mode(&expr_src, CONCRETE);
   qce_expr_assert_mode(&expr_opc, CONCRETE);
   /* type checking */
   qce_expr_assert_type(&expr_dst, I64);
@@ -64,10 +1179,18 @@ static inline void qce_sym_inst_call_cc_compute_nz(
   qce_expr_assert_type(&expr_opc, I32);
 
   QCEExpr expr_res;
-  expr_res.type = QCE_EXPR_I64;
-  expr_res.mode = QCE_EXPR_CONCRETE;
-  expr_res.v_i64 = helper_cc_compute_nz(expr_dst.v_i64, expr_src.v_i64,
-                                        expr_opc.v_i32);
+  if (CC_OP_HAS_EFLAGS(expr_opc.v_i32)) {
+    QCEExpr expr_cc_z;
+    qce_expr_init_v64(&expr_cc_z, CC_Z);
+    qce_expr_bvnot_i64(&state->solver_z3, &expr_src, &expr_res);
+    qce_expr_bvand_i64(&state->solver_z3, &expr_res, &expr_cc_z, &expr_res);
+  } else {
+    MemOp size = cc_op_size(expr_opc.v_i32);
+    QCEExpr expr_mask;
+    qce_expr_init_v64(&expr_mask, MAKE_64BIT_MASK(0, 8 << size));
+    qce_expr_bvand_i64(&state->solver_z3, &expr_dst, &expr_mask, &expr_res);
+  }
+
   qce_state_put_var(env, state, res, &expr_res);
 }
 

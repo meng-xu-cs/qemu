@@ -770,6 +770,23 @@ static Z3_ast qce_Z3_mk_bvctz(Z3_context ctx, Z3_ast lhs, Z3_ast rhs) {
     return __qce_smt_z3_simplify(solver, Z3_mk_zero_ext(solver->ctx, 32, val));\
   }
 
+#define DEFINE_SMT_Z3_parity(bits)                                             \
+  static inline Z3_ast qce_smt_z3_bv##bits##_parity(SolverZ3 *solver,          \
+                                                    Z3_ast val) {              \
+    __qce_smt_z3_type_check_bv##bits(solver, val);                             \
+    Z3_ast result = Z3_mk_extract(solver->ctx, 0, 0, val);                     \
+    for (int bit = 1; bit < bits; ++bit) {                                     \
+        result = Z3_mk_bvxor(solver->ctx, result,                              \
+                             Z3_mk_extract(solver->ctx, bit, bit, val));       \
+    }                                                                          \
+    result = Z3_mk_zero_ext(solver->ctx, bits-1, result);                      \
+    return __qce_smt_z3_simplify(solver, result);                              \
+  }
+
+#define DEFINE_SMT_Z3_parity_DUAL
+DEFINE_SMT_Z3_parity(32)
+DEFINE_SMT_Z3_parity(64)
+
 /*
  * Bit-vector
  */
@@ -793,6 +810,26 @@ static inline Z3_ast qce_smt_z3_bv64_var(SolverZ3 *solver) {
   return Z3_mk_const(solver->ctx, symbol, solver->sort_bv64);
 }
 #endif
+
+static inline Z3_ast qce_smt_z3_bv32_normalize(SolverZ3 *solver, Z3_ast expr) {
+  Z3_sort sort = Z3_get_sort(solver->ctx, expr);
+  if (Z3_get_sort_kind(solver->ctx, sort) == Z3_BOOL_SORT) {
+    Z3_ast zero = qce_smt_z3_bv32_value(solver, 0);
+    Z3_ast one = qce_smt_z3_bv32_value(solver, 1);
+    return Z3_mk_ite(solver->ctx, expr, one, zero);
+  }
+  return expr;
+}
+
+static inline Z3_ast qce_smt_z3_bv64_normalize(SolverZ3 *solver, Z3_ast expr) {
+  Z3_sort sort = Z3_get_sort(solver->ctx, expr);
+  if (Z3_get_sort_kind(solver->ctx, sort) == Z3_BOOL_SORT) {
+    Z3_ast zero = qce_smt_z3_bv64_value(solver, 0);
+    Z3_ast one = qce_smt_z3_bv64_value(solver, 1);
+    return Z3_mk_ite(solver->ctx, expr, one, zero);
+  }
+  return expr;
+}
 
 static inline Z3_ast qce_smt_z3_bv64_extract_l(SolverZ3 *solver, Z3_ast expr) {
   __qce_smt_z3_type_check_bv64(solver, expr);
@@ -943,6 +980,7 @@ DEFINE_SMT_Z3_extrl_i64_i32
 DEFINE_SMT_Z3_extrh_i64_i32
 DEFINE_SMT_Z3_ext_i32_i64
 DEFINE_SMT_Z3_extu_i32_i64
+DEFINE_SMT_Z3_parity_DUAL
 
 /*
  * Array
