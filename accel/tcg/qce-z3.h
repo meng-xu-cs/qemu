@@ -401,6 +401,102 @@ static inline bool qce_smt_z3_concretize_bool(SolverZ3 *solver,
   return false;
 }
 
+static inline uint32_t qce_smt_z3_concretize_bv32(SolverZ3 *solver,
+                                                  target_ulong addr,
+                                                  target_ulong size,
+                                                  uint8_t *blob, Z3_ast expr) {
+  // build the clauses
+  Z3_ast *clauses = g_alloca(sizeof(Z3_ast) * (size + 2));
+  for (target_ulong i = 0; i < size; i++) {
+    clauses[i] =
+        Z3_mk_eq(solver->ctx, Z3_mk_int(solver->ctx, blob[i], solver->sort_bv8),
+                 Z3_mk_select(solver->ctx, solver->blob_content,
+                              Z3_mk_int64(solver->ctx, i, solver->sort_bv64)));
+  }
+  clauses[size + 0] =
+      Z3_mk_eq(solver->ctx, solver->blob_addr,
+               Z3_mk_int64(solver->ctx, addr, solver->sort_bv64));
+  clauses[size + 1] =
+      Z3_mk_eq(solver->ctx, solver->blob_size,
+               Z3_mk_int64(solver->ctx, size, solver->sort_bv64));
+
+  // check the assumptions
+  Z3_lbool result =
+      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 2, clauses);
+  if (result == Z3_L_UNDEF) {
+    qce_fatal("unable to determine the satisfiability of concretization");
+  }
+
+  if (result == Z3_L_TRUE) {
+    // evaluate the expression
+    Z3_ast eval = NULL;
+    Z3_model model = Z3_solver_get_model(solver->ctx, solver->sol);
+    if (!Z3_model_eval(solver->ctx, model, expr, true, &eval)) {
+      qce_fatal("model evaluation failed");
+    }
+
+    uint32_t val;
+#ifndef QCE_RELEASE
+    g_assert(Z3_get_ast_kind(solver->ctx, eval) == Z3_NUMERAL_AST);
+    bool probed =
+#endif
+    Z3_get_numeral_uint(solver->ctx, eval, &val);
+#ifndef QCE_RELEASE
+    g_assert(probed);
+#endif
+    return val;
+  }
+  qce_fatal("unable to concretize the expression");
+}
+
+static inline uint64_t qce_smt_z3_concretize_bv64(SolverZ3 *solver,
+                                                  target_ulong addr,
+                                                  target_ulong size,
+                                                  uint8_t *blob, Z3_ast expr) {
+  // build the clauses
+  Z3_ast *clauses = g_alloca(sizeof(Z3_ast) * (size + 2));
+  for (target_ulong i = 0; i < size; i++) {
+    clauses[i] =
+        Z3_mk_eq(solver->ctx, Z3_mk_int(solver->ctx, blob[i], solver->sort_bv8),
+                 Z3_mk_select(solver->ctx, solver->blob_content,
+                              Z3_mk_int64(solver->ctx, i, solver->sort_bv64)));
+  }
+  clauses[size + 0] =
+      Z3_mk_eq(solver->ctx, solver->blob_addr,
+               Z3_mk_int64(solver->ctx, addr, solver->sort_bv64));
+  clauses[size + 1] =
+      Z3_mk_eq(solver->ctx, solver->blob_size,
+               Z3_mk_int64(solver->ctx, size, solver->sort_bv64));
+
+  // check the assumptions
+  Z3_lbool result =
+      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 2, clauses);
+  if (result == Z3_L_UNDEF) {
+    qce_fatal("unable to determine the satisfiability of concretization");
+  }
+
+  if (result == Z3_L_TRUE) {
+    // evaluate the expression
+    Z3_ast eval = NULL;
+    Z3_model model = Z3_solver_get_model(solver->ctx, solver->sol);
+    if (!Z3_model_eval(solver->ctx, model, expr, true, &eval)) {
+      qce_fatal("model evaluation failed");
+    }
+
+    uint64_t val;
+#ifndef QCE_RELEASE
+    g_assert(Z3_get_ast_kind(solver->ctx, eval) == Z3_NUMERAL_AST);
+    bool probed =
+#endif
+    Z3_get_numeral_uint64(solver->ctx, eval, &val);
+#ifndef QCE_RELEASE
+    g_assert(probed);
+#endif
+    return val;
+  }
+  qce_fatal("unable to concretize the expression");
+}
+
 static inline size_t qce_smt_z3_solve_for(SolverZ3 *solver, Z3_ast cond,
                                           uint8_t *output) {
   // solve for model

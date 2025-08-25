@@ -7,8 +7,27 @@ typedef enum {
 } QCEAddressFlag;
 
 static inline QCEAddressFlag __check_addr_validity(
-    CPUArchState *env,QCEState *state, QCEExpr *addr, unsigned mmu_idx,
+    CPUArchState *env, QCEState *state, QCEExpr *addr, unsigned mmu_idx,
     MMUAccessType access_type) {
+  // concretize the symbolic address which is not in blob
+  if (addr->mode == QCE_EXPR_SYMBOLIC) {
+    QCESession *session = g_qce->session;
+    uint64_t concretized_addr =
+        qce_smt_z3_concretize_bv64(&state->solver_z3, session->blob_addr,
+                                   session->blob_size, session->blob_content,
+                                   addr->symbolic);
+    if (concretized_addr >= session->blob_addr &&
+        concretized_addr < session->blob_addr + session->blob_size) {
+      return VALID;
+    } else {
+      addr->mode = QCE_EXPR_CONCRETE;
+      addr->v_i64 = concretized_addr;
+    }
+  }
+#ifndef QCE_RELEASE
+  assert(addr->mode == QCE_EXPR_CONCRETE);
+#endif
+
   /*
    * If an MMIO address is accessed when can_do_io is not set to true,
    * QEMU will rewind and recompile the current TB. We need to stop
@@ -65,30 +84,30 @@ static inline void __check_memop_validity(QCEState *state, MemOp mo,
       qce_fatal("unaligned guest memory access is not supported");
     }
   } else {
-    Z3_ast offset = qce_smt_z3_bv64_sub(&state->solver_z3, addr->symbolic,
-                                        state->solver_z3.blob_addr);
-
-    // check offset is within range
-    qce_smt_z3_prove(
-        &state->solver_z3,
-        qce_smt_z3_bv64_uge(&state->solver_z3, offset,
-                            qce_smt_z3_bv64_value(&state->solver_z3, 0)));
-    qce_smt_z3_prove(
-        &state->solver_z3,
-        qce_smt_z3_bv64_ult(
-            &state->solver_z3, offset,
-            qce_smt_z3_bv64_value(&state->solver_z3, BLOB_SIZE_MAX)));
-
-    // check offset is aligned (if needed)
-    if (align != 1) {
-      Z3_ast alignment =
-          qce_smt_z3_bv64_umod(&state->solver_z3, offset,
-                               qce_smt_z3_bv64_value(&state->solver_z3, align));
-      qce_smt_z3_prove(
-          &state->solver_z3,
-          qce_smt_z3_bv64_eq(&state->solver_z3, alignment,
-                             qce_smt_z3_bv64_value(&state->solver_z3, 0)));
-    }
+//    Z3_ast offset = qce_smt_z3_bv64_sub(&state->solver_z3, addr->symbolic,
+//                                        state->solver_z3.blob_addr);
+//
+//    // check offset is within range
+//    qce_smt_z3_prove(
+//        &state->solver_z3,
+//        qce_smt_z3_bv64_uge(&state->solver_z3, offset,
+//                            qce_smt_z3_bv64_value(&state->solver_z3, 0)));
+//    qce_smt_z3_prove(
+//        &state->solver_z3,
+//        qce_smt_z3_bv64_ult(
+//            &state->solver_z3, offset,
+//            qce_smt_z3_bv64_value(&state->solver_z3, BLOB_SIZE_MAX)));
+//
+//    // check offset is aligned (if needed)
+//    if (align != 1) {
+//      Z3_ast alignment =
+//          qce_smt_z3_bv64_umod(&state->solver_z3, offset,
+//                               qce_smt_z3_bv64_value(&state->solver_z3, align));
+//      qce_smt_z3_prove(
+//          &state->solver_z3,
+//          qce_smt_z3_bv64_eq(&state->solver_z3, alignment,
+//                             qce_smt_z3_bv64_value(&state->solver_z3, 0)));
+//    }
   }
 
   // expect atomicity is not requested
@@ -317,16 +336,14 @@ DEFINE_SYM_INST_qemu_ld(64);
     QCEExpr expr_val;                                                          \
     qce_state_get_var(env, state, val, &expr_val);                             \
                                                                                \
-    /* load the original value first and then handle the flags */              \
+    /* load and update the original value first and then store the value */    \
     QCEExpr expr_cell, expr_cell_updated;                                      \
-    qce_state_mem_get_i##bits(env, state, expr_addr.v_i64, mmu_idx,            \
-                              &expr_cell);                                     \
-    __prepare_expr_for_st_memop_i##bits(state, mo, &expr_val, &expr_cell,      \
-                                        &expr_cell_updated);                   \
-                                                                               \
-    /* store the value */                                                      \
     switch (expr_addr.mode) {                                                  \
     case QCE_EXPR_CONCRETE: {                                                  \
+      qce_state_mem_get_i##bits(env, state, expr_addr.v_i64, mmu_idx,          \
+                                &expr_cell);                                   \
+      __prepare_expr_for_st_memop_i##bits(state, mo, &expr_val, &expr_cell,    \
+                                          &expr_cell_updated);                 \
       qce_state_mem_put_i##bits(env, state, expr_addr.v_i64, mmu_idx,          \
                                 &expr_cell_updated);                           \
       break;                                                                   \
