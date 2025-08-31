@@ -1206,23 +1206,61 @@ static inline void qce_sym_inst_call_cc_compute_nz(
 static inline void qce_sym_inst_call_ld_i128(
     CPUArchState *env, QCEState *state, QCEVar *addr, QCEVar *flag,
     QCEVar *out_b, QCEVar *out_t) {
-  QCEExpr expr_addr, expr_flag;
-  qce_state_get_var(env, state, addr, &expr_addr);
+  QCEExpr expr_addr_l, expr_flag;
+  qce_state_get_var(env, state, addr, &expr_addr_l);
   qce_state_get_var(env, state, flag, &expr_flag);
   /* mode checking */
-  qce_expr_assert_mode(&expr_addr, CONCRETE);
   qce_expr_assert_mode(&expr_flag, CONCRETE);
   /* type checking */
-  qce_expr_assert_type(&expr_addr, I64);
+  qce_expr_assert_type(&expr_addr_l, I64);
   qce_expr_assert_type(&expr_flag, I32);
 
+  QCEExpr expr_addr_h;
+  memcpy(&expr_addr_h, &expr_addr_l, sizeof(QCEExpr));
+  switch (expr_addr_l.mode) {
+  case QCE_EXPR_CONCRETE: {
+    expr_addr_h.v_i64 = expr_addr_l.v_i64 + 8;
+    break;
+  }
+  case QCE_EXPR_SYMBOLIC: {
+    expr_addr_h.symbolic =
+        qce_smt_z3_bv64_add(&state->solver_z3, expr_addr_l.symbolic,
+                            qce_smt_z3_bv64_value(&state->solver_z3, 8));
+    break;
+  }
+  }
+
+  unsigned mmu_idx = get_mmuidx(expr_flag.v_i32);
+  QCEAddressFlag addr_flag =
+      __check_addr_validity(env, state, &expr_addr_l, mmu_idx, 0);
+  if (addr_flag != VALID) {
+    qce_fatal("ld_i128: addr_l is invalid");
+  }
+  addr_flag =
+    __check_addr_validity(env, state, &expr_addr_h, mmu_idx, 0);
+  if (addr_flag != VALID) {
+    qce_fatal("ld_i128: addr_h is invalid");
+  }
+
+  qce_debug_assert((get_memop(expr_flag.v_i32) & MO_SIZE) == MO_128);
+  qce_debug_assert(expr_addr_l.mode == expr_addr_h.mode);
   QCEExpr expr_out_b, expr_out_t;
-  Int128 out = helper_ld_i128(env, expr_addr.v_i64, expr_flag.v_i32);
-  qce_expr_init_v64(&expr_out_b, int128_getlo(out));
-  qce_expr_init_v64(&expr_out_t, int128_gethi(out));
+  switch (expr_addr_l.mode) {
+  case QCE_EXPR_CONCRETE: {
+    Int128 out = helper_ld_i128(env, expr_addr_l.v_i64, expr_flag.v_i32);
+    qce_expr_init_v64(&expr_out_b, int128_getlo(out));
+    qce_expr_init_v64(&expr_out_t, int128_gethi(out));
+    break;
+  }
+  case QCE_EXPR_SYMBOLIC: {
+    qce_state_mem_get_symbolic_i64(state, expr_addr_l.symbolic, &expr_out_b);
+    qce_state_mem_get_symbolic_i64(state, expr_addr_h.symbolic, &expr_out_t);
+    break;
+  }
+  }
   qce_state_put_var(env, state, out_b, &expr_out_b);
   qce_state_put_var(env, state, out_t, &expr_out_t);
-}
+  }
 
 #define HANDLE_SYM_INST_CALL_ld_i128                                           \
   case QCE_INST_CALL_ld_i128: {                                                \
@@ -1236,26 +1274,58 @@ static inline void qce_sym_inst_call_ld_i128(
 static inline void qce_sym_inst_call_st_i128(
     CPUArchState *env, QCEState *state, QCEVar *addr, QCEVar *flag,
     QCEVar *in_b, QCEVar *in_t) {
-  QCEExpr expr_addr, expr_flag, expr_in_t, expr_in_b;
-  qce_state_get_var(env, state, addr, &expr_addr);
+  QCEExpr expr_addr_l, expr_flag, expr_in_t, expr_in_b;
+  qce_state_get_var(env, state, addr, &expr_addr_l);
   qce_state_get_var(env, state, flag, &expr_flag);
   qce_state_get_var(env, state, in_b, &expr_in_b);
   qce_state_get_var(env, state, in_t, &expr_in_t);
   /* mode checking */
-  qce_expr_assert_mode(&expr_addr, CONCRETE);
   qce_expr_assert_mode(&expr_flag, CONCRETE);
-  qce_expr_assert_mode(&expr_in_b, CONCRETE);
-  qce_expr_assert_mode(&expr_in_t, CONCRETE);
   /* type checking */
-  qce_expr_assert_type(&expr_addr, I64);
+  qce_expr_assert_type(&expr_addr_l, I64);
   qce_expr_assert_type(&expr_flag, I32);
   qce_expr_assert_type(&expr_in_b, I64);
   qce_expr_assert_type(&expr_in_t, I64);
 
-  qce_debug_assert((get_memop(expr_flag.v_i32) & MO_SIZE) == MO_128);
+  QCEExpr expr_addr_h;
+  memcpy(&expr_addr_h, &expr_addr_l, sizeof(QCEExpr));
+  switch (expr_addr_l.mode) {
+  case QCE_EXPR_CONCRETE: {
+    expr_addr_h.v_i64 = expr_addr_l.v_i64 + 8;
+    break;
+  }
+  case QCE_EXPR_SYMBOLIC: {
+    expr_addr_h.symbolic =
+        qce_smt_z3_bv64_add(&state->solver_z3, expr_addr_l.symbolic,
+                            qce_smt_z3_bv64_value(&state->solver_z3, 8));
+    break;
+  }
+  }
+
   unsigned mmu_idx = get_mmuidx(expr_flag.v_i32);
-  qce_state_mem_put_i64(env, state, expr_addr.v_i64, mmu_idx, &expr_in_b);
-  qce_state_mem_put_i64(env, state, expr_addr.v_i64 + 8, mmu_idx, &expr_in_t);
+  QCEAddressFlag addr_flag =
+      __check_addr_validity(env, state, &expr_addr_l, mmu_idx, 0);
+  if (addr_flag != VALID) {
+    qce_fatal("st_i128: addr_l is invalid");
+  }
+  addr_flag =
+      __check_addr_validity(env, state, &expr_addr_h, mmu_idx, 0);
+  if (addr_flag != VALID) {
+    qce_fatal("st_i128: addr_l is invalid");
+  }
+
+  qce_debug_assert((get_memop(expr_flag.v_i32) & MO_SIZE) == MO_128);
+  qce_debug_assert(expr_addr_l.mode == expr_addr_h.mode);
+  switch (expr_addr_l.mode) {
+  case QCE_EXPR_CONCRETE: {
+    qce_state_mem_put_i64(env, state, expr_addr_l.v_i64, mmu_idx, &expr_in_b);
+    qce_state_mem_put_i64(env, state, expr_addr_h.v_i64, mmu_idx, &expr_in_t);
+    break;
+  }
+  case QCE_EXPR_SYMBOLIC: {
+    qce_fatal("Waiting for a case [st_i128] on symbolic address to support");
+  }
+  }
 }
 
 #define HANDLE_SYM_INST_CALL_st_i128                                           \
@@ -1326,58 +1396,99 @@ DEFINE_SYM_INST_CALL_gvec(lt8, <)
     break;                                                                     \
   }
 
-static inline uint32_t qce_cpu_cc_compute_all(CPUX86State *env,
-                                              QCEState *state) {
+static inline void qce_cpu_cc_compute_all(CPUX86State *env, QCEState *state,
+                                          QCEExpr *expr_res) {
   QCEExpr expr_cc_dst, expr_cc_src, expr_cc_src2, expr_cc_op;
   qce_state_env_get_i64(state, (intptr_t)&env->cc_dst, &expr_cc_dst);
   qce_state_env_get_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
   qce_state_env_get_i64(state, (intptr_t)&env->cc_src2, &expr_cc_src2);
   qce_state_env_get_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
-  qce_expr_assert_mode(&expr_cc_dst, CONCRETE);
-  qce_expr_assert_mode(&expr_cc_src, CONCRETE);
-  qce_expr_assert_mode(&expr_cc_src2, CONCRETE);
-  qce_expr_assert_mode(&expr_cc_op, CONCRETE);
+//  qce_expr_assert_mode(&expr_cc_src2, CONCRETE);
+//  qce_expr_assert_mode(&expr_cc_op, CONCRETE);
+  if (expr_cc_src2.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_compute_eflags: cc_src2 symbolic");
+  }
+  if (expr_cc_op.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_compute_eflags: cc_op symbolic");
+  }
 
-  return helper_cc_compute_all(expr_cc_dst.v_i64, expr_cc_src.v_i64,
-                               expr_cc_src2.v_i64, expr_cc_op.v_i32);
+  qce_helper_cc_compute_all(state, &expr_cc_dst, &expr_cc_src,
+                            &expr_cc_src2, &expr_cc_op, expr_res);
+  qce_expr_extrl_i64_i32(&state->solver_z3, expr_res, expr_res);
 }
 
-static inline uint32_t qce_cpu_compute_eflags(CPUX86State *env,
-                                              QCEState * state) {
+static inline void qce_cpu_compute_eflags(CPUX86State *env, QCEState *state,
+                                          QCEExpr *expr_res) {
   QCEExpr expr_df, expr_eflags;
   qce_state_env_get_i32(state, (intptr_t)&env->df, &expr_df);
   qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
-  qce_expr_assert_mode(&expr_df, CONCRETE);
-  qce_expr_assert_mode(&expr_eflags, CONCRETE);
-
-  uint32_t eflags = expr_eflags.v_i64;
-  if (tcg_enabled()) {
-    eflags |= qce_cpu_cc_compute_all(env, state) | (expr_df.v_i32 & DF_MASK);
+//  qce_expr_assert_mode(&expr_df, CONCRETE);
+//  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+  if (expr_df.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_compute_eflags: df symbolic");
   }
-  return eflags;
+  if (expr_eflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_compute_eflags: eflags symbolic");
+  }
+
+  qce_expr_init_v32(expr_res, (uint32_t)expr_eflags.v_i64);
+  if (tcg_enabled()) {
+    QCEExpr expr_tmp1, expr_tmp2, expr_tmp3;
+    qce_cpu_cc_compute_all(env, state, &expr_tmp1);
+    qce_expr_extu_i32_i64(&state->solver_z3, &expr_tmp1, &expr_tmp1);
+    qce_expr_init_v64(&expr_tmp2, (uint64_t)(uint32_t)expr_df.v_i32 & DF_MASK);
+    qce_expr_init_v64(&expr_tmp3, expr_eflags.v_i64);
+    qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, expr_res);
+    qce_expr_bvor_i64(&state->solver_z3, expr_res, &expr_tmp3, expr_res);
+    qce_expr_extrl_i64_i32(&state->solver_z3, expr_res, expr_res);
+  }
 }
 
-static inline void qce_cpu_load_eflags(CPUX86State *env, QCEState * state,
-                                       int eflags, int update_mask) {
-  QCEExpr expr_cc_src, expr_cc_op, expr_df, expr_eflags;
-  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
-  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+static inline void qce_cpu_load_eflags(CPUX86State *env, QCEState *state,
+                                       QCEExpr expr_eflags, int update_mask) {
+  QCEExpr expr_cc_src, expr_cc_op, expr_df, expr_env_eflags;
+  qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_env_eflags);
+//  qce_expr_assert_mode(&expr_env_eflags, CONCRETE);
+  if (expr_env_eflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_load_eflags: eflags symbolic");
+  }
 
-  qce_expr_init_v64(&expr_cc_src,
-                    eflags & (CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C));
+  qce_expr_extrl_i64_i32(&state->solver_z3, &expr_eflags, &expr_eflags);
+  QCEExpr expr_v;
+
+  qce_expr_init_v32(&expr_v, CC_O | CC_S | CC_Z | CC_A | CC_P | CC_C);
+  qce_expr_bvand_i32(&state->solver_z3, &expr_eflags, &expr_v, &expr_cc_src);
+  qce_expr_ext_i32_i64(&state->solver_z3, &expr_cc_src, &expr_cc_src);
+
   qce_expr_init_v32(&expr_cc_op, CC_OP_EFLAGS);
-  qce_expr_init_v32(&expr_df, 1 - (2 * ((eflags >> 10) & 1)));
-  expr_eflags.v_i64 = (expr_eflags.v_i64 & ~update_mask) |
-      (eflags & update_mask) | 0x2;
+
+  qce_expr_init_v32(&expr_v, 10);
+  qce_expr_sar_i32(&state->solver_z3, &expr_eflags, &expr_v, &expr_df);
+  qce_expr_init_v32(&expr_v, 1);
+  qce_expr_bvand_i32(&state->solver_z3, &expr_df, &expr_v, &expr_df);
+  qce_expr_init_v32(&expr_v, 2);
+  qce_expr_mul_i32(&state->solver_z3, &expr_df, &expr_v, &expr_df);
+  qce_expr_init_v32(&expr_v, 1);
+  qce_expr_sub_i32(&state->solver_z3, &expr_v, &expr_df, &expr_df);
+
+  QCEExpr expr_tmp1, expr_tmp2;
+  qce_expr_init_v64(&expr_v, ~update_mask);
+  qce_expr_bvand_i64(&state->solver_z3, &expr_env_eflags, &expr_v, &expr_tmp1);
+  qce_expr_init_v32(&expr_v, update_mask);
+  qce_expr_bvand_i32(&state->solver_z3, &expr_eflags, &expr_v, &expr_tmp2);
+  qce_expr_ext_i32_i64(&state->solver_z3, &expr_tmp2, &expr_tmp2);
+  qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, &expr_env_eflags);
+  qce_expr_init_v64(&expr_v, 0x2);
+  qce_expr_bvor_i64(&state->solver_z3, &expr_env_eflags, &expr_v, &expr_env_eflags);
 
   qce_state_env_put_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
   qce_state_env_put_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
   qce_state_env_put_i32(state, (intptr_t)&env->df, &expr_df);
-  qce_state_env_put_i64(state, (intptr_t)&env->eflags, &expr_eflags);
+  qce_state_env_put_i64(state, (intptr_t)&env->eflags, &expr_env_eflags);
 }
 
 static inline void qce_cpu_x86_load_seg_cache(
-    CPUX86State *env, QCEState * state, X86Seg seg_reg, unsigned int selector,
+    CPUX86State *env, QCEState *state, X86Seg seg_reg, unsigned int selector,
     target_ulong base, unsigned int limit, unsigned int flags) {
   QCEExpr expr_sr_selector, expr_sr_base, expr_sr_limit, expr_sr_flags,
           expr_hflags, expr_cs_flags, expr_ss_flags, expr_cr0, expr_eflags,
@@ -1395,14 +1506,38 @@ static inline void qce_cpu_x86_load_seg_cache(
                         &expr_es_base);
   qce_state_env_get_i64(state, (intptr_t)&env->segs[R_SS].base,
                         &expr_ss_base);
-  qce_expr_assert_mode(&expr_hflags, CONCRETE);
-  qce_expr_assert_mode(&expr_cs_flags, CONCRETE);
-  qce_expr_assert_mode(&expr_ss_flags, CONCRETE);
-  qce_expr_assert_mode(&expr_cr0, CONCRETE);
-  qce_expr_assert_mode(&expr_eflags, CONCRETE);
-  qce_expr_assert_mode(&expr_ds_base, CONCRETE);
-  qce_expr_assert_mode(&expr_es_base, CONCRETE);
-  qce_expr_assert_mode(&expr_ss_base, CONCRETE);
+//  qce_expr_assert_mode(&expr_hflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_cs_flags, CONCRETE);
+//  qce_expr_assert_mode(&expr_ss_flags, CONCRETE);
+//  qce_expr_assert_mode(&expr_cr0, CONCRETE);
+//  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_ds_base, CONCRETE);
+//  qce_expr_assert_mode(&expr_es_base, CONCRETE);
+//  qce_expr_assert_mode(&expr_ss_base, CONCRETE);
+  if (expr_hflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: hflags symbolic");
+  }
+  if (expr_cs_flags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: cs_flags symbolic");
+  }
+  if (expr_ss_flags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: ss_flags symbolic");
+  }
+  if (expr_cr0.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: cr0 symbolic");
+  }
+  if (expr_eflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: eflags symbolic");
+  }
+  if (expr_ds_base.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: ds_base symbolic");
+  }
+  if (expr_es_base.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: es_base symbolic");
+  }
+  if (expr_ss_base.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("qce_cpu_x86_load_seg_cache: ss_base symbolic");
+  }
 
   unsigned int new_hflags;
 
@@ -1477,7 +1612,10 @@ static inline void qce_sym_inst_call_syscall(
   QCEExpr expr_next_eip;
   qce_state_get_var(env, state, next_eip, &expr_next_eip);
   /* mode checking */
-  qce_expr_assert_mode(&expr_next_eip, CONCRETE);
+//  qce_expr_assert_mode(&expr_next_eip, CONCRETE);
+  if (expr_next_eip.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: next_eip symbolic");
+  }
   /* type checking */
   qce_expr_assert_type(&expr_next_eip, I32);
 
@@ -1492,15 +1630,38 @@ static inline void qce_sym_inst_call_syscall(
   qce_state_env_get_i64(state, (intptr_t)&env->fmask, &expr_fmask);
   qce_state_env_get_i64(state, (intptr_t)&env->lstar, &expr_lstar);
   qce_state_env_get_i64(state, (intptr_t)&env->cstar, &expr_cstar);
-  qce_expr_assert_mode(&expr_efer, CONCRETE);
-  qce_expr_assert_mode(&expr_star, CONCRETE);
-  qce_expr_assert_mode(&expr_hflags, CONCRETE);
-  qce_expr_assert_mode(&expr_eip, CONCRETE);
-  qce_expr_assert_mode(&expr_r11, CONCRETE);
-  qce_expr_assert_mode(&expr_eflags, CONCRETE);
-  qce_expr_assert_mode(&expr_fmask, CONCRETE);
-  qce_expr_assert_mode(&expr_lstar, CONCRETE);
-  qce_expr_assert_mode(&expr_cstar, CONCRETE);
+//  qce_expr_assert_mode(&expr_efer, CONCRETE);
+//  qce_expr_assert_mode(&expr_star, CONCRETE);
+//  qce_expr_assert_mode(&expr_hflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_eip, CONCRETE);
+//  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_fmask, CONCRETE);
+//  qce_expr_assert_mode(&expr_lstar, CONCRETE);
+//  qce_expr_assert_mode(&expr_cstar, CONCRETE);
+  if (expr_efer.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: efer symbolic");
+  }
+  if (expr_star.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: star symbolic");
+  }
+  if (expr_hflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: hflags symbolic");
+  }
+  if (expr_eip.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: eip symbolic");
+  }
+  if (expr_eflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: eflags symbolic");
+  }
+  if (expr_fmask.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: fmask symbolic");
+  }
+  if (expr_lstar.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: lstar symbolic");
+  }
+  if (expr_cstar.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("syscall: cstar symbolic");
+  }
 
   int selector;
 
@@ -1514,12 +1675,16 @@ static inline void qce_sym_inst_call_syscall(
     int code64;
 
     qce_expr_init_v64(&expr_rcx, expr_eip.v_i64 + expr_next_eip.v_i32);
-    expr_r11.v_i64 = qce_cpu_compute_eflags(env, state) & ~RF_MASK;
+    QCEExpr expr_tmp;
+    qce_expr_init_v32(&expr_tmp, (uint32_t)~RF_MASK);
+    qce_cpu_compute_eflags(env, state, &expr_r11);
+    qce_expr_bvand_i32(&state->solver_z3, &expr_r11, &expr_tmp, &expr_r11);
+    qce_expr_extu_i32_i64(&state->solver_z3, &expr_r11, &expr_r11);
 
     code64 = expr_hflags.v_i32 & HF_CS64_MASK;
 
     expr_eflags.v_i64 &= ~(expr_fmask.v_i64 | RF_MASK);
-    qce_cpu_load_eflags(env, state, expr_eflags.v_i64, 0);
+    qce_cpu_load_eflags(env, state, expr_eflags, 0);
     qce_cpu_x86_load_seg_cache(env, state, R_CS, selector & 0xfffc,
                                0, 0xffffffff,
                                DESC_G_MASK | DESC_P_MASK |
@@ -1587,13 +1752,30 @@ static inline void qce_sym_inst_call_sysret(
   qce_state_env_get_i64(state, (intptr_t)&env->regs[11], &expr_r11);
   qce_state_env_get_i64(state, (intptr_t)&env->regs[R_ECX], &expr_rcx);
   qce_state_env_get_i64(state, (intptr_t)&env->eflags, &expr_eflags);
-  qce_expr_assert_mode(&expr_efer, CONCRETE);
-  qce_expr_assert_mode(&expr_hflags, CONCRETE);
-  qce_expr_assert_mode(&expr_cr0, CONCRETE);
-  qce_expr_assert_mode(&expr_star, CONCRETE);
-  qce_expr_assert_mode(&expr_r11, CONCRETE);
-  qce_expr_assert_mode(&expr_rcx, CONCRETE);
-  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_efer, CONCRETE);
+//  qce_expr_assert_mode(&expr_hflags, CONCRETE);
+//  qce_expr_assert_mode(&expr_cr0, CONCRETE);
+//  qce_expr_assert_mode(&expr_star, CONCRETE);
+//  qce_expr_assert_mode(&expr_rcx, CONCRETE);
+//  qce_expr_assert_mode(&expr_eflags, CONCRETE);
+  if (expr_efer.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: efer symbolic");
+  }
+  if (expr_hflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: hflags symbolic");
+  }
+  if (expr_cr0.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: cr0 symbolic");
+  }
+  if (expr_star.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: star symbolic");
+  }
+  if (expr_rcx.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: rcx symbolic");
+  }
+  if (expr_eflags.mode == QCE_EXPR_SYMBOLIC) {
+    qce_fatal("sysret: eflags symbolic");
+  }
 
   int cpl, selector;
 
@@ -1608,7 +1790,7 @@ static inline void qce_sym_inst_call_sysret(
   }
   selector = ((uint64_t)expr_star.v_i64 >> 48) & 0xffff;
   if (expr_hflags.v_i32 & HF_LMA_MASK) {
-    qce_cpu_load_eflags(env, state, (uint32_t)(expr_r11.v_i64), TF_MASK |
+    qce_cpu_load_eflags(env, state, expr_r11, TF_MASK |
                         AC_MASK | ID_MASK | IF_MASK | IOPL_MASK | VM_MASK
                         | RF_MASK | NT_MASK);
     if (expr_dflag.v_i32 == 2) {
@@ -2127,14 +2309,16 @@ static inline void qce_sym_inst_call_read_eflags(
   qce_expr_assert_mode(&expr_df, CONCRETE);
   qce_expr_assert_mode(&expr_eflags, CONCRETE);
 
-  uint32_t eflags;
+  QCEExpr expr_tmp1, expr_tmp2, expr_tmp3, expr_res;
+  qce_cpu_cc_compute_all(env, state, &expr_tmp1);
+  qce_expr_extu_i32_i64(&state->solver_z3, &expr_tmp1, &expr_tmp1);
+  qce_expr_init_v64(&expr_tmp2, (uint64_t)(uint32_t)expr_df.v_i32 & DF_MASK);
+  qce_expr_bvor_i64(&state->solver_z3, &expr_tmp1, &expr_tmp2, &expr_res);
+  qce_expr_init_v64(&expr_tmp3, expr_eflags.v_i64 & ~(VM_MASK | RF_MASK));
+  qce_expr_bvor_i64(&state->solver_z3, &expr_res, &expr_tmp3, &expr_res);
+  qce_expr_extrl_i64_i32(&state->solver_z3, &expr_res, &expr_res);
+  qce_expr_extu_i32_i64(&state->solver_z3, &expr_res, &expr_res);
 
-  eflags = qce_cpu_cc_compute_all(env, state);
-  eflags |= (expr_df.v_i32 & DF_MASK);
-  eflags |= expr_eflags.v_i64 & ~(VM_MASK | RF_MASK);
-
-  QCEExpr expr_res;
-  qce_expr_init_v64(&expr_res, (target_ulong)eflags);
   qce_state_put_var(env, state, res, &expr_res);
 }
 
