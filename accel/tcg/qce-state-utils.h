@@ -7,6 +7,7 @@ struct UserData {
   QCECellHolder *holder;
   unsigned mmu_idx;
   bool validated;
+  bool supported;
 };
 
 static gboolean qce_state_env_verify(gpointer key, gpointer value,
@@ -28,14 +29,15 @@ static gboolean qce_state_env_verify(gpointer key, gpointer value,
         key != (gpointer)((intptr_t)&data->env->cc_src + 4) &&
         key != (gpointer)&data->env->cc_dst &&
         key != (gpointer)((intptr_t)&data->env->cc_dst + 4)) {
-      data->validated = false;
       if (cell.mode == QCE_CELL_MODE_CONCRETE) {
+        data->validated = false;
         qce_debug("mismatched concrete value "
                   "at host address %p (env offset 0x%02x): "
                   "record value = 0x%08x, actual value = 0x%08x",
                   (void*)key, (uint32_t)((intptr_t)key - (intptr_t)data->env),
                   (uint32_t)v_record, (uint32_t)v_actual);
       } else if (cell.mode == QCE_CELL_MODE_SYMBOLIC) {
+        data->supported = false;
         qce_debug("mismatched symbolic value "
                   "at host address %p (env offset 0x%02x): "
                   "record value = 0x%08x, actual value = 0x%08x",
@@ -59,13 +61,14 @@ static gboolean qce_state_mem_verify(gpointer key, gpointer value,
     int32_t v_actual =
         cpu_ldl_le_mmuidx_ra(data->env, (intptr_t)key, data->mmu_idx, 0);
     if (v_record != v_actual) {
-      data->validated = false;
       if (cell.mode == QCE_CELL_MODE_CONCRETE) {
+        data->validated = false;
         qce_debug("mismatched concrete value at guest address %p (MMU %u): "
                   "record value = 0x%08x, actual value = 0x%08x",
                   (void*)key, data->mmu_idx,
                   (uint32_t)v_record, (uint32_t)v_actual);
       } else {
+        data->supported = false;
         qce_debug("mismatched symbolic value at guest address %p (MMU %u): "
                   "record value = 0x%08x, actual value = 0x%08x",
                   (void*)key, data->mmu_idx, (uint32_t)v_record,
@@ -86,7 +89,7 @@ static gboolean qce_state_mem_verify_by_tid(gpointer key, gpointer value,
   return FALSE;
 }
 
-static void qce_state_verify(CPUArchState *env, QCEState *state,
+static bool qce_state_verify(CPUArchState *env, QCEState *state,
                              TranslationBlock * tb) {
   /*
    * We don't need to verify temp state since temp registers live within a
@@ -94,7 +97,8 @@ static void qce_state_verify(CPUArchState *env, QCEState *state,
    * propagated to CPU registers or guest memory. As long as env state and
    * mem state pass the verification, we should be fine.
    */
-  struct UserData data = {.env = env, .state = state, .validated = true};
+  struct UserData data = {.env = env, .state = state,
+                          .validated = true, .supported = true};
 
   // verify env state
   data.holder = &state->env;
@@ -106,6 +110,10 @@ static void qce_state_verify(CPUArchState *env, QCEState *state,
   if (!data.validated) {
     qce_fatal("state verification failed before executing TB %p", tb);
   }
+  if (!data.supported) {
+    return false;
+  }
+  return true;
 }
 
 static gboolean qce_state_reset_concrete(gpointer key, gpointer value,

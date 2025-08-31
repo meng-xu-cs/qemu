@@ -559,6 +559,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   }
 
   if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_StopPending ||
       session->mode == QCE_Tracing_Stopped) {
     return;
   }
@@ -607,7 +608,9 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 #ifdef QCE_DEBUG_IR
   // verify the state maintained by QCE when not in a TB chain
   if (session->emulation_ctx.status != QCE_Emulation_TBChaining) {
-    qce_state_verify(arch, &session->state, tb);
+    if (!qce_state_verify(arch, &session->state, tb)) {
+      goto unsupported_features;
+    }
   }
 #endif
 
@@ -1035,6 +1038,15 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     cursor += 1;
   }
 
+unsupported_features:
+  qce_debug("encountering an unsupported feature, stop tracing!");
+  FILE *unsupported_indicator =
+      checked_open("w", "%s/%ld/unsupported", g_qce->output_dir, session->id);
+  fclose(unsupported_indicator);
+  session->state.thread_count = 0;
+  session->mode = QCE_Tracing_StopPending;
+  return;
+
 suspend_emulation:
   qce_state_reset(&session->state);
   session->emulation_ctx.status = QCE_Emulation_Suspend;
@@ -1058,6 +1070,7 @@ void qce_on_skipped_tcg_inst_executed(CPUState *cpu, tcg_target_ulong ret) {
   }
 
   if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_StopPending ||
       session->mode == QCE_Tracing_Stopped) {
     return;
   }
@@ -1074,6 +1087,7 @@ void qce_reset_state(void) {
   }
 
   if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_StopPending ||
       session->mode == QCE_Tracing_Stopped) {
     return;
   }
@@ -1090,6 +1104,7 @@ void qce_record_concrete_for_symbolic_state(CPUArchState *env) {
   }
 
   if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_StopPending ||
       session->mode == QCE_Tracing_Stopped) {
     return;
   }

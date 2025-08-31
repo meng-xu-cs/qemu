@@ -22,6 +22,8 @@ const CORPUS_FILE_COVERAGE: &str = "total_cov";
 const CORPUS_DIR_QUEUE: &str = "queue";
 /// Dirname for seeds executed
 const CORPUS_DIR_TRIED: &str = "tried";
+/// Dirname for unsupported seeds
+const CORPUS_DIR_UNSUPPORTED: &str = "unsupported";
 
 /// Fuzzing controller
 pub struct Fuzzer {
@@ -31,6 +33,8 @@ pub struct Fuzzer {
     path_corpus_dir_tried: PathBuf,
     /// path to the corpus/queue directory
     path_corpus_dir_queue: PathBuf,
+    /// path to the corpus/unsupported directory
+    path_corpus_dir_unsupported: PathBuf,
     /// path to the output directory
     path_output: PathBuf,
 
@@ -60,6 +64,11 @@ impl Fuzzer {
             fs::create_dir(&path_queue)?;
         }
         let queue = Self::analyze_corpus_dir(&path_queue)?;
+
+        let path_unsupported = path_corpus.join(CORPUS_DIR_UNSUPPORTED);
+        if !path_unsupported.exists() {
+            fs::create_dir(&path_unsupported)?;
+        }
 
         // check 1: the two seed sets don't overlap
         if !tried.is_disjoint(&queue) {
@@ -106,6 +115,7 @@ impl Fuzzer {
             path_corpus_cov: path_cov,
             path_corpus_dir_tried: path_tried,
             path_corpus_dir_queue: path_queue,
+            path_corpus_dir_unsupported: path_unsupported,
             path_output,
             seed_cursor,
             seed_counter,
@@ -275,6 +285,14 @@ impl Fuzzer {
             self.path_corpus_dir_queue.join(&seed_name),
             self.path_corpus_dir_tried.join(&seed_name),
         )?;
+        // check and mark the seed as unsupported
+        let file_unsupported = path_session.join("unsupported");
+        if file_unsupported.exists() {
+            fs::copy(
+                self.path_corpus_dir_tried.join(&seed_name),
+                self.path_corpus_dir_unsupported.join(&seed_name),
+            )?;
+        }
         self.seed_cursor += 1;
 
         // done
