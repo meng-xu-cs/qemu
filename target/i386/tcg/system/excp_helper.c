@@ -646,6 +646,7 @@ bool x86_cpu_tlb_fill(CPUState *cs, vaddr addr, int size,
     } else {
         env->cr[2] = err.cr2;
     }
+    qce_record_concrete_for_symbolic_state(env);
     raise_exception_err_ra(env, err.exception_index, err.error_code, retaddr);
 }
 

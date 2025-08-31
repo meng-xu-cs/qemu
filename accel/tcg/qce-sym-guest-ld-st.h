@@ -2,6 +2,7 @@
 #define QCE_SYM_GUEST_LD_ST_H
 
 typedef enum {
+  MMIO_CAN_ACCESS,
   MMIO_CANNOT_ACCESS,
   VALID,
   INVALID,
@@ -46,6 +47,7 @@ static inline QCEAddressFlag __check_addr_validity(
     qce_expr_assert_mode(&expr_can_do_io, CONCRETE);
 #endif
     if (!(int16_t)expr_can_do_io.v_i32) return MMIO_CANNOT_ACCESS;
+    else return MMIO_CAN_ACCESS;
   }
   return VALID;
 }
@@ -383,6 +385,8 @@ DEFINE_SYM_INST_qemu_st(64);
       session->emulation_ctx.status = QCE_Emulation_Normal;                    \
       qce_state_reset(&session->state);                                        \
       goto end_of_loop;                                                        \
+    } else if (addr_flag == MMIO_CAN_ACCESS) {                                 \
+      goto suspend_emulation;                                                  \
     }                                                                          \
     break;                                                                     \
   }

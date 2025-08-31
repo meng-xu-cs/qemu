@@ -925,6 +925,7 @@ static inline target_ulong get_rsp_from_tss(CPUX86State *env, int level)
 static void do_interrupt64(CPUX86State *env, int intno, int is_int,
                            int error_code, target_ulong next_eip, int is_hw)
 {
+    qce_reset_state();
     SegmentCache *dt;
     target_ulong ptr;
     int type, dpl, selector, cpl, ist;
@@ -1365,6 +1366,7 @@ void helper_ltr(CPUX86State *env, int selector)
 /* only works if protected mode and not VM86. seg_reg must be != R_CS */
 void helper_load_seg(CPUX86State *env, int seg_reg, int selector)
 {
+    qce_record_concrete_for_symbolic_state(env);
     uint32_t e1, e2;
     int cpl, dpl, rpl;
     SegmentCache *dt;
@@ -1448,6 +1450,7 @@ void helper_load_seg(CPUX86State *env, int seg_reg, int selector)
                 selector, (unsigned long)sc->base, sc->limit, sc->flags);
 #endif
     }
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 /* protected mode jump */
@@ -2217,6 +2220,7 @@ static inline void helper_ret_protected(CPUX86State *env, int shift,
 
 void helper_iret_protected(CPUX86State *env, int shift, int next_eip)
 {
+    qce_record_concrete_for_symbolic_state(env);
     int tss_selector, type;
     uint32_t e1, e2;
 
@@ -2244,6 +2248,7 @@ void helper_iret_protected(CPUX86State *env, int shift, int next_eip)
         helper_ret_protected(env, shift, 1, 0, GETPC());
     }
     env->hflags2 &= ~HF2_NMI_MASK;
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 void helper_lret_protected(CPUX86State *env, int shift, int addend)

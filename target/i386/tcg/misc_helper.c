@@ -63,6 +63,7 @@ void helper_cpuid(CPUX86State *env)
 
 void helper_rdtsc(CPUX86State *env)
 {
+    qce_record_concrete_for_symbolic_state(env);
     uint64_t val;
 
     if ((env->cr[4] & CR4_TSD_MASK) && ((env->hflags & HF_CPL_MASK) != 0)) {
@@ -73,6 +74,7 @@ void helper_rdtsc(CPUX86State *env)
     val = cpu_get_tsc(env) + env->tsc_offset;
     env->regs[R_EAX] = (uint32_t)(val);
     env->regs[R_EDX] = (uint32_t)(val >> 32);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 G_NORETURN void helper_rdpmc(CPUX86State *env)

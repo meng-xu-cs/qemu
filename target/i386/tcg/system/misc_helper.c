@@ -29,14 +29,19 @@
 
 void helper_outb(CPUX86State *env, uint32_t port, uint32_t data)
 {
+    qce_record_concrete_for_symbolic_state(env);
     address_space_stb(&address_space_io, port, data,
                       cpu_get_mem_attrs(env), NULL);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 target_ulong helper_inb(CPUX86State *env, uint32_t port)
 {
-    return address_space_ldub(&address_space_io, port,
-                              cpu_get_mem_attrs(env), NULL);
+    qce_record_concrete_for_symbolic_state(env);
+    target_ulong ret = address_space_ldub(&address_space_io, port,
+                                          cpu_get_mem_attrs(env), NULL);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), ret);
+    return ret;
 }
 
 void helper_outw(CPUX86State *env, uint32_t port, uint32_t data)
@@ -74,6 +79,7 @@ target_ulong helper_read_cr8(CPUX86State *env)
 
 void helper_write_crN(CPUX86State *env, int reg, target_ulong t0)
 {
+    qce_record_concrete_for_symbolic_state(env);
     switch (reg) {
     case 0:
         /*
@@ -126,10 +132,12 @@ void helper_write_crN(CPUX86State *env, int reg, target_ulong t0)
         env->cr[reg] = t0;
         break;
     }
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 void helper_wrmsr(CPUX86State *env)
 {
+    qce_record_concrete_for_symbolic_state(env);
     uint64_t val;
     CPUState *cs = env_cpu(env);
 
@@ -320,6 +328,7 @@ void helper_wrmsr(CPUX86State *env)
         /* XXX: exception? */
         break;
     }
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
     return;
 error:
     raise_exception_err_ra(env, EXCP0D_GPF, 0, GETPC());
@@ -502,11 +511,14 @@ void helper_rdmsr(CPUX86State *env)
 
 void helper_flush_page(CPUX86State *env, target_ulong addr)
 {
+    qce_record_concrete_for_symbolic_state(env);
     tlb_flush_page(env_cpu(env), addr);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 G_NORETURN void helper_hlt(CPUX86State *env)
 {
+    qce_record_concrete_for_symbolic_state(env);
     CPUState *cs = env_cpu(env);
 
     do_end_instruction(env);

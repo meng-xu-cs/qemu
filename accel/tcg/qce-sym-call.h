@@ -2145,6 +2145,175 @@ static inline void qce_sym_inst_call_read_eflags(
     break;                                                                     \
   }
 
+tcg_target_ulong qce_helper_inb_ret;
+static inline void qce_sym_inst_call_inb(
+    CPUArchState *env, QCEState *state, QCEVar *port, QCEVar *res) {
+  QCEExpr expr_port;
+  qce_state_get_var(env, state, port, &expr_port);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_port, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_port, I32);
+
+  QCEExpr expr_res;
+  qce_expr_init_v64(&expr_res,
+                    g_qce->session->emulation_ctx.call_inst_helper_ret);
+  qce_state_put_var(env, state, res, &expr_res);
+}
+
+#define HANDLE_SYM_INST_CALL_in(name)                                          \
+  case QCE_INST_CALL_in##name: {                                               \
+    static bool retried = false;                                               \
+    if (!retried) {                                                            \
+      cursor-=1;                                                               \
+      retried = true;                                                          \
+      goto suspend_emulation;                                                  \
+    } else {                                                                   \
+      retried = false;                                                         \
+    }                                                                          \
+    qce_sym_inst_call_in##name(                                                \
+        arch, &session->state,                                                 \
+        &inst->i_call_in##name.port, &inst->i_call_in##name.res);              \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_outb(
+    CPUArchState *env, QCEState *state, QCEVar *port, QCEVar *val) {
+  QCEExpr expr_port, expr_val;
+  qce_state_get_var(env, state, port, &expr_port);
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_port, CONCRETE);
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_port, I32);
+  qce_expr_assert_type(&expr_val, I32);
+}
+
+#define HANDLE_SYM_INST_CALL_out(name)                                         \
+  case QCE_INST_CALL_out##name: {                                              \
+    qce_sym_inst_call_out##name(                                               \
+        arch, &session->state,                                                 \
+        &inst->i_call_out##name.port, &inst->i_call_out##name.val);            \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_iret_protected(
+    CPUArchState *env, QCEState *state, QCEVar *shift, QCEVar *next_eip) {
+  QCEExpr expr_shift, expr_next_eip;
+  qce_state_get_var(env, state, shift, &expr_shift);
+  qce_state_get_var(env, state, next_eip, &expr_next_eip);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_shift, CONCRETE);
+  qce_expr_assert_mode(&expr_next_eip, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_shift, I32);
+  qce_expr_assert_type(&expr_next_eip, I32);
+}
+
+#define HANDLE_SYM_INST_CALL_iret_protected                                    \
+  case QCE_INST_CALL_iret_protected: {                                         \
+    qce_sym_inst_call_iret_protected(arch, &session->state,                    \
+                                     &inst->i_call_iret_protected.shift,       \
+                                     &inst->i_call_iret_protected.next_eip);   \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_rdtsc(CPUArchState *env,
+                                           QCEState *state) {
+}
+
+#define HANDLE_SYM_INST_CALL_rdtsc                                             \
+  case QCE_INST_CALL_rdtsc: {                                                  \
+    qce_sym_inst_call_rdtsc(arch, &session->state);                            \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_write_crN(
+    CPUArchState *env, QCEState *state, QCEVar *n, QCEVar *val) {
+  QCEExpr expr_n, expr_val;
+  qce_state_get_var(env, state, n, &expr_n);
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_n, CONCRETE);
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_n, I32);
+  qce_expr_assert_type(&expr_val, I64);
+}
+
+#define HANDLE_SYM_INST_CALL_write_crN                                         \
+  case QCE_INST_CALL_write_crN: {                                              \
+    qce_sym_inst_call_write_crN(                                               \
+        arch, &session->state,                                                 \
+        &inst->i_call_write_crN.n, &inst->i_call_write_crN.val);               \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_fxsave(
+    CPUArchState *env, QCEState *state, QCEVar *val) {
+  QCEExpr expr_val;
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_val, I64);
+}
+
+#define HANDLE_SYM_INST_CALL_fxsave                                            \
+  case QCE_INST_CALL_fxsave: {                                                 \
+    qce_sym_inst_call_fxsave(arch, &session->state, &inst->i_call_fxsave.val); \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_wrmsr(
+    CPUArchState *env, QCEState *state) {
+}
+
+#define HANDLE_SYM_INST_CALL_wrmsr                                             \
+  case QCE_INST_CALL_wrmsr: {                                                  \
+    qce_sym_inst_call_wrmsr(arch, &session->state);                            \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_load_seg(
+    CPUArchState *env, QCEState *state, QCEVar *segment, QCEVar *selector) {
+  QCEExpr expr_segment, expr_selector;
+  qce_state_get_var(env, state, segment, &expr_segment);
+  qce_state_get_var(env, state, selector, &expr_selector);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_segment, CONCRETE);
+  qce_expr_assert_mode(&expr_selector, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_segment, I32);
+  qce_expr_assert_type(&expr_selector, I32);
+}
+
+#define HANDLE_SYM_INST_CALL_load_seg                                          \
+  case QCE_INST_CALL_load_seg: {                                               \
+    qce_sym_inst_call_load_seg(                                                \
+        arch, &session->state,                                                 \
+        &inst->i_call_load_seg.segment, &inst->i_call_load_seg.selector);      \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_flush_page(
+    CPUArchState *env, QCEState *state, QCEVar *addr) {
+  QCEExpr expr_addr;
+  qce_state_get_var(env, state, addr, &expr_addr);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_addr, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_addr, I64);
+}
+
+#define HANDLE_SYM_INST_CALL_flush_page                                        \
+  case QCE_INST_CALL_flush_page: {                                             \
+    qce_sym_inst_call_flush_page(                                              \
+        arch, &session->state, &inst->i_call_flush_page.addr);                 \
+    goto suspend_emulation;                                                    \
+  }
+
 static inline void qce_sym_inst_call_fclex(CPUArchState *env,
                                            QCEState *state) {
   QCEExpr expr_fpu;
@@ -2176,6 +2345,47 @@ static inline void qce_sym_inst_call_emms(CPUArchState *env,
   case QCE_INST_CALL_emms: {                                                   \
     qce_sym_inst_call_emms(arch, &session->state);                             \
     break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_fildl_ST0(
+    CPUArchState *env, QCEState *state, QCEVar *val) {
+  QCEExpr expr_val;
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_val, I32);
+}
+
+#define HANDLE_SYM_INST_CALL_fildl_ST0                                         \
+  case QCE_INST_CALL_fildl_ST0: {                                              \
+    qce_sym_inst_call_fildl_ST0(arch, &session->state,                         \
+                                &inst->i_call_fildl_ST0.val);                  \
+    goto suspend_emulation;                                                    \
+  }
+
+static inline void qce_sym_inst_call_fxrstor(
+    CPUArchState *env, QCEState *state, QCEVar *val) {
+  QCEExpr expr_val;
+  qce_state_get_var(env, state, val, &expr_val);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_val, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_val, I64);
+}
+
+#define HANDLE_SYM_INST_CALL_fxrstor                                           \
+  case QCE_INST_CALL_fxrstor: {                                                \
+    qce_sym_inst_call_fxrstor(                                                 \
+        arch, &session->state, &inst->i_call_fxrstor.val);                     \
+    goto suspend_emulation;                                                    \
+  }
+
+#define HANDLE_SYM_INST_CALL_hlt                                               \
+  case QCE_INST_CALL_hlt: {                                                    \
+    session->emulation_ctx.status = QCE_Emulation_Normal;                      \
+    qce_state_reset(&session->state);                                          \
+    goto end_of_loop;                                                          \
   }
 
 #endif /* QCE_SYM_CALL_H */

@@ -2497,6 +2497,7 @@ static uint64_t int_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
                       mmu_idx, r, ra);
         }
         if (this_size == 8) {
+            qce_on_skipped_tcg_inst_executed(cpu, 0);
             return 0;
         }
 
@@ -2506,6 +2507,7 @@ static uint64_t int_st_mmio_leN(CPUState *cpu, CPUTLBEntryFull *full,
         size -= this_size;
     } while (size);
 
+    qce_on_skipped_tcg_inst_executed(cpu, 0);
     return val_le;
 }
 

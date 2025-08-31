@@ -312,6 +312,7 @@ static FloatX80RoundPrec tmp_maximise_precision(float_status *st)
 
 void helper_fildl_ST0(CPUX86State *env, int32_t val)
 {
+    qce_record_concrete_for_symbolic_state(env);
     int new_fpstt;
     FloatX80RoundPrec old = tmp_maximise_precision(&env->fp_status);
 
@@ -321,6 +322,7 @@ void helper_fildl_ST0(CPUX86State *env, int32_t val)
     env->fptags[new_fpstt] = 0; /* validate stack entry */
 
     set_floatx80_rounding_precision(old, &env->fp_status);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 void helper_fildll_ST0(CPUX86State *env, int64_t val)
@@ -2709,6 +2711,7 @@ static void do_fxsave(X86Access *ac, target_ulong ptr)
 
 void helper_fxsave(CPUX86State *env, target_ulong ptr)
 {
+    qce_record_concrete_for_symbolic_state(env);
     uintptr_t ra = GETPC();
     X86Access ac;
 
@@ -2720,6 +2723,7 @@ void helper_fxsave(CPUX86State *env, target_ulong ptr)
     access_prepare(&ac, env, ptr, sizeof(X86LegacyXSaveArea),
                    MMU_DATA_STORE, ra);
     do_fxsave(&ac, ptr);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 static uint64_t get_xinuse(CPUX86State *env)
@@ -2958,6 +2962,7 @@ static void do_fxrstor(X86Access *ac, target_ulong ptr)
 
 void helper_fxrstor(CPUX86State *env, target_ulong ptr)
 {
+    qce_record_concrete_for_symbolic_state(env);
     uintptr_t ra = GETPC();
     X86Access ac;
 
@@ -2969,6 +2974,7 @@ void helper_fxrstor(CPUX86State *env, target_ulong ptr)
     access_prepare(&ac, env, ptr, sizeof(X86LegacyXSaveArea),
                    MMU_DATA_LOAD, ra);
     do_fxrstor(&ac, ptr);
+    qce_on_skipped_tcg_inst_executed(env_cpu(env), 0);
 }
 
 static bool valid_xrstor_header(X86Access *ac, uint64_t *pxsbv,

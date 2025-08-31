@@ -66,6 +66,15 @@ void qce_on_tcg_ir_optimized(TCGContext *tcg);
 // callback on TCG translation block being executed
 void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu);
 
+// callback on skipped TCG instruction being executed
+void qce_on_skipped_tcg_inst_executed(CPUState *cpu, tcg_target_ulong ret);
+
+// reset the QCE state
+void qce_reset_state(void);
+
+// record the actual concrete values of symbolic states
+void qce_record_concrete_for_symbolic_state(CPUArchState *env);
+
 #ifndef QCE_RELEASE
 void qce_unit_test(CPUArchState *env);
 #endif

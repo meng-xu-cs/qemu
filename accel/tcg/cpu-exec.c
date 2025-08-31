@@ -413,6 +413,7 @@ const void *HELPER(lookup_tb_ptr)(CPUArchState *env)
     if (qemu_loglevel_mask(CPU_LOG_TB_CPU | CPU_LOG_EXEC)) {
         log_cpu_exec(pc, cpu, tb);
     }
+    qce_record_concrete_for_symbolic_state(env);
     qce_on_tcg_tb_executed(tb, cpu);
 
     return tb->tc.ptr;
@@ -454,6 +455,7 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     ret = tcg_qemu_tb_exec(cpu_env(cpu), tb_ptr);
     cpu->neg.can_do_io = true;
     qemu_plugin_disable_mem_helpers(cpu);
+    qce_record_concrete_for_symbolic_state(cpu_env(cpu));
     /*
      * TODO: Delay swapping back to the read-write region of the TB
      * until we actually need to modify the TB.  The read-only copy,

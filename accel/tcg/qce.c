@@ -42,14 +42,19 @@ typedef enum {
 typedef enum {
   QCE_Emulation_Normal,
   QCE_Emulation_TBChaining,
-  QCE_Emulation_Exception,
+  QCE_Emulation_Suspend,
 } QCEEmulationStatus;
 
 typedef struct {
   // emulation status
   QCEEmulationStatus status;
-  // record the resumption point after an exception
+
+  // record the resumption point after suspending
   TranslationBlock *resume_tb;
+  size_t resume_cursor;
+
+  // record the return value of skipped call instructions
+  tcg_target_ulong call_inst_helper_ret;
 } QCEEmulationContext;
 
 // session
@@ -558,21 +563,6 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     return;
   }
 
-  if (session->emulation_ctx.status == QCE_Emulation_Exception) {
-    if (session->emulation_ctx.resume_tb == tb) {
-      /*
-       *  Since QEMU might explicitly set some condition codes (CC_OP) during
-       *  the exception handling. At the resumption point, we need to reset
-       *  the states maintained by QCE and force it to reload fresh data from
-       *  QEMU to avoid the potential inconsistencies between QEMU's internal
-       *  states and QCE-managed states.
-       */
-      qce_state_reset(&session->state);
-    } else {
-      return;
-    }
-  }
-
   // look for a TB which jumps to the called function
   if (session->mode == QCE_Tracing_Kicked) {
     // filter out empty TB
@@ -614,6 +604,13 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   // we need this arch state in the rest of the execution
   CPUArchState *arch = cpu_env(cpu);
 
+#ifdef QCE_DEBUG_IR
+  // verify the state maintained by QCE when not in a TB chain
+  if (session->emulation_ctx.status != QCE_Emulation_TBChaining) {
+    qce_state_verify(arch, &session->state, tb);
+  }
+#endif
+
   // validate that we have caught the right values
   if (session->mode == QCE_Tracing_Capturing) {
     if (session->blob_addr != arch->regs[R_EDI] ||
@@ -652,15 +649,13 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   }
 #endif
 
-#ifdef QCE_DEBUG_IR
-  // verify the state maintained by QCE when not in TB chaining
-  if (session->emulation_ctx.status == QCE_Emulation_Normal) {
-    qce_state_verify(arch, &session->state, tb);
-  }
-#endif
-
   // dual-mode (symbolic + concrete) emulation
-  size_t cursor = 0;
+  if (session->emulation_ctx.status == QCE_Emulation_Suspend &&
+      session->emulation_ctx.resume_tb != tb) {
+    qce_fatal("resume emulating from a distinct TB");
+  }
+  size_t cursor = session->emulation_ctx.status == QCE_Emulation_Suspend ?
+                  session->emulation_ctx.resume_cursor : 0;
   vaddr last_pc = 0;
   uint64_t pc_offset = 0;
 
@@ -724,24 +719,23 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     }
     case QCE_INST_EXIT_TB: {
       // TODO: what about the return value? i.e., inst->i_exit_tb.idx
+      QCEExpr expr_icount;
+      qce_state_env_get_i32(&session->state, (intptr_t)&cpu->neg.icount_decr,
+                            &expr_icount);
+#ifdef QCE_DEBUG_IR
+      qce_expr_assert_mode(&expr_icount, CONCRETE);
+#endif
+      uint32_t icount = expr_icount.v_i32;
       /*
-       * Once the instruction counter hits zero, QEMU will raise a timer
-       * interrupt. We need to suspend the QCE emulation until QEMU
-       * has finished handling the exception and record the address
-       * of the TB for resuming emulation later.
+       * In the case that QEMU might handle exceptions and modify some
+       * states after the TB ends, reset the QCE state to ensure fresh
+       * values are read at the next TB emulation.
        */
-      if ((inst->i_exit_tb.idx & TB_EXIT_MASK) > TB_EXIT_IDX1) {
-        QCECellHolder holder = session->state.env;
-        gpointer icount_addr = (gpointer)&cpu->neg.icount_decr;
-        int32_t icount =
-            (int32_t)(intptr_t)g_tree_lookup(holder.concrete, icount_addr);
-        // make sure the instruction counter hit zero
-        g_assert(icount - tb->icount < 0);
-        session->emulation_ctx.resume_tb = tb;
-        session->emulation_ctx.status = QCE_Emulation_Exception;
-      } else {
-        session->emulation_ctx.status = QCE_Emulation_Normal;
+      if ((inst->i_exit_tb.idx & TB_EXIT_MASK) > TB_EXIT_IDX1 ||
+          icount == 0 || cpu->interrupt_request) {
+        qce_state_reset(&session->state);
       }
+      session->emulation_ctx.status = QCE_Emulation_Normal;
       goto end_of_loop;
     }
     case QCE_INST_CALL_lookup_tb_ptr: {
@@ -754,7 +748,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
        * first and dynamically decide which TB to jump to next, and QEMU will
        * invoke QCE to execute the next TB once it has found it.
        */
-      session->emulation_ctx.status = QCE_Emulation_TBChaining;
+      session->emulation_ctx.status = QCE_Emulation_Normal;
       goto end_of_loop;
     }
 
@@ -1000,9 +994,32 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_CALL_read_eflags;
 
+      HANDLE_SYM_INST_CALL_iret_protected;
+
+      HANDLE_SYM_INST_CALL_in(b);
+      HANDLE_SYM_INST_CALL_out(b);
+
+      HANDLE_SYM_INST_CALL_rdtsc;
+
+      HANDLE_SYM_INST_CALL_write_crN;
+
+      HANDLE_SYM_INST_CALL_fxsave;
+
+      HANDLE_SYM_INST_CALL_wrmsr;
+
+      HANDLE_SYM_INST_CALL_load_seg;
+
+      HANDLE_SYM_INST_CALL_flush_page;
+
       HANDLE_SYM_INST_CALL_fclex;
 
       HANDLE_SYM_INST_CALL_emms;
+
+      HANDLE_SYM_INST_CALL_fildl_ST0;
+
+      HANDLE_SYM_INST_CALL_fxrstor;
+
+      HANDLE_SYM_INST_CALL_hlt;
 
       /* all others */
     default: {
@@ -1018,12 +1035,66 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     cursor += 1;
   }
 
+suspend_emulation:
+  qce_state_reset(&session->state);
+  session->emulation_ctx.status = QCE_Emulation_Suspend;
+  session->emulation_ctx.resume_tb = tb;
+  session->emulation_ctx.resume_cursor = cursor + 1;
+
 end_of_loop:
 #ifdef QCE_DEBUG_IR
   if (g_qce->trace_file != NULL) {
     fprintf(g_qce->trace_file, "<<<<\n");
   }
 #endif
+}
+
+void qce_on_skipped_tcg_inst_executed(CPUState *cpu, tcg_target_ulong ret) {
+  assert_qce_initialized();
+
+  QCESession *session = g_qce->session;
+  if (session == NULL) {
+    return;
+  }
+
+  if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_Stopped) {
+    return;
+  }
+
+  session->emulation_ctx.call_inst_helper_ret = ret;
+  qce_on_tcg_tb_executed(session->emulation_ctx.resume_tb, cpu);
+}
+
+void qce_reset_state(void) {
+  assert_qce_initialized();
+  QCESession *session = g_qce->session;
+  if (session == NULL) {
+    return;
+  }
+
+  if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_Stopped) {
+    return;
+  }
+
+  qce_state_reset(&g_qce->session->state);
+}
+
+void qce_record_concrete_for_symbolic_state(CPUArchState *env) {
+  assert_qce_initialized();
+
+  QCESession *session = g_qce->session;
+  if (session == NULL) {
+    return;
+  }
+
+  if (session->mode == QCE_Tracing_NotStarted ||
+      session->mode == QCE_Tracing_Stopped) {
+    return;
+  }
+
+  qce_state_record_concrete(env, &g_qce->session->state);
 }
 
 #ifndef QCE_RELEASE
