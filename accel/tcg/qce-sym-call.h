@@ -864,15 +864,7 @@ static inline void qce_sym_inst_call_cc_compute_all(
   qce_state_get_var(env, state, src2, &expr_src2);
   qce_state_get_var(env, state, opc, &expr_opc);
   /* mode checking */
-//  qce_expr_assert_mode(&expr_src1, CONCRETE);
-//  qce_expr_assert_mode(&expr_src2, CONCRETE);
   qce_expr_assert_mode(&expr_opc, CONCRETE);
-  if (expr_src1.mode == QCE_EXPR_SYMBOLIC) {
-    qce_fatal("cc_compute_all: src1 symbolic");
-  }
-  if (expr_src2.mode == QCE_EXPR_SYMBOLIC) {
-    qce_fatal("cc_compute_all: src2 symbolic");
-  }
   /* type checking */
   qce_expr_assert_type(&expr_dst, I64);
   qce_expr_assert_type(&expr_src1, I64);
@@ -902,7 +894,7 @@ static inline void qce_sym_inst_call_cc_compute_all(
       QCEExpr *expr_src3, QCEExpr *expr_res) {                                 \
     qce_expr_extract_i64(&state->solver_z3, expr_dst, 0, bits, expr_dst);      \
     qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src1);    \
-    qce_expr_extract_i64(&state->solver_z3, expr_src1, 0, bits, expr_src3);    \
+    qce_expr_extract_i64(&state->solver_z3, expr_src3, 0, bits, expr_src3);    \
                                                                                \
     QCEPred pred;                                                              \
     QCEExpr expr_src13;                                                        \
@@ -919,6 +911,7 @@ static inline void qce_sym_inst_call_cc_compute_all(
                                                                                \
     QCEPred pred;                                                              \
     qce_expr_add_i64(&state->solver_z3, expr_dst, expr_src2, expr_res);        \
+    qce_expr_extract_i64(&state->solver_z3, expr_res, 0, bits, expr_res);      \
     qce_expr_ult_i64(&state->solver_z3, expr_res, expr_src2, &pred);           \
     qce_expr_init_from_pred_i64(&state->solver_z3, expr_res, &pred);           \
   }                                                                            \
@@ -992,11 +985,7 @@ static inline void qce_sym_inst_call_cc_compute_c(
   qce_state_get_var(env, state, src2, &expr_src2);
   qce_state_get_var(env, state, opc, &expr_opc);
   /* mode checking */
-//  qce_expr_assert_mode(&expr_src2, CONCRETE);
   qce_expr_assert_mode(&expr_opc, CONCRETE);
-  if (expr_src2.mode == QCE_EXPR_SYMBOLIC) {
-    qce_fatal("cc_compute_c: src2 symbolic");
-  }
   /* type checking */
   qce_expr_assert_type(&expr_dst, I64);
   qce_expr_assert_type(&expr_src1, I64);
@@ -1403,14 +1392,7 @@ static inline void qce_cpu_cc_compute_all(CPUX86State *env, QCEState *state,
   qce_state_env_get_i64(state, (intptr_t)&env->cc_src, &expr_cc_src);
   qce_state_env_get_i64(state, (intptr_t)&env->cc_src2, &expr_cc_src2);
   qce_state_env_get_i32(state, (intptr_t)&env->cc_op, &expr_cc_op);
-//  qce_expr_assert_mode(&expr_cc_src2, CONCRETE);
-//  qce_expr_assert_mode(&expr_cc_op, CONCRETE);
-  if (expr_cc_src2.mode == QCE_EXPR_SYMBOLIC) {
-    qce_fatal("qce_cpu_compute_eflags: cc_src2 symbolic");
-  }
-  if (expr_cc_op.mode == QCE_EXPR_SYMBOLIC) {
-    qce_fatal("qce_cpu_compute_eflags: cc_op symbolic");
-  }
+  qce_expr_assert_mode(&expr_cc_op, CONCRETE);
 
   qce_helper_cc_compute_all(state, &expr_cc_dst, &expr_cc_src,
                             &expr_cc_src2, &expr_cc_op, expr_res);
