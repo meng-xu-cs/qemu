@@ -2249,7 +2249,9 @@ static uint8_t do_ld_1(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
                        MMUAccessType type, uintptr_t ra)
 {
     if (unlikely(p->flags & TLB_MMIO)) {
-        return do_ld_mmio_beN(cpu, p->full, 0, p->addr, 1, mmu_idx, type, ra);
+        uint8_t ret = do_ld_mmio_beN(cpu, p->full, 0, p->addr, 1, mmu_idx, type, ra);
+        qce_on_skipped_tcg_inst_executed(cpu, ret);
+        return ret;
     } else {
         return *(uint8_t *)p->haddr;
     }
@@ -2264,6 +2266,7 @@ static uint16_t do_ld_2(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         ret = do_ld_mmio_beN(cpu, p->full, 0, p->addr, 2, mmu_idx, type, ra);
         if ((memop & MO_BSWAP) == MO_LE) {
             ret = bswap16(ret);
+            qce_on_skipped_tcg_inst_executed(cpu, ret);
         }
     } else {
         /* Perform the load host endian, then swap if necessary. */
@@ -2284,6 +2287,7 @@ static uint32_t do_ld_4(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         ret = do_ld_mmio_beN(cpu, p->full, 0, p->addr, 4, mmu_idx, type, ra);
         if ((memop & MO_BSWAP) == MO_LE) {
             ret = bswap32(ret);
+            qce_on_skipped_tcg_inst_executed(cpu, ret);
         }
     } else {
         /* Perform the load host endian. */
@@ -2304,6 +2308,7 @@ static uint64_t do_ld_8(CPUState *cpu, MMULookupPageData *p, int mmu_idx,
         ret = do_ld_mmio_beN(cpu, p->full, 0, p->addr, 8, mmu_idx, type, ra);
         if ((memop & MO_BSWAP) == MO_LE) {
             ret = bswap64(ret);
+            qce_on_skipped_tcg_inst_executed(cpu, ret);
         }
     } else {
         /* Perform the load host endian. */

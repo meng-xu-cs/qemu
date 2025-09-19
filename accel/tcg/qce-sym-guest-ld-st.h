@@ -281,6 +281,20 @@ static inline void __prepare_expr_for_st_memop_i64(QCEState *state, MemOp mo,
     if (addr_flag == MMIO_CANNOT_ACCESS || addr_flag == INVALID) {             \
       return addr_flag;                                                        \
     }                                                                          \
+    if (addr_flag == MMIO_CAN_ACCESS) {                                        \
+      static bool retried;                                                     \
+      if (!retried) {                                                          \
+        retried = true;                                                        \
+      } else {                                                                 \
+        retried = false;                                                       \
+        QCEExpr expr_val;                                                      \
+        qce_expr_init_v64(&expr_val,                                           \
+          g_qce->session->emulation_ctx.call_inst_helper_ret);                 \
+        qce_state_put_var(env, state, res, &expr_val);                         \
+        addr_flag = VALID;                                                     \
+      }                                                                        \
+      return addr_flag;                                                        \
+    }                                                                          \
                                                                                \
     /* check the access */                                                     \
     __check_memop_validity(state, mo, &expr_addr, bits / 8);                   \
@@ -329,7 +343,7 @@ DEFINE_SYM_INST_qemu_ld(64);
     /* check the address */                                                    \
     QCEAddressFlag addr_flag =                                                 \
         __check_addr_validity(env, state, &expr_addr, mmu_idx, 1);             \
-    if (addr_flag == MMIO_CANNOT_ACCESS || addr_flag == INVALID) {             \
+    if (addr_flag != VALID) {                                                  \
       return addr_flag;                                                        \
     }                                                                          \
                                                                                \
@@ -372,6 +386,9 @@ DEFINE_SYM_INST_qemu_st(64);
       session->emulation_ctx.status = QCE_Emulation_Normal;                    \
       qce_state_reset(&session->state);                                        \
       goto end_of_loop;                                                        \
+    } else if (addr_flag == MMIO_CAN_ACCESS) {                                 \
+      cursor-=1;                                                               \
+      goto suspend_emulation;                                                  \
     }                                                                          \
     break;                                                                     \
   }
