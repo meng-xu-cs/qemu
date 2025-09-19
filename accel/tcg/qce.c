@@ -1024,6 +1024,8 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_CALL_hlt;
 
+      HANDLE_SYM_INST_CALL_fwait;
+
       /* all others */
     default: {
 #ifdef QCE_DEBUG_IR

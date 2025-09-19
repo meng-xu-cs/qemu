@@ -2348,9 +2348,6 @@ static inline void qce_sym_inst_call_outb(
   QCEExpr expr_port, expr_val;
   qce_state_get_var(env, state, port, &expr_port);
   qce_state_get_var(env, state, val, &expr_val);
-  /* mode checking */
-  qce_expr_assert_mode(&expr_port, CONCRETE);
-  qce_expr_assert_mode(&expr_val, CONCRETE);
   /* type checking */
   qce_expr_assert_type(&expr_port, I32);
   qce_expr_assert_type(&expr_val, I32);
@@ -2552,6 +2549,25 @@ static inline void qce_sym_inst_call_fxrstor(
     session->emulation_ctx.status = QCE_Emulation_Normal;                      \
     qce_state_reset(&session->state);                                          \
     goto end_of_loop;                                                          \
+  }
+
+#define FPUS_SE (1 << 7)
+static inline void qce_sym_inst_call_fwait(CPUArchState *env,
+                                           QCEState *state) {
+  QCEExpr expr_fpus;
+  qce_state_env_get_i32(state, (intptr_t)&env->fpus, &expr_fpus);
+  qce_expr_assert_mode(&expr_fpus, CONCRETE);
+
+  if ((uint16_t)expr_fpus.v_i32 & FPUS_SE) {
+    qce_fatal("fwait raises an exception");
+//    fpu_raise_exception(env, GETPC());
+  }
+}
+
+#define HANDLE_SYM_INST_CALL_fwait                                             \
+  case QCE_INST_CALL_fwait: {                                                  \
+    qce_sym_inst_call_fwait(arch, &session->state);                            \
+    break;                                                                     \
   }
 
 #endif /* QCE_SYM_CALL_H */
