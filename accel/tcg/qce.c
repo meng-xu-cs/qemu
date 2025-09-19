@@ -746,6 +746,20 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       g_assert(cursor + 1 < entry->inst_count);
       g_assert(entry->insts[cursor + 1].kind == QCE_INST_GOTO_PTR);
 #endif
+      QCEExpr expr_icount;
+      qce_state_env_get_i32(&session->state, (intptr_t)&cpu->neg.icount_decr,
+                            &expr_icount);
+#ifdef QCE_DEBUG_IR
+      qce_expr_assert_mode(&expr_icount, CONCRETE);
+#endif
+      uint32_t icount = expr_icount.v_i32;
+      /* QEMU might return to the main loop immediately after a lookup_tb_ptr.
+       * If icount happens to be exactly 0, it will handle exceptions and
+       * potentially modify states. In this case, we need to reset the state.
+       */
+      if (icount == 0) {
+        qce_state_reset(&session->state);
+      }
       /*
        * When encounter a call lookup_tb_ptr, we stop here to let QEMU execute
        * first and dynamically decide which TB to jump to next, and QEMU will
