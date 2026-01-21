@@ -688,7 +688,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       /* markers */
     case QCE_INST_START: {
       if (unlikely(last_pc == 0)) {
-        last_pc = log_pc(cpu, tb);
+        QCEExpr expr_eip, expr_cs_base;
+        qce_state_env_get_i64(&session->state, (intptr_t)&arch->eip, &expr_eip);
+        qce_state_env_get_i64(&session->state, (intptr_t)&arch->segs[R_CS].base, &expr_cs_base);
+        qce_expr_assert_mode(&expr_eip, CONCRETE);
+        qce_expr_assert_mode(&expr_cs_base, CONCRETE);
+        last_pc = expr_eip.v_i64 + expr_cs_base.v_i64;
         pc_offset = last_pc - inst->i_start.pc;
       } else {
         last_pc = inst->i_start.pc + pc_offset;
