@@ -85,7 +85,7 @@ typedef struct {
   GArray *coverage;
   // hash of the coverage trace
   XXH64_state_t cov_hash;
-  // number of times a branch executed
+  // counts of branch execution
   GTree *branch_exec_count;
 } QCESession;
 
@@ -335,6 +335,10 @@ void qce_session_reload(void) {
   FILE *cov_file = checked_open("r", "%s/total_cov", g_qce->corpus_dir);
   session->database = __qce_load_cov_db(cov_file);
   fclose(cov_file);
+
+  // reset the branch execution counts
+  g_tree_destroy(session->branch_exec_count);
+  session->branch_exec_count = g_tree_new(qce_gtree_cov_cmp);
 
   // reset the tracing states
   session->mode = QCE_Tracing_NotStarted;

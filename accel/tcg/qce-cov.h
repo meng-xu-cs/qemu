@@ -120,6 +120,12 @@ static inline bool qce_session_add_cov_item(QCESession *session, vaddr pc,
     cov_flip = cov_bit_eval_set(pc);
   }
 
+  // derive the flip-side hash
+  XXH64_state_t hasher;
+  XXH64_copyState(&hasher, &session->cov_hash);
+  XXH64_update(&hasher, &cov_flip, sizeof(vaddr));
+  uint64_t hash_flip = XXH64_digest(&hasher);
+
   // register the path-side coverage
   g_array_append_val(session->coverage, cov);
   XXH64_update(&session->cov_hash, &cov, sizeof(vaddr));
@@ -132,12 +138,6 @@ static inline bool qce_session_add_cov_item(QCESession *session, vaddr pc,
   }
   g_tree_insert(session->branch_exec_count, (gpointer)pc,
                 (gpointer)++branch_exec_time);
-
-  // derive the flip-side hash
-  XXH64_state_t hasher;
-  XXH64_copyState(&hasher, &session->cov_hash);
-  XXH64_update(&hasher, &cov_flip, sizeof(vaddr));
-  uint64_t hash_flip = XXH64_digest(&hasher);
 
   // check whether we need to cover the flip of this case
   uint64_t len = session->coverage->len;
