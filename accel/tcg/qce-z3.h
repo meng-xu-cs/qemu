@@ -24,6 +24,9 @@ typedef struct {
 #ifndef QCE_RELEASE
   uint64_t var_count;
 #endif
+
+  // incomplete exception
+  jmp_buf incomplete;
 } SolverZ3;
 
 void qce_error_handler_z3(Z3_context ctx, Z3_error_code ec);
@@ -73,6 +76,13 @@ static inline void qce_smt_z3_init(SolverZ3 *solver) {
   Z3_solver_assert(
       ctx, sol,
       Z3_mk_bvule(ctx, blob_size, Z3_mk_int(ctx, BLOB_SIZE_MAX, sort_bv64)));
+
+  // set up parameters
+  Z3_params params = Z3_mk_params(ctx);
+  Z3_params_inc_ref(ctx, params);
+  Z3_params_set_uint(ctx, params, Z3_mk_string_symbol(ctx, "timeout"), 10*60*1000);
+  Z3_solver_set_params(ctx, sol, params);
+  Z3_params_dec_ref(ctx, params);
 
   // assignment
   solver->ctx = ctx;
@@ -170,6 +180,7 @@ static inline bool __qce_smt_z3_simplify_reduce(SolverZ3 *solver, Z3_ast expr,
     qce_fatal("model evaluation on an infeasible path");
   }
   case Z3_L_UNDEF: {
+    longjmp(solver->incomplete, 1);
     qce_fatal("unable to determine the satisfiability of path constraints");
   }
   default: {
@@ -189,6 +200,7 @@ static inline bool __qce_smt_z3_simplify_reduce(SolverZ3 *solver, Z3_ast expr,
     return true;
   }
   case Z3_L_UNDEF: {
+    longjmp(solver->incomplete, 1);
     qce_fatal("unable to determine the feasibility of a unique model");
   }
   default: {
@@ -212,12 +224,14 @@ static inline bool qce_smt_z3_probe_bool(SolverZ3 *solver, Z3_ast pred,
   Z3_lbool res_positive = Z3_solver_check_assumptions(solver->ctx, solver->sol,
                                                       1, (Z3_ast[]){pred});
   if (res_positive == Z3_L_UNDEF) {
+    longjmp(solver->incomplete, 1);
     qce_fatal("unable to establish the predicate (positive case)");
   }
 
   Z3_lbool res_negative = Z3_solver_check_assumptions(
       solver->ctx, solver->sol, 1, (Z3_ast[]){Z3_mk_not(solver->ctx, pred)});
   if (res_negative == Z3_L_UNDEF) {
+    longjmp(solver->incomplete, 1);
     qce_fatal("unable to establish the predicate (negative case)");
   }
 

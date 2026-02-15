@@ -7,7 +7,7 @@ struct UserData {
   QCECellHolder *holder;
   unsigned mmu_idx;
   bool validated;
-  bool supported;
+  bool incomplete;
 };
 
 static gboolean qce_state_env_verify(gpointer key, gpointer value,
@@ -37,7 +37,7 @@ static gboolean qce_state_env_verify(gpointer key, gpointer value,
                   (void*)key, (uint32_t)((intptr_t)key - (intptr_t)data->env),
                   (uint32_t)v_record, (uint32_t)v_actual);
       } else if (cell.mode == QCE_CELL_MODE_SYMBOLIC) {
-        data->supported = false;
+        data->incomplete = true;
         qce_debug("mismatched symbolic value "
                   "at host address %p (env offset 0x%02x): "
                   "record value = 0x%08x, actual value = 0x%08x",
@@ -68,7 +68,7 @@ static gboolean qce_state_mem_verify(gpointer key, gpointer value,
                   (void*)key, data->mmu_idx,
                   (uint32_t)v_record, (uint32_t)v_actual);
       } else {
-        data->supported = false;
+        data->incomplete = true;
         qce_debug("mismatched symbolic value at guest address %p (MMU %u): "
                   "record value = 0x%08x, actual value = 0x%08x",
                   (void*)key, data->mmu_idx, (uint32_t)v_record,
@@ -98,7 +98,7 @@ static bool qce_state_verify(CPUArchState *env, QCEState *state,
    * mem state pass the verification, we should be fine.
    */
   struct UserData data = {.env = env, .state = state,
-                          .validated = true, .supported = true};
+                          .validated = true, .incomplete = false};
 
   // verify env state
   data.holder = &state->env;
@@ -110,7 +110,7 @@ static bool qce_state_verify(CPUArchState *env, QCEState *state,
   if (!data.validated) {
     qce_fatal("state verification failed before executing TB %p", tb);
   }
-  if (!data.supported) {
+  if (data.incomplete) {
     return false;
   }
   return true;

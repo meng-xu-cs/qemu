@@ -59,6 +59,7 @@ typedef struct {
 
 // session
 #define BRANCH_EXEC_LIMIT 3
+#define SESSION_TIME_LIMIT 60 * 60
 typedef struct {
   // unique identifier
   size_t id;
@@ -87,6 +88,9 @@ typedef struct {
   XXH64_state_t cov_hash;
   // counts of branch execution
   GTree *branch_exec_count;
+
+  // start time of the session
+  time_t start_time;
 } QCESession;
 
 // cache entry
@@ -379,6 +383,9 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
   session->coverage->len = 0;
   XXH64_reset(&session->cov_hash, QEMU_XXHASH_SEED);
 
+  // record start time
+  session->start_time = time(NULL);
+
   // log it
 #ifdef QCE_DEBUG_IR
   if (g_qce->trace_file != NULL) {
@@ -609,11 +616,27 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
   // we need this arch state in the rest of the execution
   CPUArchState *arch = cpu_env(cpu);
 
+  // incomplete cases handling
+  const char *incomplete_reason;
+
+  // check if the current session timed out
+  if (time(NULL) - session->start_time > SESSION_TIME_LIMIT) {
+    incomplete_reason = "session timeout";
+    goto incomplete;
+  }
+
+  // Z3 solver incomplete exceptions handler
+  if (setjmp(session->state.solver_z3.incomplete)) {
+    incomplete_reason = "Z3 solver timeout";
+    goto incomplete;
+  }
+
 #ifdef QCE_DEBUG_IR
   // verify the state maintained by QCE when not in a TB chain
   if (session->emulation_ctx.status != QCE_Emulation_TBChaining) {
     if (!qce_state_verify(arch, &session->state, tb)) {
-      goto unsupported_features;
+      incomplete_reason = "symbolic state modified by QEMU";
+      goto incomplete;
     }
   }
 #endif
@@ -1063,11 +1086,12 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
     cursor += 1;
   }
 
-unsupported_features:
-  qce_debug("encountering an unsupported feature, stop tracing!");
-  FILE *unsupported_indicator =
-      checked_open("w", "%s/%ld/unsupported", g_qce->output_dir, session->id);
-  fclose(unsupported_indicator);
+incomplete:
+  qce_debug("analysis limitations detected, stop tracing");
+  FILE *incomplete_indicator =
+      checked_open("w", "%s/%ld/incomplete", g_qce->output_dir, session->id);
+  fprintf(incomplete_indicator, "%s\n", incomplete_reason);
+  fclose(incomplete_indicator);
   session->state.thread_count = 0;
   session->mode = QCE_Tracing_StopPending;
   return;
