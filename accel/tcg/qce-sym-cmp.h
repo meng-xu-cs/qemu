@@ -4,15 +4,15 @@
 static inline void __record_symbolic_predicate(QCEState *state, QCEPred *pred,
                                                bool actual, vaddr last_pc) {
   // record symbolic predicate
-  char *ast = g_strdup(Z3_ast_to_string(state->solver_z3.ctx, pred->symbolic));
-#ifdef QCE_DEBUG_IR
-  if (g_qce->trace_file != NULL) {
-    fprintf(g_qce->trace_file, "**** predicate %016lx [%s]: %s\n", last_pc,
-            actual ? "T" : "F", ast);
-  }
-#endif
-  qce_debug("predicate %016lx [%s]: %s", last_pc, actual ? "T" : "F", ast);
-  g_free(ast);
+//  char *ast = g_strdup(Z3_ast_to_string(state->solver_z3.ctx, pred->symbolic));
+//#ifdef QCE_DEBUG_IR
+//  if (g_qce->trace_file != NULL) {
+//    fprintf(g_qce->trace_file, "**** predicate %016lx [%s]: %s\n", last_pc,
+//            actual ? "T" : "F", ast);
+//  }
+//#endif
+//  qce_debug("predicate %016lx [%s]: %s", last_pc, actual ? "T" : "F", ast);
+//  g_free(ast);
 
   // register coverage and check whether we need to solve for a new seed here
   QCESession *session = g_qce->session;

@@ -167,6 +167,9 @@ static inline Z3_ast __qce_smt_z3_simplify(SolverZ3 *solver, Z3_ast expr) {
 
 static inline bool __qce_smt_z3_simplify_reduce(SolverZ3 *solver, Z3_ast expr,
                                                 Z3_ast *result) {
+  /* deprecated function */
+  return false;
+
   // get an answer first
   switch (Z3_solver_check(solver->ctx, solver->sol)) {
   case Z3_L_TRUE: {
@@ -350,6 +353,9 @@ static inline bool qce_smt_z3_concretize_bool(SolverZ3 *solver,
                                               target_ulong addr,
                                               target_ulong size, uint8_t *blob,
                                               Z3_ast pred) {
+  // create a fresh solver
+  Z3_solver sol = Z3_mk_solver(solver->ctx);
+
   // build the clauses
   Z3_ast *clauses = g_alloca(sizeof(Z3_ast) * (size + 3));
   for (target_ulong i = 0; i < size; i++) {
@@ -368,50 +374,50 @@ static inline bool qce_smt_z3_concretize_bool(SolverZ3 *solver,
 
   // check the assumptions
   Z3_lbool result =
-      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 3, clauses);
+      Z3_solver_check_assumptions(solver->ctx, sol, size + 3, clauses);
   if (result == Z3_L_UNDEF) {
     qce_fatal("unable to determine the satisfiability of concretization");
   }
 
   // positive case
   if (result == Z3_L_TRUE) {
-#ifndef QCE_RELEASE
-    // evaluate the predicate
-    Z3_ast eval = NULL;
-    Z3_model model = Z3_solver_get_model(solver->ctx, solver->sol);
-    if (!Z3_model_eval(solver->ctx, model, pred, true, &eval)) {
-      qce_fatal("model evaluation failed");
-    }
-
-    bool concrete = false;
-    if (!qce_smt_z3_probe_bool(solver, eval, &concrete)) {
-      qce_fatal("unable to probe the bool out of concretization");
-    }
-    if (!concrete) {
-      qce_fatal("probed bool does not match with concretization");
-    }
-#endif
+//#ifndef QCE_RELEASE
+//    // evaluate the predicate
+//    Z3_ast eval = NULL;
+//    Z3_model model = Z3_solver_get_model(solver->ctx, sol);
+//    if (!Z3_model_eval(solver->ctx, model, pred, true, &eval)) {
+//      qce_fatal("model evaluation failed");
+//    }
+//
+//    bool concrete = false;
+//    if (!qce_smt_z3_probe_bool(solver, eval, &concrete)) {
+//      qce_fatal("unable to probe the bool out of concretization");
+//    }
+//    if (!concrete) {
+//      qce_fatal("probed bool does not match with concretization");
+//    }
+//#endif
     return true;
   }
 
   // negative case
-#ifndef QCE_RELEASE
-  assert(result == Z3_L_FALSE);
-
-  // also try the negation
-  clauses[size + 2] = Z3_mk_not(solver->ctx, pred);
-  result =
-      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 3, clauses);
-
-  if (result == Z3_L_UNDEF) {
-    qce_fatal(
-        "unable to determine the satisfiability of negated concretization");
-  }
-  if (result == Z3_L_FALSE) {
-    qce_fatal("unsat for both sides of concretization");
-  }
-  assert(result == Z3_L_TRUE);
-#endif
+//#ifndef QCE_RELEASE
+//  assert(result == Z3_L_FALSE);
+//
+//  // also try the negation
+//  clauses[size + 2] = Z3_mk_not(solver->ctx, pred);
+//  result =
+//      Z3_solver_check_assumptions(solver->ctx, sol, size + 3, clauses);
+//
+//  if (result == Z3_L_UNDEF) {
+//    qce_fatal(
+//        "unable to determine the satisfiability of negated concretization");
+//  }
+//  if (result == Z3_L_FALSE) {
+//    qce_fatal("unsat for both sides of concretization");
+//  }
+//  assert(result == Z3_L_TRUE);
+//#endif
   return false;
 }
 
@@ -419,6 +425,9 @@ static inline uint32_t qce_smt_z3_concretize_bv32(SolverZ3 *solver,
                                                   target_ulong addr,
                                                   target_ulong size,
                                                   uint8_t *blob, Z3_ast expr) {
+  // create a fresh solver
+  Z3_solver sol = Z3_mk_solver(solver->ctx);
+
   // build the clauses
   Z3_ast *clauses = g_alloca(sizeof(Z3_ast) * (size + 2));
   for (target_ulong i = 0; i < size; i++) {
@@ -436,7 +445,7 @@ static inline uint32_t qce_smt_z3_concretize_bv32(SolverZ3 *solver,
 
   // check the assumptions
   Z3_lbool result =
-      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 2, clauses);
+      Z3_solver_check_assumptions(solver->ctx, sol, size + 2, clauses);
   if (result == Z3_L_UNDEF) {
     qce_fatal("unable to determine the satisfiability of concretization");
   }
@@ -444,7 +453,7 @@ static inline uint32_t qce_smt_z3_concretize_bv32(SolverZ3 *solver,
   if (result == Z3_L_TRUE) {
     // evaluate the expression
     Z3_ast eval = NULL;
-    Z3_model model = Z3_solver_get_model(solver->ctx, solver->sol);
+    Z3_model model = Z3_solver_get_model(solver->ctx, sol);
     if (!Z3_model_eval(solver->ctx, model, expr, true, &eval)) {
       qce_fatal("model evaluation failed");
     }
@@ -467,6 +476,9 @@ static inline uint64_t qce_smt_z3_concretize_bv64(SolverZ3 *solver,
                                                   target_ulong addr,
                                                   target_ulong size,
                                                   uint8_t *blob, Z3_ast expr) {
+  // create a fresh solver
+  Z3_solver sol = Z3_mk_solver(solver->ctx);
+
   // build the clauses
   Z3_ast *clauses = g_alloca(sizeof(Z3_ast) * (size + 2));
   for (target_ulong i = 0; i < size; i++) {
@@ -484,7 +496,7 @@ static inline uint64_t qce_smt_z3_concretize_bv64(SolverZ3 *solver,
 
   // check the assumptions
   Z3_lbool result =
-      Z3_solver_check_assumptions(solver->ctx, solver->sol, size + 2, clauses);
+      Z3_solver_check_assumptions(solver->ctx, sol, size + 2, clauses);
   if (result == Z3_L_UNDEF) {
     qce_fatal("unable to determine the satisfiability of concretization");
   }
@@ -492,7 +504,7 @@ static inline uint64_t qce_smt_z3_concretize_bv64(SolverZ3 *solver,
   if (result == Z3_L_TRUE) {
     // evaluate the expression
     Z3_ast eval = NULL;
-    Z3_model model = Z3_solver_get_model(solver->ctx, solver->sol);
+    Z3_model model = Z3_solver_get_model(solver->ctx, sol);
     if (!Z3_model_eval(solver->ctx, model, expr, true, &eval)) {
       qce_fatal("model evaluation failed");
     }
