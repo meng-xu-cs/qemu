@@ -21,12 +21,14 @@ static gboolean qce_state_env_verify(gpointer key, gpointer value,
         (int32_t)((intptr_t)g_tree_lookup(holder->concrete, key));
     int32_t v_actual = *(int32_t *)key;
     /*
-     * cc_src and cc_dst may not be synchronized back to CPUState
+     * cc_src, cc_src2 and cc_dst may not be synchronized back to CPUState
      * during TB execution, so ignore verifying them.
      */
     if (v_record != v_actual &&
         key != (gpointer)&data->env->cc_src  &&
         key != (gpointer)((intptr_t)&data->env->cc_src + 4) &&
+        key != (gpointer)&data->env->cc_src2  &&
+        key != (gpointer)((intptr_t)&data->env->cc_src2 + 4) &&
         key != (gpointer)&data->env->cc_dst &&
         key != (gpointer)((intptr_t)&data->env->cc_dst + 4)) {
       if (cell.mode == QCE_CELL_MODE_CONCRETE) {

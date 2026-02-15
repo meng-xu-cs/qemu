@@ -1024,8 +1024,9 @@ DEFINE_SMT_Z3_OP2_DUAL(add, Z3_mk_bvadd)
 DEFINE_SMT_Z3_OP2_DUAL(sub, Z3_mk_bvsub)
 DEFINE_SMT_Z3_OP2_DUAL(mul, Z3_mk_bvmul)
 DEFINE_SMT_Z3_OP2_DUAL(div, Z3_mk_bvsdiv)
-DEFINE_SMT_Z3_OP2_DUAL(smod, Z3_mk_bvsrem)
-DEFINE_SMT_Z3_OP2_DUAL(umod, Z3_mk_bvurem)
+DEFINE_SMT_Z3_OP2_DUAL(divu, Z3_mk_bvudiv)
+DEFINE_SMT_Z3_OP2_DUAL(rem, Z3_mk_bvsrem)
+DEFINE_SMT_Z3_OP2_DUAL(remu, Z3_mk_bvurem)
 DEFINE_SMT_Z3_OP1_DUAL(neg, Z3_mk_bvneg)
 
 /*
