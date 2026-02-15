@@ -268,8 +268,17 @@ impl Fuzzer {
         // copy over new seeds generated
         let old_seed_counter = self.seed_counter;
         let path_seeds = path_session.join("seeds");
-        for item in fs::read_dir(&path_seeds)? {
-            let item = item?;
+        let mut items: Vec<_> = fs::read_dir(&path_seeds)?
+            .collect::<Result<_, _>>()?;
+        // enqueue seeds in their generation order to avoid duplicates
+        items.sort_by_key(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .parse::<u64>()
+                .unwrap_or(u64::MAX)
+        });
+        for item in items {
             fs::copy(
                 item.path(),
                 self.path_corpus_dir_queue
