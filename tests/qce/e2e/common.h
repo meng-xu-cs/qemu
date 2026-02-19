@@ -1,16 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/syscall.h>
 
-int harness(char *blob, size_t size) /* */;
+int harness(const uint8_t *blob, size_t size) /* */;
 
 int main(int argc, char *argv[]) {
   struct stat st;
   int fd;
-  char *blob;
+  uint8_t *blob;
   size_t size;
 
   if (argc < 2) {
@@ -28,13 +29,13 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  blob = malloc(st.st_size);
+  blob = (uint8_t *)malloc(st.st_size);
   if (blob == NULL) {
     printf("Failed to allocate blob\n");
     return -1;
   }
 
-  size = read(fd, blob, st.st_size);
+  size = read(fd, (char *)blob, st.st_size);
   if (size != st.st_size) {
     printf("Failed to read file\n");
     return -1;

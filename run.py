@@ -447,6 +447,12 @@ class AgentMode(Enum):
     Check = 3
 
 
+# harness file types
+class HarnessType(Enum):
+    Source = 0
+    Binary = 1
+
+
 def __compile_agent_guest(mode: AgentMode, setup: ExecSetup):
     match PLATFORM.approach:
         case SupportedApproach.Through | SupportedApproach.Emulate:
@@ -537,7 +543,7 @@ def _prepare_linux(
             mode = AgentMode.Check
     else:
         if not os.path.exists(harness):
-            sys.exit("harness source code does not exist at {}".format(harness))
+            sys.exit("harness file does not exist at {}".format(harness))
 
         if blob is None:
             mode = AgentMode.Fuzz
@@ -566,11 +572,20 @@ def _prepare_linux(
     # prepare harness
     if mode in [AgentMode.Test, AgentMode.Fuzz, AgentMode.Check]:
         assert harness is not None  # to keep mypy happy
-        if mode == AgentMode.Test:
-            shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
+        # determine the harness file type
+        if ".c" in harness:
+            harness_type = HarnessType.Source
         else:
-            utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
-        __compile_harness()
+            harness_type = HarnessType.Binary
+
+        if harness_type == HarnessType.Source:
+            if mode == AgentMode.Test:
+                shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_SRC)
+            else:
+                utils.patch_harness(harness, PATH_WKS_LINUX_HARNESS_SRC)
+            __compile_harness()
+        else:
+            shutil.copy2(harness, PATH_WKS_LINUX_HARNESS_BIN)
 
     # prepare the disk images
     if setup == ExecSetup.Bare:
@@ -800,6 +815,7 @@ def cmd_dev_sample(
     virtme: bool,
     trace: bool,
     solution: bool,
+    harness_type: HarnessType
 ) -> None:
     # formulate the arguments
     passthrough_args = [
@@ -808,7 +824,11 @@ def cmd_dev_sample(
         "--kernel",
         "/{}0/bzImage".format(DOCKER_WORKDIR_PREFIX),
         "--harness",
-        "/{}0/harness.c".format(DOCKER_WORKDIR_PREFIX),
+        "/{}0/harness.c".format(DOCKER_WORKDIR_PREFIX)
+        if harness_type == HarnessType.Source else
+        "/{}0/harness".format(DOCKER_WORKDIR_PREFIX),
+        "--workers",
+        str(workers),
     ]
     if bare:
         passthrough_args.append("--bare")
@@ -829,21 +849,40 @@ def cmd_dev_sample(
 
 def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool) -> None:
     path_test = os.path.join(PATH_TESTS_E2E, name)
+    if not os.path.exists(path_test):
+        sys.exit("PUT directory does not exist: {}".format(path_test))
+
+    # determine the harness file type
+    harness_source = os.path.join(os.path.join(path_test, "harness.c"))
+    harness_binary = os.path.join(os.path.join(path_test, "harness"))
+    if os.path.exists(harness_source):
+        harness_type = HarnessType.Source
+    elif os.path.exists(harness_binary):
+        harness_type = HarnessType.Binary
+    else:
+        sys.exit("harness file does not exist in {}".format(path_test))
 
     # compose the new harness
-    with open(os.path.join(path_test, "harness.c")) as f:
-        content = f.readlines()
-    assert len(content) != 0
-    assert content[0] == '#include "../common.h"\n'
+    if harness_type == HarnessType.Source:
+        with open(os.path.join(path_test, "harness.c")) as f:
+            content = f.readlines()
+        assert len(content) != 0
+        assert content[0] == '#include "../common.h"\n'
 
-    with open(os.path.join(PATH_TESTS_E2E, "common.h")) as f:
-        merged = f.readlines()
-    merged.extend(content[1:])
+        with open(os.path.join(PATH_TESTS_E2E, "common.h")) as f:
+            merged = f.readlines()
+        merged.extend(content[1:])
 
     # construct a temporary volume
     with TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "harness.c"), "w") as f_harness:
-            f_harness.writelines(merged)
+        if harness_type == HarnessType.Source:
+            with open(os.path.join(tmp, "harness.c"), "w") as f_harness:
+                f_harness.writelines(merged)
+        else:
+            if solution is None:
+                shutil.copy2(harness_binary, os.path.join(tmp, "harness"))
+            else:
+                shutil.copy2(f"{harness_binary}_orig", os.path.join(tmp, "harness"))
 
         # copy over the kernel
         path_test_kernel = os.path.join(path_test, "bzImage")
@@ -1047,6 +1086,7 @@ def main() -> None:
                 args.virtme,
                 args.trace,
                 args.solution,
+                HarnessType.Source,
             )
         elif args.cmd_dev == "e2e":
             cmd_dev_e2e(args.name, args.solution, args.trace)

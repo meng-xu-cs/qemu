@@ -311,9 +311,10 @@ def mk_empty_disk_image(qemu_img: str, qcow_disk: str, qcow_size: int) -> None:
 
 def patch_harness(src: str, dst: str) -> None:
     pattern_decl = re.compile(
+        r'(?:extern\s+"C"\s+)?'
         r"(?P<ret_type>\w+)\s+"
         r"harness\s*\(\s*"
-        r"(?P<blob_type>\w+)\s*\*\s*(?P<blob_name>\w+)"
+        r"(?P<blob_type>\w+(?:\s+\w+)*)\s*\*\s*(?P<blob_name>\w+)"
         r"\s*,\s*"
         r"(?P<size_type>\w+)\s+(?P<size_name>\w+)"
         r"\s*\)\s*\{",
@@ -343,7 +344,7 @@ def patch_harness(src: str, dst: str) -> None:
 
     # check types
     blob_type = match_decl["blob_type"]
-    if blob_type not in ["char", "uint8_t", "int8_t"]:
+    if blob_type not in ["char", "uint8_t", "int8_t", "const uint8_t"]:
         sys.exit("Unrecognized blob type: {}*".format(blob_type))
 
     size_type = match_decl["size_type"]
