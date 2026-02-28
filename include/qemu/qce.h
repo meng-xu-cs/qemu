@@ -53,7 +53,7 @@ void qce_session_reload(void);
 
 // tracing
 void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
-                     uint8_t *blob, pid_t init_tid);
+                     uint8_t *blob, tcg_target_ulong bound, pid_t init_tid);
 void qce_trace_stop(tcg_target_ulong addr, tcg_target_ulong size,
                     uint8_t *blob);
 

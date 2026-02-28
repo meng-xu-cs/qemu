@@ -135,6 +135,8 @@ def mk_rootfs(
     qemu_img: str,
     qcow_disk: str,
     qcow_size: int,
+    qcow_overlay_template: str,
+    workers: int,
     agent: str,
     harness: Optional[str],
     blob: Optional[str],
@@ -191,6 +193,21 @@ def mk_rootfs(
                 "qcow2",
                 fs_img,
                 qcow_disk,
+            ]
+        )
+
+    for id in range(workers):
+        subprocess.check_call(
+            [
+                qemu_img,
+                "create",
+                "-f",
+                "qcow2",
+                "-b",
+                qcow_disk,
+                "-F",
+                "qcow2",
+                qcow_overlay_template.format(id),
             ]
         )
 
@@ -296,7 +313,13 @@ def mk_initramfs_as_rootfs(
         cw.output(out)
 
 
-def mk_empty_disk_image(qemu_img: str, qcow_disk: str, qcow_size: int) -> None:
+def mk_empty_disk_image(
+    qemu_img: str,
+    qcow_disk: str,
+    qcow_size: int,
+    qcow_overlay_template: str,
+    workers: int
+) -> None:
     subprocess.check_call(
         [
             qemu_img,
@@ -307,6 +330,21 @@ def mk_empty_disk_image(qemu_img: str, qcow_disk: str, qcow_size: int) -> None:
             "{}M".format(qcow_size / MB_IN_BYTES),
         ]
     )
+
+    for id in range(workers):
+        subprocess.check_call(
+            [
+                qemu_img,
+                "create",
+                "-f",
+                "qcow2",
+                "-b",
+                qcow_disk,
+                "-F",
+                "qcow2",
+                qcow_overlay_template.format(id),
+            ]
+        )
 
 
 def patch_harness(src: str, dst: str) -> None:
@@ -367,10 +405,11 @@ def patch_harness(src: str, dst: str) -> None:
 long __r = 1;
 {}* __blob = {};
 {} __size = {};
+uint64_t __bound = bound;
 pid_t __tid = syscall(SYS_gettid);
 asm volatile ("encls"
     : "=a"(__r)
-    : "a"(0x5), "b"(__size), "c"(__blob), "d"(__tid)
+    : "a"(0x5), "b"(__size), "c"(__blob), "d"(__bound), "S"(__tid)
     : "memory");
 if (__r) {{ exit(1); }}
 {} __v = harness(__blob, __size);

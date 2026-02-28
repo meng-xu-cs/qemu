@@ -17,7 +17,7 @@ static inline void __record_symbolic_predicate(QCEState *state, QCEPred *pred,
   // register coverage and check whether we need to solve for a new seed here
   QCESession *session = g_qce->session;
   bool should_solve = qce_session_add_cov_item(session, last_pc, actual);
-  if (!should_solve) {
+  if (!should_solve || session->explore_bound > session->explore_depth) {
     return;
   }
 
@@ -33,6 +33,8 @@ static inline void __record_symbolic_predicate(QCEState *state, QCEPred *pred,
   // save the seed
   FILE *handle = checked_open("w+", "%s/%ld/seeds/%ld", g_qce->output_dir,
                               session->id, session->seed_count);
+  tcg_target_ulong bound = session->explore_depth + 1;
+  fwrite(&bound, sizeof(tcg_target_ulong), 1, handle);
   fwrite(blob, 1, size, handle);
   fclose(handle);
 
@@ -59,6 +61,7 @@ static inline bool __handle_branch_predicate(QCEState *state, QCEPred *pred,
 
   // record it
   __record_symbolic_predicate(state, pred, concretized, last_pc);
+  session->explore_depth += 1;
 
   // assert path condition
   qce_state_assert_path_constraint(state, pred->symbolic, concretized);

@@ -29,14 +29,21 @@ int main(int argc, char *argv[]) {
     return -1;
   }
 
-  blob = (uint8_t *)malloc(st.st_size);
+  uint64_t bound;
+  size = read(fd, &bound, sizeof(uint64_t));
+  if (size != sizeof(uint64_t)) {
+    printf("Failed to read file\n");
+    return -1;
+  }
+
+  blob = (uint8_t *)malloc(st.st_size-sizeof(uint64_t));
   if (blob == NULL) {
     printf("Failed to allocate blob\n");
     return -1;
   }
 
-  size = read(fd, (char *)blob, st.st_size);
-  if (size != st.st_size) {
+  size = read(fd, (char *)blob, st.st_size-sizeof(uint64_t));
+  if (size != st.st_size-sizeof(uint64_t)) {
     printf("Failed to read file\n");
     return -1;
   }

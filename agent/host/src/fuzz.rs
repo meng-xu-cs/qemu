@@ -104,7 +104,9 @@ impl Fuzzer {
 
         // deposit an initial seed if there is nothing in the queue
         if seed_counter == 0 {
-            fs::write(path_queue.join("0"), "X")?;
+            let mut seed = [0u8; 9];
+            seed[8] = b'X';
+            fs::write(path_queue.join("0"), seed)?;
             seed_counter += 1;
         }
 
@@ -264,7 +266,7 @@ impl Fuzzer {
         Ok(())
     }
 
-    fn merge_session_seeds(&mut self, path_session: &Path) -> io::Result<()> {
+    fn merge_session_seeds(&mut self, path_session: &Path, seed_id: usize) -> io::Result<()> {
         // copy over new seeds generated
         let old_seed_counter = self.seed_counter;
         let path_seeds = path_session.join("seeds");
@@ -289,7 +291,7 @@ impl Fuzzer {
         info!("seeds enqueued: {}", self.seed_counter - old_seed_counter);
 
         // check and mark the old seed
-        let seed_name = self.seed_cursor.to_string();
+        let seed_name = seed_id.to_string();
         let file_incomplete = path_session.join("incomplete");
         if file_incomplete.exists() {
             // mark the old seed as incomplete
@@ -304,16 +306,18 @@ impl Fuzzer {
                 self.path_corpus_dir_tried.join(&seed_name),
             )?;
         }
-        self.seed_cursor += 1;
 
         // done
         Ok(())
     }
 
-    pub fn process_session_result(&mut self) -> io::Result<()> {
-        let path_session = self.path_output.join(self.session_counter.to_string());
+    pub fn process_session_result(&mut self, guest_id: usize, session_id: usize,
+                                  seed_id: usize) -> io::Result<()> {
+        let path_session = self.path_output
+            .join(format!("guest{}", guest_id))
+            .join(session_id.to_string());
         self.merge_session_coverage(&path_session)?;
-        self.merge_session_seeds(&path_session)?;
+        self.merge_session_seeds(&path_session, seed_id)?;
         Ok(())
     }
 
@@ -321,11 +325,14 @@ impl Fuzzer {
         self.seed_cursor != self.seed_counter
     }
 
-    pub fn current_seed(&self) -> io::Result<Vec<u8>> {
-        fs::read(
+    pub fn current_seed(&mut self) -> io::Result<(Vec<u8>, usize)> {
+        let seed = fs::read(
             self.path_corpus_dir_queue
                 .join(&self.seed_cursor.to_string()),
-        )
+        );
+        let seed_id = self.seed_cursor;
+        self.seed_cursor += 1;
+        Ok((seed?, seed_id))
     }
 
     pub fn next_session(&mut self) {

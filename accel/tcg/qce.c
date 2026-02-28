@@ -89,6 +89,11 @@ typedef struct {
   // counts of branch execution
   GTree *branch_exec_count;
 
+  // current exploration depth in path tree
+  tcg_target_ulong explore_depth;
+  // depth threshold for invoking the solver
+  tcg_target_ulong explore_bound;
+
   // start time of the session
   time_t start_time;
 } QCESession;
@@ -351,7 +356,7 @@ void qce_session_reload(void) {
 }
 
 void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
-                     uint8_t *blob, pid_t init_tid) {
+                     uint8_t *blob, tcg_target_ulong bound, pid_t init_tid) {
   assert_qce_initialized();
 
   // sanity check
@@ -382,6 +387,11 @@ void qce_trace_start(tcg_target_ulong addr, tcg_target_ulong size,
   // reset coverage tracking
   session->coverage->len = 0;
   XXH64_reset(&session->cov_hash, QEMU_XXHASH_SEED);
+
+  // initialize input bound
+  session->explore_bound = bound;
+  // reset exploration depth
+  session->explore_depth = 0;
 
   // record start time
   session->start_time = time(NULL);

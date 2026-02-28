@@ -129,6 +129,7 @@ PATH_WKS_LINUX = os.path.join(PATH_WKS, "linux")
 PATH_WKS_LINUX_KERNEL = os.path.join(PATH_WKS_LINUX, "kernel.img")
 PATH_WKS_LINUX_INITRD = os.path.join(PATH_WKS_LINUX, "initrd.img")
 PATH_WKS_LINUX_DISK = os.path.join(PATH_WKS_LINUX, "disk.qcow2")
+PATH_WKS_LINUX_DISK_OVERLAY_TEMPLATE = os.path.join(PATH_WKS_LINUX, "disk_overlay{}.qcow2")
 PATH_WKS_LINUX_HARNESS_SRC = os.path.join(PATH_WKS_LINUX, "harness.c")
 PATH_WKS_LINUX_HARNESS_BIN = os.path.join(PATH_WKS_LINUX, "harness")
 PATH_WKS_LINUX_AGENT_HOST = os.path.join(PATH_WKS_LINUX, "agent-host")
@@ -147,9 +148,9 @@ GB_IN_BYTES = MB_IN_BYTES * 1024
 VM_MEM_SIZE = 2 * GB_IN_BYTES
 VM_DISK_NAME = "disk0"
 VM_DISK_SIZE = 2 * GB_IN_BYTES
-VM_IVSHMEM_FILE = "ivshmem"
+VM_IVSHMEM_FILE_PREFIX = "ivshmem"
 VM_IVSHMEM_SIZE = 16 * MB_IN_BYTES
-VM_MONITOR_SOCKET = "monitor"
+VM_MONITOR_SOCKET_PREFIX = "monitor"
 
 # testing constants
 TESTING_DEFAULT_KERNEL = "v6.15.0-miniconfig"
@@ -531,6 +532,7 @@ def _prepare_linux(
     blob: Optional[str],
     setup: ExecSetup,
     verbose: bool,
+    workers: int,
 ) -> AgentMode:
     # infer mode based on parameters
     if harness is None:
@@ -594,6 +596,8 @@ def _prepare_linux(
             PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
             PATH_WKS_LINUX_DISK,
             VM_DISK_SIZE,
+            PATH_WKS_LINUX_DISK_OVERLAY_TEMPLATE,
+            workers,
         )
 
         # prepare the init ramdisk image
@@ -609,6 +613,8 @@ def _prepare_linux(
             PATH_WKS_ARTIFACT_INSTALL_QEMU_IMG,
             PATH_WKS_LINUX_DISK,
             VM_DISK_SIZE,
+            PATH_WKS_LINUX_DISK_OVERLAY_TEMPLATE,
+            workers,
             PATH_WKS_LINUX_AGENT_GUEST,
             None if harness is None else PATH_WKS_LINUX_HARNESS_BIN,
             None if mode == AgentMode.Check else blob,
@@ -623,6 +629,7 @@ def _prepare_linux(
 
 
 def _execute_linux(
+    id: int,
     tmp: str,
     mode: AgentMode,
     setup: ExecSetup,
@@ -632,7 +639,7 @@ def _execute_linux(
     verbose: bool,
 ) -> subprocess.Popen:
     # prepare the pipe
-    path_ivshmem = Path(tmp).joinpath(VM_IVSHMEM_FILE)
+    path_ivshmem = Path(tmp).joinpath("{}{}".format(VM_IVSHMEM_FILE_PREFIX, id))
 
     # command holder
     command = [PATH_WKS_ARTIFACT_INSTALL_QEMU_AMD64]
@@ -664,7 +671,7 @@ def _execute_linux(
             "-drive",
             ",".join(
                 [
-                    "file={}".format(PATH_WKS_LINUX_DISK),
+                    "file={}".format(PATH_WKS_LINUX_DISK_OVERLAY_TEMPLATE.format(id)),
                     "node-name={}".format(VM_DISK_NAME),
                     "if=virtio",
                     "media=disk",
@@ -698,7 +705,7 @@ def _execute_linux(
         [
             "-chardev",
             "socket,id=qmp,path={},server=on,wait=off".format(
-                os.path.join(tmp, VM_MONITOR_SOCKET)
+                os.path.join(tmp, "{}{}".format(VM_MONITOR_SOCKET_PREFIX, id))
             ),
             "-mon",
             "chardev=qmp,mode=control",
@@ -728,14 +735,15 @@ def _execute_linux(
             [PATH_WKS_ARTIFACT_INSTALL_LIB, PATH_WKS_DEPS_Z3_LIB]
         ),
         "QCE_CORPUS": path_corpus,
-        "QCE_OUTPUT": path_output,
+        "QCE_OUTPUT": os.path.join(path_output, "guest{}".format(id)),
     }
     if mode == AgentMode.Check:
         envs["QCE_CHECK"] = "1"
     if trace:
         envs["QCE_TRACE"] = "1"
 
-    return subprocess.Popen(command, env=envs)
+    log = open(os.path.join(path_output, "guest{}".format(id), "log"), "w")
+    return subprocess.Popen(command, env=envs, stdout=log, stderr=subprocess.STDOUT)
 
 
 def cmd_linux(
@@ -747,9 +755,10 @@ def cmd_linux(
     path_output: Optional[str],
     trace: bool,
     verbose: bool,
+    workers: int,
 ) -> None:
     # preparation
-    mode = _prepare_linux(kernel, harness, blob, setup, verbose)
+    mode = _prepare_linux(kernel, harness, blob, setup, verbose, workers)
 
     # init directories
     if path_corpus is None:
@@ -758,7 +767,8 @@ def cmd_linux(
 
     if path_output is None:
         path_output = PATH_WKS_LINUX_DEFAULT_OUTPUT
-    os.makedirs(path_output, exist_ok=True)
+    for id in range(workers):
+        os.makedirs(os.path.join(path_output, "guest{}".format(id)), exist_ok=True)
 
     # execution
     with TemporaryDirectory() as tmp:
@@ -771,6 +781,8 @@ def cmd_linux(
                 path_corpus,
                 "--output",
                 path_output,
+                "--workers",
+                str(workers),
             ]
             if mode == AgentMode.Check:
                 command.append("--check")
@@ -781,32 +793,38 @@ def cmd_linux(
             host = None
 
         # start the guest
-        guest = _execute_linux(
-            tmp,
-            mode,
-            setup,
-            path_corpus,
-            path_output,
-            trace,
-            verbose,
-        )
+        guests = []
+        for id in range(workers):
+            guests.append(
+                _execute_linux(
+                    id,
+                    tmp,
+                    mode,
+                    setup,
+                    path_corpus,
+                    path_output,
+                    trace,
+                    verbose,
+                )
+            )
 
         # wait for host termination (if we have one)
         if host is not None:
             host.wait()
 
         # decide on what to do with guest
-        if mode == AgentMode.Fuzz:
-            guest.kill()
-        elif guest.wait() != 0:
-            sys.exit("guest terminated with error")
+        for id in range(workers):
+            if mode == AgentMode.Fuzz:
+                guests[id].kill()
+            elif guests[id].wait() != 0:
+                sys.exit("guest{} terminated with error".format(id))
 
         if mode == AgentMode.Test:
             # save the ivshmem file to output directory
-            path_ivshmem = os.path.join(path_output, VM_IVSHMEM_FILE)
+            path_ivshmem = os.path.join(path_output, VM_IVSHMEM_FILE_PREFIX)
             if os.path.exists(path_ivshmem):
                 sys.exit("ivshmem file already exists (unexpectedly) in testing mode")
-            shutil.copy2(os.path.join(tmp, VM_IVSHMEM_FILE), path_ivshmem)
+            shutil.copy2(os.path.join(tmp, "{}0".format(VM_IVSHMEM_FILE_PREFIX)), path_ivshmem)
 
 
 def cmd_dev_sample(
@@ -815,7 +833,8 @@ def cmd_dev_sample(
     virtme: bool,
     trace: bool,
     solution: bool,
-    harness_type: HarnessType
+    workers: int,
+    harness_type: HarnessType,
 ) -> None:
     # formulate the arguments
     passthrough_args = [
@@ -828,7 +847,8 @@ def cmd_dev_sample(
         if harness_type == HarnessType.Source else
         "/{}0/harness".format(DOCKER_WORKDIR_PREFIX),
         "--workers",
-        str(workers),
+        # prevent user from enabling parallel in test mode
+        str(workers) if not solution else "1",
     ]
     if bare:
         passthrough_args.append("--bare")
@@ -847,7 +867,7 @@ def cmd_dev_sample(
     _docker_exec_self([volume], passthrough_args)
 
 
-def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool) -> None:
+def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool, workers: int) -> None:
     path_test = os.path.join(PATH_TESTS_E2E, name)
     if not os.path.exists(path_test):
         sys.exit("PUT directory does not exist: {}".format(path_test))
@@ -895,19 +915,20 @@ def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool) -> None:
             shutil.copy2(solution, os.path.join(tmp, "solution.bin"))
 
         # run the sample over ths temporary volume
-        cmd_dev_sample(tmp, True, False, trace, solution is not None)
+        cmd_dev_sample(tmp, True, False, trace, solution is not None, workers, harness_type)
 
 
-def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool) -> None:
+def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool, workers: int) -> None:
     if solution is not None:
-        __dev_run_e2e_test(name, solution, trace)
+        __dev_run_e2e_test(name, solution, trace, 1)
+        return
 
     #
     # full cycle of e2e test execution below
     #
 
     # do the fuzzing first
-    __dev_run_e2e_test(name, None, trace)
+    __dev_run_e2e_test(name, None, trace, workers)
 
     # do the seeds check in a temporary directory
     with TemporaryDirectory() as tmp:
@@ -925,10 +946,10 @@ def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool) -> None:
         for seed in os.listdir(path_corpus_tried):
             # seed replay
             path_seed = os.path.join(path_corpus_tried, seed)
-            __dev_run_e2e_test(name, path_seed, trace)
+            __dev_run_e2e_test(name, path_seed, trace, 1)
 
             # examine the status of the harness return value
-            path_ivshmem = os.path.join(PATH_WKS_LINUX_DEFAULT_OUTPUT, VM_IVSHMEM_FILE)
+            path_ivshmem = os.path.join(PATH_WKS_LINUX_DEFAULT_OUTPUT, VM_IVSHMEM_FILE_PREFIX)
             with open(path_ivshmem, "rb") as f:
                 status = struct.unpack("<Q", f.read(8))[0]
 
@@ -981,7 +1002,7 @@ def cmd_dev_check(unit_tests_only: bool) -> None:
 
         # full cycle of e2e test
         logging.debug(f"running e2e test {item}")
-        cmd_dev_e2e(item, None, False)
+        cmd_dev_e2e(item, None, False, 1)
         logging.info(f"e2e test {item} passed")
 
     logging.info("all e2e tests passed")
@@ -1022,11 +1043,13 @@ def main() -> None:
     parser_dev_sample_exec_setup.add_argument("--virtme", action="store_true")
     parser_dev_sample.add_argument("--trace", action="store_true")
     parser_dev_sample.add_argument("--solution", action="store_true")
+    parser_dev_sample.add_argument("--workers", type=int, default=1)
 
     parser_dev_e2e = sub_dev.add_parser("e2e")
     parser_dev_e2e.add_argument("name")
     parser_dev_e2e.add_argument("--solution")
     parser_dev_e2e.add_argument("--trace", action="store_true")
+    parser_dev_e2e.add_argument("--workers", type=int, default=1)
 
     parser_dev_check = sub_dev.add_parser("check")
     parser_dev_check.add_argument("--unit", action="store_true")
@@ -1054,6 +1077,7 @@ def main() -> None:
     parser_linux.add_argument("--output")
     parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
+    parser_linux.add_argument("--workers", type=int, default=1)
 
     # actions
     args = parser.parse_args()
@@ -1086,10 +1110,11 @@ def main() -> None:
                 args.virtme,
                 args.trace,
                 args.solution,
+                args.workers,
                 HarnessType.Source,
             )
         elif args.cmd_dev == "e2e":
-            cmd_dev_e2e(args.name, args.solution, args.trace)
+            cmd_dev_e2e(args.name, args.solution, args.trace, args.workers)
         elif args.cmd_dev == "check":
             cmd_dev_check(args.unit)
         else:
@@ -1116,6 +1141,7 @@ def main() -> None:
             args.output,
             args.trace,
             args.verbose,
+            args.workers,
         )
     else:
         parser.print_help()

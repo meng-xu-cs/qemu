@@ -2291,8 +2291,9 @@ void helper_sgx(CPUX86State *env)
 
   /* mark the trace to start or stop */
   if (trace_start) {
-    pid_t init_tid = (pid_t)env->regs[R_EDX];
-    qce_trace_start(addr, len, blob, init_tid);
+    target_ulong bound = env->regs[R_EDX];
+    pid_t init_tid = (pid_t)env->regs[R_ESI];
+    qce_trace_start(addr, len, blob, bound, init_tid);
   } else {
     qce_trace_stop(addr, len, blob);
   }
