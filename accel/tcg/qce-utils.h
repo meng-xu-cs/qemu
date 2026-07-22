@@ -62,6 +62,30 @@ static inline G_GNUC_PRINTF(2, 3) FILE *checked_open(const char *mode,
 }
 
 /*
+ * resuming into a preserved output directory should not restart session
+ * numbering from 0, or checked_mkdir() will fatal on a directory that
+ * already exists from a previous run
+ */
+static inline long session_id_init(const char *output_dir) {
+  DIR *dir = opendir(output_dir);
+  if (dir == NULL) {
+    qce_fatal("unable to open directory %s", output_dir);
+  }
+
+  long start_id = 0;
+  struct dirent *entry;
+  while ((entry = readdir(dir)) != NULL) {
+    char *end;
+    long id = strtol(entry->d_name, &end, 10);
+    if (end != entry->d_name && *end == '\0' && id + 1 > start_id) {
+      start_id = id + 1;
+    }
+  }
+  closedir(dir);
+  return start_id;
+}
+
+/*
  * QEMU moved this static function definition from internal-target.h to
  * cpu-exec.c in commit e07788a, so we define our own copy in QCE.
  */

@@ -282,7 +282,7 @@ void qce_session_init(void) {
 
   // create a new session
   QCESession *session = g_malloc0(sizeof(*session));
-  session->id = 0;
+  session->id = session_id_init(g_qce->output_dir);
   session->mode = QCE_Tracing_NotStarted;
 
   session->emulation_ctx.status = QCE_Emulation_Normal;

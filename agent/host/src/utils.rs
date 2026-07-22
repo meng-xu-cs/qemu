@@ -1,4 +1,5 @@
 use std::ffi::{c_void, CString};
+use std::fs::{self, File};
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::sync::atomic;
@@ -54,6 +55,19 @@ pub fn inotify_watch_for_deletion(dir: &Path, name: &str) -> io::Result<()> {
 /// block until a specific file is deleted in the watched directory
 pub fn inotify_watch_for_addition(dir: &Path, name: &str) -> io::Result<()> {
     inotify_watch(dir, name, true)
+}
+pub fn atomic_write(
+    path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>,
+) -> io::Result<()> {
+    let path_tmp = path.with_file_name(format!(
+        ".{}.tmp",
+        path.file_name().unwrap().to_string_lossy()
+    ));
+    let mut file = File::create(&path_tmp)?;
+    write(&mut file)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&path_tmp, path)
 }
 
 pub struct Ivshmem {

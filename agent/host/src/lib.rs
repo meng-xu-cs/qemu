@@ -62,7 +62,7 @@ pub fn entrypoint() {
         .init();
 
     // initialize the fuzzer first
-    let mut fuzzer = Fuzzer::new(corpus, output)
+    let mut fuzzer = Fuzzer::new(corpus, output.clone())
         .unwrap_or_else(|e| panic!("error initializing the fuzzer: {}", e));
 
     let mut guests: Vec<Guest> = Vec::new();
@@ -99,7 +99,10 @@ pub fn entrypoint() {
         info!("live snapshot is taken");
 
         // construct a guest struct
-        guests.push(Guest::new(id, ivshmem, qemu));
+        guests.push(
+            Guest::new(id, ivshmem, qemu, &output)
+                .unwrap_or_else(|e| panic!("error initializing guest {}: {}", id, e)),
+        );
     }
 
     let mut waiting_guests = workers;

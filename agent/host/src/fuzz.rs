@@ -1,5 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::hash::Hasher;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -196,22 +195,23 @@ impl Fuzzer {
 
     fn save_coverage(path: &Path, cov: &CovDatabase) -> io::Result<()> {
         let mut counter = 0;
-        let mut file = File::create(path)?;
-        file.write_all(&(cov.len() as u64).to_ne_bytes())?;
-        for (_, l1) in cov {
-            file.write_all(&(l1.len() as u64).to_ne_bytes())?;
-            for (hash, l2) in l1 {
-                file.write_all(&hash.to_ne_bytes())?;
-                file.write_all(&(l2.len() as u64).to_ne_bytes())?;
-                for trace in l2 {
-                    for val in trace {
-                        file.write_all(&val.to_ne_bytes())?;
+        crate::utils::atomic_write(path, |file| {
+            file.write_all(&(cov.len() as u64).to_ne_bytes())?;
+            for (_, l1) in cov {
+                file.write_all(&(l1.len() as u64).to_ne_bytes())?;
+                for (hash, l2) in l1 {
+                    file.write_all(&hash.to_ne_bytes())?;
+                    file.write_all(&(l2.len() as u64).to_ne_bytes())?;
+                    for trace in l2 {
+                        for val in trace {
+                            file.write_all(&val.to_ne_bytes())?;
+                        }
                     }
+                    counter += l2.len();
                 }
-                counter += l2.len();
             }
-        }
-        file.flush()?;
+            Ok(())
+        })?;
         info!("traces saved into coverage database: {}", counter);
         Ok(())
     }

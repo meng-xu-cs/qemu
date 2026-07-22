@@ -14,6 +14,8 @@ from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import List, Optional, Set, Union
+import hashlib
+import json
 
 import utils
 
@@ -137,6 +139,7 @@ PATH_WKS_LINUX_AGENT_GUEST = os.path.join(PATH_WKS_LINUX, "agent-guest")
 PATH_WKS_LINUX_ROOTFS_EXT4 = os.path.join(PATH_WKS_LINUX, "rootfs.ext4")
 PATH_WKS_LINUX_DEFAULT_CORPUS = os.path.join(PATH_WKS_LINUX, "corpus")
 PATH_WKS_LINUX_DEFAULT_OUTPUT = os.path.join(PATH_WKS_LINUX, "output")
+PATH_WKS_LINUX_EXEC_MANIFEST = os.path.join(PATH_WKS_LINUX, "exec-manifest.json")
 
 # system constants
 NUM_CPUS = multiprocessing.cpu_count()
@@ -526,6 +529,26 @@ def __compile_harness():
     subprocess.check_call(command)
 
 
+def __compute_exec_fingerprint(
+    mode: AgentMode, setup: ExecSetup, kernel: str, harness: Optional[str]
+) -> dict:
+    def hash_file(path: str) -> str:
+        if not os.path.exists(path):
+            sys.exit("file does not exist: {}".format(path))
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    return {
+        "mode": mode.name,
+        "setup": setup.name,
+        "kernel": hash_file(kernel),
+        "harness": hash_file(harness) if harness is not None else None,
+    }
+
+
 def _prepare_linux(
     kernel: str,
     harness: Optional[str],
@@ -533,6 +556,7 @@ def _prepare_linux(
     setup: ExecSetup,
     verbose: bool,
     workers: int,
+    resume: bool,
 ) -> AgentMode:
     # infer mode based on parameters
     if harness is None:
@@ -554,10 +578,29 @@ def _prepare_linux(
                 sys.exit("blob data file does not exist at {}".format(blob))
             mode = AgentMode.Test
 
-    # clear previous states
-    if os.path.exists(PATH_WKS_LINUX):
-        shutil.rmtree(PATH_WKS_LINUX)
-    os.mkdir(PATH_WKS_LINUX)
+    fingerprint = __compute_exec_fingerprint(mode, setup, kernel, harness)
+
+    if resume:
+        if mode != AgentMode.Fuzz:
+            sys.exit("--resume is only supported in fuzzing mode")
+        if not os.path.exists(PATH_WKS_LINUX):
+            sys.exit("--resume is specified but previous states do not exist")
+        if not os.path.exists(PATH_WKS_LINUX_EXEC_MANIFEST):
+            sys.exit("--resume is specified but no previous exec manifest found in workspace")
+        with open(PATH_WKS_LINUX_EXEC_MANIFEST) as f:
+            prev_fingerprint = json.load(f)
+        if prev_fingerprint != fingerprint:
+            sys.exit(
+                "resume target mismatch: previous workspace was prepared with a different "
+                "exec configuration; use a fresh workspace or drop --resume"
+            )
+    else:
+        # clear previous states
+        if os.path.exists(PATH_WKS_LINUX):
+            shutil.rmtree(PATH_WKS_LINUX)
+        os.mkdir(PATH_WKS_LINUX)
+        with open(PATH_WKS_LINUX_EXEC_MANIFEST, "w") as f:
+            json.dump(fingerprint, f)
 
     # search for kernel image
     if not os.path.exists(kernel):
@@ -756,9 +799,10 @@ def cmd_linux(
     trace: bool,
     verbose: bool,
     workers: int,
+    resume: bool,
 ) -> None:
     # preparation
-    mode = _prepare_linux(kernel, harness, blob, setup, verbose, workers)
+    mode = _prepare_linux(kernel, harness, blob, setup, verbose, workers, resume)
 
     # init directories
     if path_corpus is None:
@@ -834,6 +878,7 @@ def cmd_dev_sample(
     trace: bool,
     solution: bool,
     workers: int,
+    resume: bool,
     harness_type: HarnessType,
 ) -> None:
     # formulate the arguments
@@ -863,11 +908,13 @@ def cmd_dev_sample(
                 "/{}0/solution.bin".format(DOCKER_WORKDIR_PREFIX),
             ]
         )
+    if resume:
+        passthrough_args.append("--resume")
 
     _docker_exec_self([volume], passthrough_args)
 
 
-def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool, workers: int) -> None:
+def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool, workers: int, resume: bool) -> None:
     path_test = os.path.join(PATH_TESTS_E2E, name)
     if not os.path.exists(path_test):
         sys.exit("PUT directory does not exist: {}".format(path_test))
@@ -915,12 +962,12 @@ def __dev_run_e2e_test(name: str, solution: Optional[str], trace: bool, workers:
             shutil.copy2(solution, os.path.join(tmp, "solution.bin"))
 
         # run the sample over ths temporary volume
-        cmd_dev_sample(tmp, True, False, trace, solution is not None, workers, harness_type)
+        cmd_dev_sample(tmp, True, False, trace, solution is not None, workers, resume, harness_type)
 
 
-def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool, workers: int) -> None:
+def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool, workers: int, resume: bool) -> None:
     if solution is not None:
-        __dev_run_e2e_test(name, solution, trace, 1)
+        __dev_run_e2e_test(name, solution, trace, 1, False)
         return
 
     #
@@ -928,7 +975,7 @@ def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool, workers: int) -
     #
 
     # do the fuzzing first
-    __dev_run_e2e_test(name, None, trace, workers)
+    __dev_run_e2e_test(name, None, trace, workers, resume)
 
     # do the seeds check in a temporary directory
     with TemporaryDirectory() as tmp:
@@ -946,7 +993,7 @@ def cmd_dev_e2e(name: str, solution: Optional[str], trace: bool, workers: int) -
         for seed in os.listdir(path_corpus_tried):
             # seed replay
             path_seed = os.path.join(path_corpus_tried, seed)
-            __dev_run_e2e_test(name, path_seed, trace, 1)
+            __dev_run_e2e_test(name, path_seed, trace, 1, False)
 
             # examine the status of the harness return value
             path_ivshmem = os.path.join(PATH_WKS_LINUX_DEFAULT_OUTPUT, VM_IVSHMEM_FILE_PREFIX)
@@ -1002,7 +1049,7 @@ def cmd_dev_check(unit_tests_only: bool) -> None:
 
         # full cycle of e2e test
         logging.debug(f"running e2e test {item}")
-        cmd_dev_e2e(item, None, False, 1)
+        cmd_dev_e2e(item, None, False, 1, False)
         logging.info(f"e2e test {item} passed")
 
     logging.info("all e2e tests passed")
@@ -1044,12 +1091,14 @@ def main() -> None:
     parser_dev_sample.add_argument("--trace", action="store_true")
     parser_dev_sample.add_argument("--solution", action="store_true")
     parser_dev_sample.add_argument("--workers", type=int, default=1)
+    parser_dev_sample.add_argument("--resume", action="store_true")
 
     parser_dev_e2e = sub_dev.add_parser("e2e")
     parser_dev_e2e.add_argument("name")
     parser_dev_e2e.add_argument("--solution")
     parser_dev_e2e.add_argument("--trace", action="store_true")
     parser_dev_e2e.add_argument("--workers", type=int, default=1)
+    parser_dev_e2e.add_argument("--resume", action="store_true")
 
     parser_dev_check = sub_dev.add_parser("check")
     parser_dev_check.add_argument("--unit", action="store_true")
@@ -1078,6 +1127,7 @@ def main() -> None:
     parser_linux.add_argument("--trace", action="store_true")
     parser_linux.add_argument("--verbose", action="store_true")
     parser_linux.add_argument("--workers", type=int, default=1)
+    parser_linux.add_argument("--resume", action="store_true")
 
     # actions
     args = parser.parse_args()
@@ -1111,10 +1161,11 @@ def main() -> None:
                 args.trace,
                 args.solution,
                 args.workers,
+                args.resume,
                 HarnessType.Source,
             )
         elif args.cmd_dev == "e2e":
-            cmd_dev_e2e(args.name, args.solution, args.trace, args.workers)
+            cmd_dev_e2e(args.name, args.solution, args.trace, args.workers, args.resume)
         elif args.cmd_dev == "check":
             cmd_dev_check(args.unit)
         else:
@@ -1142,6 +1193,7 @@ def main() -> None:
             args.trace,
             args.verbose,
             args.workers,
+            args.resume,
         )
     else:
         parser.print_help()
