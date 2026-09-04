@@ -91,7 +91,7 @@ DEFINE_SYM_INST_extract(sextract, 64)
                                                                                \
     QCEExpr expr_res;                                                          \
     qce_expr_extract2_i##bits(&state->solver_z3, &expr_v_b, &expr_v_t,         \
-                             pos, &expr_res);                                  \
+                              pos, &expr_res);                                 \
     qce_state_put_var(env, state, res, &expr_res);                             \
 }
 
@@ -114,8 +114,7 @@ DEFINE_SYM_INST_extract2(64)
     qce_state_get_var(env, state, from, &expr_from);                           \
                                                                                \
     QCEExpr expr_into;                                                         \
-    qce_expr_extr##side##_i64_i32(&state->solver_z3,                           \
-                                   &expr_from, &expr_into);                    \
+    qce_expr_extr##side##_i64_i32(&state->solver_z3, &expr_from, &expr_into);  \
     qce_state_put_var(env, state, into, &expr_into);                           \
 }
 
@@ -146,8 +145,8 @@ DEFINE_SYM_INST_ext_i32_i64(u)
 #define HANDLE_SYM_INST_ext_i32_i64(sign, SIGN)                                \
   case QCE_INST_EXT##SIGN: {                                                   \
     qce_sym_inst_ext##sign##_i32_i64(arch, &session->state,                    \
-                                        &inst->i_ext##sign##_i32_i64.into,     \
-                                        &inst->i_ext##sign##_i32_i64.from);    \
+                                     &inst->i_ext##sign##_i32_i64.into,        \
+                                     &inst->i_ext##sign##_i32_i64.from);       \
     break;                                                                     \
   }
 

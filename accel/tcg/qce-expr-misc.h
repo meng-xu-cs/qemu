@@ -58,7 +58,7 @@ DEFINE_CONCRETE_extract2(32)
 DEFINE_CONCRETE_extract2(64)
 
 static inline int32_t __qce_concrete_extrl_i64_i32(int64_t val) {
-    return (int32_t)val;
+  return (int32_t)val;
 }
 
 static inline int32_t __qce_concrete_extrh_i64_i32(int64_t val) {
