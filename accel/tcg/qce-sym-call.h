@@ -1434,6 +1434,51 @@ static inline void qce_sym_inst_call_st_i128(
 DEFINE_SYM_INST_CALL_gvec(eq8, ==)
 DEFINE_SYM_INST_CALL_gvec(lt8, <)
 
+static inline void qce_sym_inst_call_gvec_umin8(
+    CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *a,
+    QCEVar *b, QCEVar *desc) {
+  QCEExpr expr_d, expr_a, expr_b, expr_desc;
+  qce_state_get_var(env, state, d, &expr_d);
+  qce_state_get_var(env, state, a, &expr_a);
+  qce_state_get_var(env, state, b, &expr_b);
+  qce_state_get_var(env, state, desc, &expr_desc);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_d, CONCRETE);
+  qce_expr_assert_mode(&expr_a, CONCRETE);
+  qce_expr_assert_mode(&expr_b, CONCRETE);
+  qce_expr_assert_mode(&expr_desc, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_d, I64);
+  qce_expr_assert_type(&expr_a, I64);
+  qce_expr_assert_type(&expr_b, I64);
+  qce_expr_assert_type(&expr_desc, I32);
+
+  intptr_t oprsz = simd_oprsz(expr_desc.v_i32);
+  g_assert(oprsz % 4 == 0);
+  for (intptr_t i = 0; i < oprsz; i += 4 * sizeof(uint8_t)) {
+    QCEExpr expr_into_d, expr_from_a, expr_from_b;
+    qce_state_env_get_i32(state, expr_a.v_i64 + i, &expr_from_a);
+    qce_state_env_get_i32(state, expr_b.v_i64 + i, &expr_from_b);
+    qce_expr_init_v32(&expr_into_d, 0);
+    qce_expr_assert_mode(&expr_from_a, CONCRETE);
+    qce_expr_assert_mode(&expr_from_b, CONCRETE);
+    for (uint8_t byte = 0; byte < 4; ++byte) {
+      uint8_t aa = ((uint8_t *)&expr_from_a.v_i32)[byte];
+      uint8_t bb = ((uint8_t *)&expr_from_b.v_i32)[byte];
+      ((uint8_t *)&expr_into_d.v_i32)[byte] = aa < bb ? aa : bb;
+    }
+    qce_state_env_put_i32(state, expr_d.v_i64 + i, &expr_into_d);
+  }
+  intptr_t maxsz = simd_maxsz(expr_desc.v_i32);
+  if (unlikely(maxsz > oprsz)) {
+    for (intptr_t i = oprsz; i < maxsz; i += sizeof(uint64_t)) {
+      QCEExpr expr_into_d;
+      qce_expr_init_v64(&expr_into_d, 0);
+      qce_state_env_put_i64(state, expr_d.v_i64 + i, &expr_into_d);
+    }
+  }
+}
+
 #define HANDLE_SYM_INST_CALL_gvec(name)                                        \
   case QCE_INST_CALL_gvec_##name: {                                            \
     qce_sym_inst_call_gvec_##name(                                             \
@@ -2136,6 +2181,120 @@ static inline void qce_sym_inst_call_pshufd_xmm(
     qce_sym_inst_call_pshufd_xmm(                                              \
         arch, &session->state, &inst->i_call_pshufd_xmm.d,                     \
         &inst->i_call_pshufd_xmm.s, &inst->i_call_pshufd_xmm.order);           \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_pslldq_xmm(
+    CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *s, QCEVar *c) {
+  QCEExpr expr_d, expr_s, expr_c;
+  qce_state_get_var(env, state, d, &expr_d);
+  qce_state_get_var(env, state, s, &expr_s);
+  qce_state_get_var(env, state, c, &expr_c);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_d, CONCRETE);
+  qce_expr_assert_mode(&expr_s, CONCRETE);
+  qce_expr_assert_mode(&expr_c, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_d, I64);
+  qce_expr_assert_type(&expr_s, I64);
+  qce_expr_assert_type(&expr_c, I64);
+
+  Reg *ptr_d = (Reg *)expr_d.v_i64;
+  Reg *ptr_s = (Reg *)expr_s.v_i64;
+  Reg *ptr_c = (Reg *)expr_c.v_i64;
+
+  int shift, i, j;
+
+  QCEExpr expr_shift;
+  qce_state_env_get_i32(state, (intptr_t)&ptr_c->L(0), &expr_shift);
+  qce_expr_assert_mode(&expr_shift, CONCRETE);
+  shift = expr_shift.v_i32;
+  if (shift > 16) {
+    shift = 16;
+  }
+  for (j = 0; j < 8 << SHIFT; j += LANE_WIDTH) {
+    for (i = 15; i >= shift; i--) {
+      QCEExpr expr_into_d, expr_from_s;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+      qce_state_env_get_i32(
+          state, (intptr_t)&ptr_s->B(j + i - shift), &expr_from_s);
+      qce_expr_assert_mode(&expr_into_d, CONCRETE);
+      qce_expr_assert_mode(&expr_from_s, CONCRETE);
+      ((uint8_t *)&expr_into_d.v_i32)[0] = (uint8_t)expr_from_s.v_i32;
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+    }
+    for (i = 0; i < shift; i++) {
+      QCEExpr expr_into_d;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+      qce_expr_assert_mode(&expr_into_d, CONCRETE);
+      ((uint8_t *)&expr_into_d.v_i32)[0] = 0;
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+    }
+  }
+}
+
+#define HANDLE_SYM_INST_CALL_pslldq_xmm                                        \
+  case QCE_INST_CALL_pslldq_xmm: {                                             \
+    qce_sym_inst_call_pslldq_xmm(                                              \
+        arch, &session->state, &inst->i_call_pslldq_xmm.d,                     \
+        &inst->i_call_pslldq_xmm.s, &inst->i_call_pslldq_xmm.c);               \
+    break;                                                                     \
+  }
+
+static inline void qce_sym_inst_call_psrldq_xmm(
+    CPUArchState *env, QCEState *state, QCEVar *d, QCEVar *s, QCEVar *c) {
+  QCEExpr expr_d, expr_s, expr_c;
+  qce_state_get_var(env, state, d, &expr_d);
+  qce_state_get_var(env, state, s, &expr_s);
+  qce_state_get_var(env, state, c, &expr_c);
+  /* mode checking */
+  qce_expr_assert_mode(&expr_d, CONCRETE);
+  qce_expr_assert_mode(&expr_s, CONCRETE);
+  qce_expr_assert_mode(&expr_c, CONCRETE);
+  /* type checking */
+  qce_expr_assert_type(&expr_d, I64);
+  qce_expr_assert_type(&expr_s, I64);
+  qce_expr_assert_type(&expr_c, I64);
+
+  Reg *ptr_d = (Reg *)expr_d.v_i64;
+  Reg *ptr_s = (Reg *)expr_s.v_i64;
+  Reg *ptr_c = (Reg *)expr_c.v_i64;
+
+  int shift, i, j;
+
+  QCEExpr expr_shift;
+  qce_state_env_get_i32(state, (intptr_t)&ptr_c->L(0), &expr_shift);
+  qce_expr_assert_mode(&expr_shift, CONCRETE);
+  shift = expr_shift.v_i32;
+  if (shift > 16) {
+    shift = 16;
+  }
+  for (j = 0; j < 8 << SHIFT; j += LANE_WIDTH) {
+    for (i = 0; i < 16 - shift; i++) {
+      QCEExpr expr_into_d, expr_from_s;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+      qce_state_env_get_i32(
+          state, (intptr_t)&ptr_s->B(j + i + shift), &expr_from_s);
+      qce_expr_assert_mode(&expr_into_d, CONCRETE);
+      qce_expr_assert_mode(&expr_from_s, CONCRETE);
+      ((uint8_t *)&expr_into_d.v_i32)[0] = (uint8_t)expr_from_s.v_i32;
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+    }
+    for (i = 16 - shift; i < 16; i++) {
+      QCEExpr expr_into_d;
+      qce_state_env_get_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+      qce_expr_assert_mode(&expr_into_d, CONCRETE);
+      ((uint8_t *)&expr_into_d.v_i32)[0] = 0;
+      qce_state_env_put_i32(state, (intptr_t)&ptr_d->B(j + i), &expr_into_d);
+    }
+  }
+}
+
+#define HANDLE_SYM_INST_CALL_psrldq_xmm                                        \
+  case QCE_INST_CALL_psrldq_xmm: {                                             \
+    qce_sym_inst_call_psrldq_xmm(                                              \
+        arch, &session->state, &inst->i_call_psrldq_xmm.d,                     \
+        &inst->i_call_psrldq_xmm.s, &inst->i_call_psrldq_xmm.c);               \
     break;                                                                     \
   }
 

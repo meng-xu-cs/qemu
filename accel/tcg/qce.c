@@ -1033,6 +1033,7 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
 
       HANDLE_SYM_INST_CALL_gvec(eq8);
       HANDLE_SYM_INST_CALL_gvec(lt8);
+      HANDLE_SYM_INST_CALL_gvec(umin8);
 
       HANDLE_SYM_INST_CALL_syscall;
       HANDLE_SYM_INST_CALL_sysret;
@@ -1045,6 +1046,8 @@ void qce_on_tcg_tb_executed(TranslationBlock *tb, CPUState *cpu) {
       HANDLE_SYM_INST_CALL_punpck_xmm(lbw);
       HANDLE_SYM_INST_CALL_punpck_xmm(lwd);
       HANDLE_SYM_INST_CALL_pshufd_xmm;
+      HANDLE_SYM_INST_CALL_pslldq_xmm;
+      HANDLE_SYM_INST_CALL_psrldq_xmm;
 
       HANDLE_SYM_INST_CALL_div_EAX(divq);
       HANDLE_SYM_INST_CALL_div_EAX(idivq);
