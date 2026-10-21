@@ -20,12 +20,16 @@ typedef struct {
 
 #define qce_expr_assert_mode(expr, mo)                                         \
   if ((expr)->mode != QCE_EXPR_##mo) {                                         \
-    qce_fatal("[expr] mode mismatch: expect " #mo ", actual %d", (expr)->mode);\
+    qce_fatal("[expr] mode mismatch: "                                         \
+              "expect " #expr " in %s " #mo ", actual %d",                     \
+              __func__, (expr)->mode);                                         \
   }
 
 #define qce_expr_assert_type(expr, ty)                                         \
   if ((expr)->type != QCE_EXPR_##ty) {                                         \
-    qce_fatal("[expr] type mismatch: expect " #ty ", actual %d", (expr)->type);\
+    qce_fatal("[expr] type mismatch: "                                         \
+              "expect " #expr " in %s " #ty ", actual %d",                     \
+              __func__, (expr)->type);                                         \
   }
 
 // dual-mode representation of a predicate
